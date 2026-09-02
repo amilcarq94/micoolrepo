@@ -32,7 +32,10 @@ import {
   Camera,
   Filter,
   History,
-  ScanLine
+  ScanLine,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown
 } from 'lucide-react';
 
 interface ModoPlantaMobileViewProps {
@@ -89,6 +92,46 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
   const [subTab, setSubTab] = useState<'SILOS' | 'MAPA_CALOR' | 'DESPACHOS_PLAYA'>('SILOS');
   const [siloSeleccionado, setSiloSeleccionado] = useState<SiloId>('Silo 1');
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+
+  // Estado para acordeón de Silos desplegables verticalmente (Silo 1 al Silo 6)
+  const [expandedSilos, setExpandedSilos] = useState<Record<SiloId, boolean>>({
+    'Silo 1': true,
+    'Silo 2': false,
+    'Silo 3': false,
+    'Silo 4': false,
+    'Silo 5': false,
+    'Silo 6': false,
+  });
+
+  const toggleSiloAccordion = (siloId: SiloId) => {
+    setExpandedSilos((prev) => ({
+      ...prev,
+      [siloId]: !prev[siloId],
+    }));
+    setSiloSeleccionado(siloId);
+  };
+
+  const expandAllSilos = () => {
+    setExpandedSilos({
+      'Silo 1': true,
+      'Silo 2': true,
+      'Silo 3': true,
+      'Silo 4': true,
+      'Silo 5': true,
+      'Silo 6': true,
+    });
+  };
+
+  const collapseAllSilos = () => {
+    setExpandedSilos({
+      'Silo 1': false,
+      'Silo 2': false,
+      'Silo 3': false,
+      'Silo 4': false,
+      'Silo 5': false,
+      'Silo 6': false,
+    });
+  };
 
   // Estados para Mapa de Calor de Acopio
   const [selectedAlaFilter, setSelectedAlaFilter] = useState<string>('TODAS');
@@ -221,8 +264,8 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-16">
-      {/* 1. BARRA SUPERIOR DE ESTADO Y BOTÓN DESTACADO DE ESCÁNER QR */}
-      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* 1. BARRA SUPERIOR DE ESTADO */}
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-100 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div
             className={`p-2.5 rounded-xl flex items-center justify-center ${
@@ -238,7 +281,7 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
                 Planta Móvil · {isOnline ? 'En línea' : 'Sin señal'}
               </span>
               <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-[#00603C] text-[10px] font-extrabold border border-emerald-300">
-                Acceso Público
+                Operación en Planta
               </span>
             </div>
             <span className="text-xs text-gray-500 font-mono block mt-0.5">
@@ -247,22 +290,59 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
           </div>
         </div>
 
-        {/* Botón Dedicado de Escáner QR */}
-        <button
-          id="btn-escanear-qr-planta-movil"
-          type="button"
-          onClick={() => {
-            unlockScannerAudio();
-            onOpenQrScanner();
-          }}
-          className="w-full sm:w-auto px-4 py-3 bg-[#00603C] hover:bg-[#254731] text-white rounded-xl shadow-md transition-all duration-200 flex items-center justify-center gap-2.5 text-xs font-black uppercase tracking-wider cursor-pointer active:scale-98 ring-2 ring-[#C9922E]/40"
-          title="Abrir Cámara para Escanear Código QR de Trazabilidad"
-        >
-          <Camera className="w-4 h-4 text-[#C9922E]" />
-          <span>Escanear Código QR</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 bg-white/20 rounded text-emerald-100">Cámara</span>
-        </button>
+        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 font-mono">
+          <span className="font-bold text-[#00603C]">La Barrancosa</span>
+          <span>·</span>
+          <span>Agro Abacus S.A.</span>
+        </div>
       </div>
+
+      {/* 2. BOTÓN HERO DESTACADO: ESCANEAR CÓDIGO QR (TAMAÑO MAXIMIZADO Y ESTÉTICA ELEVADA) */}
+      <button
+        id="btn-escanear-qr-planta-movil"
+        type="button"
+        onClick={() => {
+          unlockScannerAudio();
+          onOpenQrScanner();
+        }}
+        className="w-full relative overflow-hidden group bg-gradient-to-r from-[#005031] via-[#00603C] to-[#004729] hover:from-[#00603C] hover:to-[#005031] text-white p-4 sm:p-5 rounded-2xl shadow-lg shadow-[#00603C]/25 border-2 border-[#C9922E] hover:border-[#dfab43] transition-all duration-200 cursor-pointer active:scale-[0.985] flex items-center justify-between gap-4 ring-4 ring-[#C9922E]/20"
+        title="Abrir Cámara para Escanear Código QR de Trazabilidad"
+      >
+        {/* Glow animado de fondo */}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+        {/* Lado izquierdo: Ícono llamativo y texto grande */}
+        <div className="flex items-center gap-3.5 sm:gap-4.5 z-10">
+          <div className="w-13 h-13 sm:w-16 sm:h-16 rounded-2xl bg-slate-950/30 backdrop-blur-xs border-2 border-[#C9922E] flex items-center justify-center shrink-0 shadow-inner group-hover:scale-105 transition-transform">
+            <div className="relative flex items-center justify-center">
+              <QrCode className="w-8 h-8 sm:w-9 sm:h-9 text-[#C9922E]" />
+              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-[#C9922E] border border-black"></span>
+              </span>
+            </div>
+          </div>
+          <div className="text-left">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-lg sm:text-xl font-black uppercase tracking-wider text-white font-sans drop-shadow-xs">
+                Escanear Código QR
+              </span>
+              <span className="inline-flex items-center gap-1 text-[10.5px] font-mono font-black bg-[#C9922E] text-slate-950 px-2.5 py-0.5 rounded-full uppercase shadow-xs">
+                <Camera className="w-3.5 h-3.5" /> Cámara
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-emerald-100/90 font-medium mt-0.5">
+              Lectura de alta velocidad para Bolsas, Bolsones y Lotes
+            </p>
+          </div>
+        </div>
+
+        {/* Lado derecho: Botón táctil indicador */}
+        <div className="hidden xs:flex items-center gap-2 z-10 shrink-0 bg-white/15 group-hover:bg-white/25 border border-white/25 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wider text-white shadow-xs transition-colors">
+          <ScanLine className="w-4 h-4 sm:w-5 sm:h-5 text-[#C9922E]" />
+          <span>Activar</span>
+        </div>
+      </button>
 
       {/* 2. SELECTOR DE PESTAÑAS PRINCIPALES: SILOS, MAPA DE CALOR, MIS ÓRDENES */}
       <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/60 shadow-2xs">
@@ -406,410 +486,437 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
             </div>
           </div>
 
-          {/* DISPOSICIÓN EN PLANTA MÓVIL: FILA ÚNICA ORDENADA DESCENDENTE (SILO 6 A SILO 1) */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between px-1">
-              <div className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+          {/* ========================================================================= */}
+          {/* SILOS DESPLEGABLES VERTICALES (ORDENADOS DESCENDENTE SILO 1 AL SILO 6)     */}
+          {/* ========================================================================= */}
+          <div className="space-y-3">
+            {/* Barra de control y acciones rápidas */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+              <div className="flex items-center gap-2">
                 <SiloIcon size={24} color="#00603C" className="silo-icon-institucional shrink-0" />
-                <span>Sector Silos (Silo 6 al Silo 1 - Fila Única)</span>
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                    Silos de Planta (Silo 1 al Silo 6)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Toque cualquier silo para desplegar su estado, datos técnicos y operaciones
+                  </p>
+                </div>
               </div>
-              <span className="text-[10px] text-slate-500 font-medium">
-                Deslice horizontalmente · Toque para ver detalle
-              </span>
+
+              {/* Botones de acción: Expandir / Colapsar todos */}
+              <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={expandAllSilos}
+                  className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded-lg border border-slate-200 shadow-2xs transition cursor-pointer flex items-center gap-1"
+                  title="Desplegar todos los silos"
+                >
+                  <ChevronDown className="w-3 h-3 text-[#00603C]" />
+                  <span>Expandir todos</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={collapseAllSilos}
+                  className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded-lg border border-slate-200 shadow-2xs transition cursor-pointer flex items-center gap-1"
+                  title="Plegar todos los silos"
+                >
+                  <ChevronUp className="w-3 h-3 text-slate-500" />
+                  <span>Colapsar todos</span>
+                </button>
+              </div>
             </div>
 
-            {/* Fila única de silos ordenados en forma descendente desde Silo 6 hasta Silo 1 */}
-            <div className="flex flex-row overflow-x-auto gap-4 py-2 px-1 pb-4 snap-x custom-scrollbar">
+            {/* Lista vertical de silos desplegables */}
+            <div className="space-y-3" id="lista-silos-desplegables-vertical">
               {SILOS_MOBILE_ORDER.map((siloId) => {
                 const info = silosInfoMap[siloId];
-                const isSelected = siloSeleccionado === siloId;
+                const isExpanded = Boolean(expandedSilos[siloId]);
                 const stock = info.stockKg;
                 const pct = Math.min(100, (stock / CAPACIDAD_MAX_SILO) * 100);
                 const estadoManual = silosEstadoManual[siloId] || 'VACIO_LIMPIO';
 
-                // Configuración de la Luz según el Check Manual
+                // Configuración de Luz según Check Manual
                 // 1. Silo Ocupado: Luz Amarilla
                 // 2. Silo Vacío Sucio: Luz Roja
                 // 3. Silo Vacío Limpio: Luz Verde
                 const luzConfig = estadoManual === 'OCUPADO'
                   ? {
                       color: 'bg-amber-400',
-                      glow: 'shadow-[0_0_16px_rgba(251,191,36,0.9)] ring-2 ring-amber-300',
-                      border: 'border-amber-500',
-                      texto: 'Silo Ocupado',
-                      pillClass: 'bg-amber-100 text-amber-900 border-amber-300'
+                      glow: 'shadow-[0_0_12px_rgba(251,191,36,0.9)] ring-2 ring-amber-300',
+                      texto: 'Ocupado',
+                      pillClass: 'bg-amber-50 text-amber-900 border-amber-300',
+                      descripcion: 'Silo con grano almacenado · Luz Amarilla activa'
                     }
                   : estadoManual === 'VACIO_SUCIO'
                   ? {
                       color: 'bg-red-500',
-                      glow: 'shadow-[0_0_16px_rgba(239,68,68,0.9)] ring-2 ring-red-400 animate-pulse',
-                      border: 'border-red-600',
-                      texto: 'Silo Vacío Sucio',
-                      pillClass: 'bg-red-100 text-red-900 border-red-300'
+                      glow: 'shadow-[0_0_12px_rgba(239,68,68,0.9)] ring-2 ring-red-300',
+                      texto: 'Vacío Sucio',
+                      pillClass: 'bg-red-50 text-red-900 border-red-300',
+                      descripcion: 'Silo vacío pendiente de limpieza o aspirado · Luz Roja activa'
                     }
                   : {
                       color: 'bg-emerald-500',
-                      glow: 'shadow-[0_0_16px_rgba(16,185,129,0.9)] ring-2 ring-emerald-300',
-                      border: 'border-emerald-600',
-                      texto: 'Silo Vacío Limpio',
-                      pillClass: 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                      glow: 'shadow-[0_0_12px_rgba(16,185,129,0.9)] ring-2 ring-emerald-300',
+                      texto: 'Vacío Limpio',
+                      pillClass: 'bg-emerald-50 text-emerald-900 border-emerald-300',
+                      descripcion: 'Silo higienizado y listo para recibir nuevo cereal · Luz Verde activa'
                     };
 
                 return (
                   <div
                     key={siloId}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSiloSeleccionado(siloId)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        setSiloSeleccionado(siloId);
-                      }
-                    }}
-                    className={`min-w-[260px] max-w-[280px] sm:min-w-[290px] aspect-square rounded-full border-4 text-center transition-all duration-300 relative overflow-hidden flex flex-col items-center justify-between p-4 sm:p-5 cursor-pointer shrink-0 snap-center ${
-                      isSelected
-                        ? 'bg-slate-900 border-[#00603C] text-white shadow-2xl ring-4 ring-emerald-400/50 scale-[1.02]'
-                        : 'bg-white border-slate-300 hover:border-[#00603C] text-slate-900 shadow-md hover:shadow-xl'
+                    id={`card-silo-desplegable-${siloId.replace(' ', '-').toLowerCase()}`}
+                    className={`rounded-2xl border transition-all duration-200 overflow-hidden bg-white ${
+                      isExpanded
+                        ? 'border-[#00603C] shadow-md ring-2 ring-[#00603C]/20'
+                        : 'border-slate-200 hover:border-slate-300 shadow-xs'
                     }`}
                   >
-                    {/* 1. LUZ DE ESTADO Y ETIQUETA EN LA PARTE SUPERIOR */}
-                    <div className="flex flex-col items-center gap-1 mt-1 z-10">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`w-4 h-4 rounded-full border-2 border-white ${luzConfig.color} ${luzConfig.glow} transition-all duration-300`}
-                          title={`${siloId}: ${luzConfig.texto}`}
-                        />
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${
-                          isSelected
-                            ? 'bg-slate-800 text-slate-200 border-slate-700'
-                            : luzConfig.pillClass
-                        }`}>
-                          {luzConfig.texto}
-                        </span>
+                    {/* Encabezado Desplegable (Siempre visible, táctil) */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleSiloAccordion(siloId)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          toggleSiloAccordion(siloId);
+                        }
+                      }}
+                      className="p-3.5 sm:p-4 cursor-pointer select-none transition-colors hover:bg-slate-50/70 active:bg-slate-100 flex items-center justify-between gap-3"
+                    >
+                      {/* Lado izquierdo: Ícono Silo + Nombre + Semáforo de Luz */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 border ${
+                            isExpanded ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-100 border-slate-200'
+                          }`}
+                        >
+                          <SiloIcon size={24} color="#00603C" className="silo-icon-institucional shrink-0" />
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-base sm:text-lg font-serif font-black text-slate-900 tracking-tight leading-tight">
+                              {siloId}
+                            </span>
+                            {/* Luz indicadora con resplandor */}
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`w-3 h-3 rounded-full border border-white ${luzConfig.color} ${luzConfig.glow} shrink-0`}
+                                title={`${siloId}: ${luzConfig.texto}`}
+                              />
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${luzConfig.pillClass}`}
+                              >
+                                {luzConfig.texto}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Cliente y Especie resumidos */}
+                          <div className="text-xs text-slate-600 font-medium truncate mt-0.5">
+                            {info.cliente ? (
+                              <span>
+                                <strong className="text-slate-900">{info.cliente}</strong> · {info.especie}{' '}
+                                {info.variedad ? `(${info.variedad})` : ''}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 italic">Sin lote asignado (Disponible)</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Lado derecho: Métricas de Stock y Flecha Desplegable */}
+                      <div className="flex items-center gap-2.5 sm:gap-4 shrink-0">
+                        <div className="text-right">
+                          <div className="font-mono font-black text-sm sm:text-base text-slate-900 leading-tight">
+                            {formatNumberArg(stock, 0)} <span className="text-[11px] font-normal text-slate-500">kg</span>
+                          </div>
+                          <div className="flex items-center justify-end gap-1.5 text-[11px] font-mono text-slate-500 mt-0.5">
+                            <span>{(stock / 1000).toFixed(1)} Tn</span>
+                            <span
+                              className={`font-bold ${
+                                pct >= 90 ? 'text-red-600' : pct >= 75 ? 'text-amber-600' : 'text-emerald-700'
+                              }`}
+                            >
+                              ({pct.toFixed(0)}%)
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Botón visual de expandir / colapsar */}
+                        <div
+                          className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all duration-200 ${
+                            isExpanded
+                              ? 'bg-[#00603C] text-white border-[#00603C]'
+                              : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                          }`}
+                        >
+                          <ChevronDown
+                            className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : 'rotate-0'}`}
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    {/* 2. CENTRO: ÍCONO DEL SILO + NOMBRE + STOCK */}
-                    <div className="flex flex-col items-center justify-center my-auto z-10">
-                      <div className="p-1.5 rounded-full bg-emerald-500/10 mb-1 flex items-center justify-center">
-                        <SiloIcon
-                          size={24}
-                          color="#00603C"
-                          className="silo-icon-institucional shrink-0"
-                        />
+                    {/* Barra de progreso rápida visible cuando está colapsado */}
+                    {!isExpanded && (
+                      <div className="px-4 pb-3 pt-0">
+                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              pct >= 95 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-[#00603C]'
+                            }`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
                       </div>
-                      
-                      <h3 className={`text-xl sm:text-2xl font-black font-serif tracking-tight ${
-                        isSelected ? 'text-emerald-400' : 'text-slate-900'
-                      }`}>
-                        {siloId}
-                      </h3>
+                    )}
 
-                      <div className={`text-base sm:text-lg font-black font-mono tracking-tight mt-0.5 ${
-                        isSelected ? 'text-white' : 'text-slate-900'
-                      }`}>
-                        {stock.toLocaleString('es-AR')} <span className="text-xs font-normal opacity-80">kg</span>
-                      </div>
+                    {/* CUERPO DESPLEGABLE VERTICAL */}
+                    {isExpanded && (
+                      <div className="overflow-hidden border-t border-slate-200 transition-all duration-200">
+                          <div className="p-4 sm:p-5 space-y-4 bg-slate-50/70">
+                            {/* 1. SELECTOR DEL CHECK MANUAL DE ESTADO (SEMÁFORO DE 3 LUCES) */}
+                            <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
+                              <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-1">
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-[#00603C]" />
+                                  Luz de Estado en Planta ({siloId})
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                  Seleccione para actualizar el semáforo operativo
+                                </span>
+                              </div>
 
-                      <div className="flex items-center gap-2 text-[10px] sm:text-xs font-semibold mt-0.5">
-                        <span className={isSelected ? 'text-slate-300' : 'text-slate-500'}>
-                          {(stock / 1000).toFixed(1)} / 180 Tn
-                        </span>
-                        <span className={`font-mono font-bold ${
-                          isSelected ? 'text-emerald-300' : 'text-emerald-700'
-                        }`}>
-                          {pct.toFixed(0)}%
-                        </span>
-                      </div>
-                    </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                {/* Opción 1: Ocupado (Luz Amarilla) */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetEstadoManual(siloId, 'OCUPADO')}
+                                  className={`py-2.5 px-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition cursor-pointer border ${
+                                    estadoManual === 'OCUPADO'
+                                      ? 'bg-amber-400 text-amber-950 border-amber-500 shadow-xs ring-2 ring-amber-300 font-black'
+                                      : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300'
+                                  }`}
+                                >
+                                  <span className="w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white shadow-xs" />
+                                  <span className="text-[11px] leading-tight">Ocupado</span>
+                                </button>
 
-                    {/* 3. PARTE INFERIOR: SELECTOR DE CHECK MANUAL (3 OPCIONES) */}
-                    <div className="flex flex-col items-center gap-1.5 w-full mb-1 z-10">
-                      <div
-                        className={`flex items-center justify-center gap-1 p-1 rounded-full border shadow-inner ${
-                          isSelected ? 'bg-slate-800/90 border-slate-700' : 'bg-slate-100 border-slate-200'
-                        }`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {/* Opción 1: Silo Ocupado (Amarillo) */}
-                        <button
-                          type="button"
-                          title="Activar Silo Ocupado (Luz Amarilla)"
-                          onClick={() => handleSetEstadoManual(siloId, 'OCUPADO')}
-                          className={`px-2 py-1 rounded-full text-[9px] font-bold flex items-center gap-1 transition cursor-pointer ${
-                            estadoManual === 'OCUPADO'
-                              ? 'bg-amber-400 text-amber-950 font-black shadow-xs ring-1 ring-amber-500'
-                              : isSelected
-                              ? 'text-slate-300 hover:text-white hover:bg-slate-700'
-                              : 'text-slate-600 hover:bg-slate-200'
-                          }`}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-amber-500 border border-amber-600 inline-block"></span>
-                          <span>Ocupado</span>
-                        </button>
+                                {/* Opción 2: Vacío Sucio (Luz Roja) */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetEstadoManual(siloId, 'VACIO_SUCIO')}
+                                  className={`py-2.5 px-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition cursor-pointer border ${
+                                    estadoManual === 'VACIO_SUCIO'
+                                      ? 'bg-red-500 text-white border-red-600 shadow-xs ring-2 ring-red-300 font-black'
+                                      : 'bg-white text-slate-700 border-slate-200 hover:bg-red-50 hover:border-red-300'
+                                  }`}
+                                >
+                                  <span className="w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-white shadow-xs" />
+                                  <span className="text-[11px] leading-tight">Vacío Sucio</span>
+                                </button>
 
-                        {/* Opción 2: Silo Vacío Sucio (Rojo) */}
-                        <button
-                          type="button"
-                          title="Activar Silo Vacío Sucio (Luz Roja)"
-                          onClick={() => handleSetEstadoManual(siloId, 'VACIO_SUCIO')}
-                          className={`px-2 py-1 rounded-full text-[9px] font-bold flex items-center gap-1 transition cursor-pointer ${
-                            estadoManual === 'VACIO_SUCIO'
-                              ? 'bg-red-500 text-white font-black shadow-xs ring-1 ring-red-600'
-                              : isSelected
-                              ? 'text-slate-300 hover:text-white hover:bg-slate-700'
-                              : 'text-slate-600 hover:bg-slate-200'
-                          }`}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-red-600 border border-white inline-block"></span>
-                          <span>V. Sucio</span>
-                        </button>
+                                {/* Opción 3: Vacío Limpio (Luz Verde) */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetEstadoManual(siloId, 'VACIO_LIMPIO')}
+                                  className={`py-2.5 px-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition cursor-pointer border ${
+                                    estadoManual === 'VACIO_LIMPIO'
+                                      ? 'bg-emerald-500 text-white border-emerald-600 shadow-xs ring-2 ring-emerald-300 font-black'
+                                      : 'bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300'
+                                  }`}
+                                >
+                                  <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white shadow-xs" />
+                                  <span className="text-[11px] leading-tight">Vacío Limpio</span>
+                                </button>
+                              </div>
 
-                        {/* Opción 3: Silo Vacío Limpio (Verde) */}
-                        <button
-                          type="button"
-                          title="Activar Silo Vacío Limpio (Luz Verde)"
-                          onClick={() => handleSetEstadoManual(siloId, 'VACIO_LIMPIO')}
-                          className={`px-2 py-1 rounded-full text-[9px] font-bold flex items-center gap-1 transition cursor-pointer ${
-                            estadoManual === 'VACIO_LIMPIO'
-                              ? 'bg-emerald-500 text-white font-black shadow-xs ring-1 ring-emerald-600'
-                              : isSelected
-                              ? 'text-slate-300 hover:text-white hover:bg-slate-700'
-                              : 'text-slate-600 hover:bg-slate-200'
-                          }`}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 border border-white inline-block"></span>
-                          <span>V. Limpio</span>
-                        </button>
-                      </div>
+                              <p className="text-[11px] text-slate-500 italic">
+                                {luzConfig.descripcion}
+                              </p>
+                            </div>
 
-                      {/* Acciones Rápidas (Ficha) */}
-                      <div className="flex items-center justify-center gap-3 text-[9px] font-bold">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setFichaModalSilo(siloId);
-                          }}
-                          className={`hover:underline flex items-center gap-0.5 ${
-                            isSelected ? 'text-emerald-300' : 'text-emerald-700'
-                          }`}
-                        >
-                          <Eye className="w-2.5 h-2.5" /> Ficha Técnica
-                        </button>
-                      </div>
-                    </div>
+                            {/* 2. FICHA DE DATOS OPERATIVOS (4 BLOQUES) */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                              {/* Cliente */}
+                              <div className="p-3 bg-white rounded-xl border border-slate-200">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                                  Cliente Comitente
+                                </span>
+                                <div className="font-black text-[#00603C] text-sm truncate">
+                                  {info.cliente || '—'}
+                                </div>
+                              </div>
+
+                              {/* Especie / Variedad */}
+                              <div className="p-3 bg-white rounded-xl border border-slate-200">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                                  Especie / Variedad
+                                </span>
+                                <div className="font-bold text-slate-800 text-sm truncate">
+                                  {info.especie || '—'} · <span className="font-medium text-slate-600">{info.variedad || '—'}</span>
+                                </div>
+                              </div>
+
+                              {/* Stock Actual y Capacidad Disponible */}
+                              <div className="p-3 bg-white rounded-xl border border-slate-200">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                                  Stock Actual en Silo
+                                </span>
+                                <div className="font-mono font-black text-slate-900 text-sm">
+                                  {formatNumberArg(info.stockKg, 0)} kg ({info.stockTn} Tn)
+                                </div>
+                                <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+                                  Espacio disponible: {formatNumberArg(info.disponibleKg, 0)} kg ({info.disponibleTn} Tn)
+                                </span>
+                              </div>
+
+                              {/* Humedad Promedio */}
+                              <div className="p-3 bg-white rounded-xl border border-slate-200">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                                  Humedad Promedio Ponderada
+                                </span>
+                                <div className="font-mono font-black text-slate-800 text-sm flex items-center gap-1.5">
+                                  <Droplets className="w-4 h-4 text-blue-500" />
+                                  <span>{info.stockKg > 0 ? `${info.humedad}%` : '0.0%'}</span>
+                                </div>
+                                <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+                                  Base de recibo estándar: 13.5%
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* 3. BARRA DE CAPACIDAD Y NIVEL DE LLENADO */}
+                            <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
+                              <div className="flex justify-between text-[11px] font-bold">
+                                <span className="text-slate-700">Nivel de llenado: {info.pctOcupacion}%</span>
+                                <span className="text-slate-500 font-mono">Capacidad Máx: 180.000 kg (180 Tn)</span>
+                              </div>
+                              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    pct >= 95 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-[#00603C]'
+                                  }`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* 4. ACCIÓN DIRECTA: FICHA TÉCNICA OFICIAL */}
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => setFichaModalSilo(siloId)}
+                                className="w-full sm:w-auto px-4 py-2.5 bg-[#00603C] hover:bg-[#254731] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-xs cursor-pointer active:scale-98"
+                              >
+                                <FileText className="w-4 h-4 text-[#C9922E]" />
+                                <span>Ver Ficha Técnica Oficial ({siloId})</span>
+                              </button>
+                            </div>
+
+                            {/* 5. HISTORIAL DE OPERACIONES DEL SILO */}
+                            <div className="space-y-2 pt-2 border-t border-slate-200">
+                              <div className="flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                                  <Clock className="w-3.5 h-3.5 text-[#00603C]" />
+                                  <span>Operaciones Recientes ({siloId})</span>
+                                </div>
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  {info.movimientos.length} movimiento(s)
+                                </span>
+                              </div>
+
+                              {info.movimientos.length === 0 ? (
+                                <div className="text-center py-5 bg-white rounded-xl border border-slate-200 text-slate-400 space-y-1">
+                                  <Warehouse className="w-6 h-6 mx-auto text-slate-300" />
+                                  <p className="text-xs font-bold text-slate-600">Sin movimientos registrados</p>
+                                  <p className="text-[11px]">No hay ingresos ni egresos cargados para este silo.</p>
+                                </div>
+                              ) : (
+                                <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                                  {info.movimientos.map((mov) => {
+                                    const isIngreso = mov.tipo === 'INGRESO';
+                                    const isEgreso = mov.tipo === 'EGRESO_OP' || (mov.tipo as string).startsWith('EGRESO');
+
+                                    return (
+                                      <div
+                                        key={mov.id}
+                                        className="p-2.5 bg-white hover:bg-slate-100/70 rounded-xl border border-slate-200/80 transition flex items-center justify-between gap-3 text-xs"
+                                      >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <div
+                                            className={`p-1.5 rounded-lg shrink-0 ${
+                                              isIngreso
+                                                ? 'bg-emerald-100 text-emerald-800'
+                                                : isEgreso
+                                                ? 'bg-amber-100 text-amber-800'
+                                                : 'bg-slate-200 text-slate-700'
+                                            }`}
+                                          >
+                                            {isIngreso ? (
+                                              <ArrowDownRight className="w-3.5 h-3.5" />
+                                            ) : isEgreso ? (
+                                              <ArrowUpRight className="w-3.5 h-3.5" />
+                                            ) : (
+                                              <Warehouse className="w-3.5 h-3.5" />
+                                            )}
+                                          </div>
+
+                                          <div className="min-w-0">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="font-bold text-slate-900 truncate">
+                                                {isIngreso ? 'Ingreso Camión' : isEgreso ? 'Egreso a Proceso' : 'Puesta en Cero'}
+                                              </span>
+                                              <span className="text-[10px] text-slate-400 font-mono">· {mov.fecha}</span>
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 truncate">
+                                              {mov.cliente ? `${mov.cliente} · ` : ''}
+                                              {mov.chofer ? `Chofer: ${mov.chofer}` : mov.usuario ? `Por: ${mov.usuario}` : ''}
+                                              {mov.patentes && mov.patentes !== '—' ? ` (${mov.patentes})` : ''}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div className="text-right shrink-0">
+                                          <span
+                                            className={`font-mono font-bold block ${
+                                              isIngreso ? 'text-emerald-700' : isEgreso ? 'text-amber-700' : 'text-slate-600'
+                                            }`}
+                                          >
+                                            {isIngreso ? '+' : isEgreso ? '-' : ''}
+                                            {formatNumberArg(mov.kg, 0)} kg
+                                          </span>
+                                          {mov.humedad !== undefined && (
+                                            <span className="text-[10px] font-mono text-slate-400 block">
+                                              Hum: {mov.humedad}%
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                   </div>
                 );
               })}
             </div>
-          </div>
 
-          {/* DETALLE COMPLETO DEL SILO SELECCIONADO (SOLO VISUALIZACIÓN) */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-            {/* Header del Detalle */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0 shadow-xs">
-                  <SiloIcon size={24} color="#00603C" className="silo-icon-institucional shrink-0" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-serif text-lg font-black text-slate-900 leading-tight">
-                      Detalle {siloActivo.siloId}
-                    </h3>
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                        siloActivo.stockKg > 0
-                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                          : 'bg-slate-100 text-slate-600 border-slate-300'
-                      }`}
-                    >
-                      {siloActivo.stockKg > 0 ? 'Con Stock' : 'Silo Vacío'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    Planta de Clasificación de Semillas · La Barrancosa
-                  </p>
-                </div>
-              </div>
-
-              {/* Botón para abrir la Ficha Técnica Oficial */}
-              <button
-                type="button"
-                onClick={() => setFichaModalSilo(siloActivo.siloId)}
-                className="px-3.5 py-2 bg-[#00603C] hover:bg-[#254731] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-              >
-                <FileText className="w-3.5 h-3.5 text-[#C9922E]" />
-                <span>Ver Ficha Técnica Oficial</span>
-              </button>
-            </div>
-
-            {/* Ficha Resumen de 5 Campos de Datos */}
-            <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200/70 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                {/* Cliente destacado */}
-                <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
-                    Cliente Comitente
-                  </span>
-                  <div className="font-sans font-black text-[#00603C] text-sm truncate" title={siloActivo.cliente}>
-                    {siloActivo.cliente}
-                  </div>
-                </div>
-
-                {/* Especie y Variedad */}
-                <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
-                    Especie / Variedad
-                  </span>
-                  <div className="font-bold text-slate-800 text-sm">
-                    {siloActivo.especie} · <span className="font-medium text-slate-600">{siloActivo.variedad}</span>
-                  </div>
-                </div>
-
-                {/* Stock Actual y Capacidad */}
-                <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
-                    Stock Actual en Silo
-                  </span>
-                  <div className="font-mono font-black text-slate-900 text-sm">
-                    {formatNumberArg(siloActivo.stockKg, 0)} kg ({siloActivo.stockTn} Tn)
-                  </div>
-                  <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
-                    Espacio disponible: {formatNumberArg(siloActivo.disponibleKg, 0)} kg ({siloActivo.disponibleTn} Tn)
-                  </span>
-                </div>
-
-                {/* Humedad Promedio */}
-                <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
-                    Humedad Promedio Ponderada
-                  </span>
-                  <div className="font-mono font-black text-slate-800 text-sm flex items-center gap-1.5">
-                    <Droplets className="w-4 h-4 text-blue-500" />
-                    <span>{siloActivo.stockKg > 0 ? `${siloActivo.humedad}%` : '0.0%'}</span>
-                  </div>
-                  <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
-                    Base de recibo estándar: 13.5%
-                  </span>
-                </div>
-              </div>
-
-              {/* Barra de progreso de llenado */}
-              <div className="space-y-1 pt-1">
-                <div className="flex justify-between text-[11px] font-bold">
-                  <span className="text-slate-600">Nivel de llenado: {siloActivo.pctOcupacion}%</span>
-                  <span className="text-slate-500 font-mono">Máx: 180.000 kg</span>
-                </div>
-                <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      Number(siloActivo.pctOcupacion) >= 95
-                        ? 'bg-red-500'
-                        : Number(siloActivo.pctOcupacion) >= 80
-                        ? 'bg-amber-500'
-                        : 'bg-[#00603C]'
-                    }`}
-                    style={{ width: `${Math.min(100, Number(siloActivo.pctOcupacion))}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* HISTORIAL Y OPERACIONES DEL SILO (SOLO LECTURA) */}
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-[#00603C]" />
-                  <h4 className="font-serif font-bold text-sm text-slate-900">
-                    Registro de Operaciones de {siloActivo.siloId}
-                  </h4>
-                </div>
-                <span className="text-[10px] text-slate-500 font-mono">
-                  {siloActivo.movimientos.length} movimiento(s)
-                </span>
-              </div>
-
-              {siloActivo.movimientos.length === 0 ? (
-                <div className="text-center py-8 bg-slate-50 rounded-xl border border-slate-200 text-slate-400 space-y-1">
-                  <Warehouse className="w-7 h-7 mx-auto text-slate-300" />
-                  <p className="text-xs font-bold text-slate-600">Sin movimientos registrados</p>
-                  <p className="text-[11px]">No hay ingresos ni egresos cargados para este silo.</p>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                  {siloActivo.movimientos.map((mov) => {
-                    const isIngreso = mov.tipo === 'INGRESO';
-                    const isEgreso = mov.tipo === 'EGRESO_OP' || (mov.tipo as string).startsWith('EGRESO');
-
-                    return (
-                      <div
-                        key={mov.id}
-                        className="p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200/80 transition flex items-center justify-between gap-3 text-xs"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div
-                            className={`p-1.5 rounded-lg shrink-0 ${
-                              isIngreso
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : isEgreso
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {isIngreso ? (
-                              <ArrowDownRight className="w-4 h-4" />
-                            ) : isEgreso ? (
-                              <ArrowUpRight className="w-4 h-4" />
-                            ) : (
-                              <Warehouse className="w-4 h-4" />
-                            )}
-                          </div>
-
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-slate-900 truncate">
-                                {isIngreso ? 'Ingreso Camión' : isEgreso ? 'Egreso a Proceso' : 'Puesta en Cero'}
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-mono">· {mov.fecha}</span>
-                            </div>
-                            <div className="text-[11px] text-slate-500 truncate">
-                              {mov.cliente ? `${mov.cliente} · ` : ''}
-                              {mov.chofer ? `Chofer: ${mov.chofer}` : mov.usuario ? `Por: ${mov.usuario}` : ''}
-                              {mov.patentes && mov.patentes !== '—' ? ` (${mov.patentes})` : ''}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="text-right shrink-0">
-                          <span
-                            className={`font-mono font-bold block ${
-                              isIngreso ? 'text-emerald-700' : isEgreso ? 'text-amber-700' : 'text-slate-600'
-                            }`}
-                          >
-                            {isIngreso ? '+' : isEgreso ? '-' : ''}
-                            {formatNumberArg(mov.kg, 0)} kg
-                          </span>
-                          {mov.humedad !== undefined && (
-                            <span className="text-[10px] font-mono text-slate-400 block">
-                              Hum: {mov.humedad}%
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Mensaje informativo de solo lectura */}
-              <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl text-blue-900 text-[11px] flex items-start gap-2">
-                <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Modo Solo Lectura:</strong> Para registrar ingresos de camiones, calibraciones o egresos de silos, acceda con usuario autorizado al módulo principal de Gestión de Silos.
-                </span>
-              </div>
+            {/* Mensaje informativo de solo lectura */}
+            <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl text-blue-900 text-[11px] flex items-start gap-2">
+              <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Modo Solo Lectura:</strong> Para registrar ingresos de camiones, calibraciones o egresos de silos, acceda con usuario autorizado al módulo principal de Gestión de Silos.
+              </span>
             </div>
           </div>
         </div>

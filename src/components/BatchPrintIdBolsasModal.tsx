@@ -269,11 +269,11 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
                 width: '210mm',
                 minWidth: '210mm',
                 maxWidth: '210mm',
-                height: '296mm',
-                minHeight: '296mm',
-                maxHeight: '296mm',
+                height: '297mm',
+                minHeight: '297mm',
+                maxHeight: '297mm',
                 boxSizing: 'border-box',
-                padding: '6mm 8mm 5mm 8mm',
+                padding: '8mm 10mm 8mm 10mm',
                 backgroundColor: '#FFFFFF',
                 pageBreakAfter: isLastPage ? 'auto' : 'always',
                 breakAfter: isLastPage ? 'auto' : 'page',
@@ -283,7 +283,7 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
                 display: isCurrentScreenPage ? 'flex' : 'none',
                 flexDirection: 'column',
                 justifyContent: 'flex-start',
-                gap: '1.2mm',
+                position: 'relative',
               }}
             >
               {/* Renderizar exactamente 7 etiquetas dentro de la grilla A4 */}
@@ -293,9 +293,9 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'flex-start',
-                  gap: '1.2mm',
-                  flex: '1 1 auto',
+                  gap: '1.5mm',
                   width: '100%',
+                  boxSizing: 'border-box',
                 }}
               >
                 {pageTags.map((tag) => (
@@ -315,9 +315,9 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
                       key={`empty-placeholder-${emptyIdx}`}
                       className="border border-dashed border-gray-200 opacity-20 print:opacity-0"
                       style={{
-                        height: '38.2mm',
-                        minHeight: '38.2mm',
-                        maxHeight: '38.2mm',
+                        height: '37.5mm',
+                        minHeight: '37.5mm',
+                        maxHeight: '37.5mm',
                         boxSizing: 'border-box',
                       }}
                     />
@@ -325,11 +325,28 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
               </div>
 
               {/* Barra de pie de página: Contador y Marca de Identificación Única por Hoja A4 */}
-              <div className="id-bolsas-page-meta-bar shrink-0" style={{ height: '5mm', marginTop: 'auto' }}>
+              <div
+                className="id-bolsas-page-meta-bar shrink-0"
+                style={{
+                  height: '5mm',
+                  marginTop: 'auto',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  borderTop: '1px dashed #cbd5e1',
+                  paddingTop: '1.2mm',
+                  fontSize: '6.5pt',
+                  color: '#475569',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                  boxSizing: 'border-box',
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 <div className="flex items-center gap-2">
-                  <span>PLANTA CLASIFICADORA LA BARRANCOSA · AGRO ABACUS S.A.</span>
+                  <span className="font-bold">PLANTA CLASIFICADORA LA BARRANCOSA · AGRO ABACUS S.A.</span>
                   <span>·</span>
-                  <span className="font-mono">LOTE: {pageLoteNro}</span>
+                  <span className="font-mono font-bold">LOTE: {pageLoteNro}</span>
                 </div>
                 <div className="flex items-center gap-2 font-mono">
                   <span>ETIQ. {firstTag?.bagIndex || 1} - {lastTag?.bagIndex || pageTags.length} DE {allTags.length}</span>

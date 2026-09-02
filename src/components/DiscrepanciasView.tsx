@@ -15,7 +15,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileSpreadsheet,
-  Printer,
+  Download,
+  Loader2,
   History,
   Plus,
   Save,
@@ -26,6 +27,7 @@ import {
   Layers,
   HelpCircle
 } from 'lucide-react';
+import { exportWithHtml2Pdf } from '../utils/exportPdf';
 
 interface DiscrepanciasViewProps {
   movimientosSilo: MovimientoSilo[];
@@ -163,12 +165,26 @@ export const DiscrepanciasView: React.FC<DiscrepanciasViewProps> = ({
     setTimeout(() => setMensajeExito(''), 5000);
   };
 
-  const handlePrintReporte = () => {
-    window.print();
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    try {
+      setIsExportingPdf(true);
+      const fileName = `Reporte_Discrepancias_Stock_${new Date().toISOString().slice(0, 10)}.pdf`;
+      await exportWithHtml2Pdf('discrepancias-content-view', fileName, {
+        scale: 2.0,
+        quality: 0.98,
+        margin: [8, 8, 8, 8],
+      });
+    } catch (err) {
+      console.error('Error al exportar reporte de discrepancias:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 max-w-7xl mx-auto pb-12" id="discrepancias-content-view">
       {/* Encabezado */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm print:shadow-none print:border-none">
         <div>
@@ -186,11 +202,18 @@ export const DiscrepanciasView: React.FC<DiscrepanciasViewProps> = ({
 
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           <button
-            onClick={handlePrintReporte}
-            className="px-4 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 transition flex items-center gap-2"
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={isExportingPdf}
+            className="px-4 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            title="Descargar Reporte en Formato PDF"
           >
-            <Printer className="w-4 h-4 text-gray-500" />
-            Imprimir Informe
+            {isExportingPdf ? (
+              <Loader2 className="w-4 h-4 animate-spin text-[#00603C]" />
+            ) : (
+              <Download className="w-4 h-4 text-[#00603C]" />
+            )}
+            <span>{isExportingPdf ? 'Generando PDF...' : 'Descargar PDF'}</span>
           </button>
 
           {isAuthorized && (

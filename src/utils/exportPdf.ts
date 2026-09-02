@@ -101,19 +101,32 @@ export async function exportIdBolsasPagesAsPdf(
       const prevPosition = el.style.position;
       const prevWidth = el.style.width;
       const prevHeight = el.style.height;
+      const prevPadding = el.style.padding;
+      const prevBoxShadow = el.style.boxShadow;
+      const prevBorder = el.style.border;
+      const prevBorderRadius = el.style.borderRadius;
+      const prevBoxSizing = el.style.boxSizing;
+      const prevOverflow = el.style.overflow;
 
-      // Forzar dimensiones estrictas A4 y visibilidad
+      // Forzar dimensiones estrictas A4, márgenes sin bordes cortados y visibilidad perfecta
       el.style.setProperty('display', 'flex', 'important');
       el.style.setProperty('visibility', 'visible', 'important');
       el.style.setProperty('width', '210mm', 'important');
       el.style.setProperty('min-width', '210mm', 'important');
       el.style.setProperty('max-width', '210mm', 'important');
-      el.style.setProperty('height', '296mm', 'important');
-      el.style.setProperty('min-height', '296mm', 'important');
-      el.style.setProperty('max-height', '296mm', 'important');
+      el.style.setProperty('height', '297mm', 'important');
+      el.style.setProperty('min-height', '297mm', 'important');
+      el.style.setProperty('max-height', '297mm', 'important');
+      el.style.setProperty('box-sizing', 'border-box', 'important');
+      el.style.setProperty('padding', '8mm 10mm 8mm 10mm', 'important');
+      el.style.setProperty('box-shadow', 'none', 'important');
+      el.style.setProperty('border', 'none', 'important');
+      el.style.setProperty('border-radius', '0px', 'important');
+      el.style.setProperty('background-color', '#FFFFFF', 'important');
+      el.style.setProperty('overflow', 'hidden', 'important');
 
       // Esperar breve reflow para asegurar renderizado de fuentes, códigos QR y elementos vectoriales
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Capturar imagen JPEG de alta fidelidad
       const imgData = await toJpeg(el, {
@@ -133,6 +146,12 @@ export async function exportIdBolsasPagesAsPdf(
       el.style.position = prevPosition;
       el.style.width = prevWidth;
       el.style.height = prevHeight;
+      el.style.padding = prevPadding;
+      el.style.boxShadow = prevBoxShadow;
+      el.style.border = prevBorder;
+      el.style.borderRadius = prevBorderRadius;
+      el.style.boxSizing = prevBoxSizing;
+      el.style.overflow = prevOverflow;
 
       if (processedCount > 0) {
         pdf.addPage('a4', 'portrait');

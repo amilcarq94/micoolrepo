@@ -357,7 +357,7 @@ export type SiloId = 'Silo 1' | 'Silo 2' | 'Silo 3' | 'Silo 4' | 'Silo 5' | 'Sil
 
 export const SILOS_DISPONIBLES: SiloId[] = ['Silo 1', 'Silo 2', 'Silo 3', 'Silo 4', 'Silo 5', 'Silo 6'];
 export const SILOS_PHYSICAL_ORDER: SiloId[] = ['Silo 4', 'Silo 3', 'Silo 5', 'Silo 2', 'Silo 6', 'Silo 1'];
-export const SILOS_MOBILE_ORDER: SiloId[] = ['Silo 6', 'Silo 5', 'Silo 4', 'Silo 3', 'Silo 2', 'Silo 1'];
+export const SILOS_MOBILE_ORDER: SiloId[] = ['Silo 1', 'Silo 2', 'Silo 3', 'Silo 4', 'Silo 5', 'Silo 6'];
 
 export type EstadoSiloManual = 'OCUPADO' | 'VACIO_SUCIO' | 'VACIO_LIMPIO';
 export type SilosEstadoMap = Record<SiloId, EstadoSiloManual>;

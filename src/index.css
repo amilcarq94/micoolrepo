@@ -388,11 +388,11 @@
     width: 210mm !important;
     min-width: 210mm !important;
     max-width: 210mm !important;
-    height: 296mm !important;
-    min-height: 296mm !important;
-    max-height: 296mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
     margin: 0 auto !important;
-    padding: 6mm 8mm 5mm 8mm !important;
+    padding: 8mm 10mm 8mm 10mm !important;
     box-sizing: border-box !important;
     background-color: #FFFFFF !important;
     border: none !important;
@@ -402,7 +402,7 @@
     opacity: 1 !important;
     flex-direction: column !important;
     justify-content: flex-start !important;
-    gap: 1.2mm !important;
+    gap: 1.5mm !important;
     page-break-before: avoid !important;
     break-before: avoid !important;
     page-break-after: always !important; /* Cada contenedor de página genera exactamente 1 salto de página */
@@ -425,7 +425,7 @@
     display: flex !important;
     flex-direction: column !important;
     justify-content: flex-start !important;
-    gap: 1.2mm !important;
+    gap: 1.5mm !important;
     flex: 1 1 auto !important;
     box-sizing: border-box !important;
     page-break-inside: avoid !important;
@@ -460,32 +460,12 @@
     white-space: nowrap !important;
   }
 
-  /* Pseudoelemento ::after que renderiza automáticamente el contador de página */
-  .id-bolsas-a4-page::after {
-    content: "Página " counter(page) !important;
-    position: absolute !important;
-    bottom: 1.5mm !important;
-    right: 5mm !important;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-    font-size: 6.5pt !important;
-    font-weight: 800 !important;
-    color: #0f172a !important;
-    background-color: #ffffff !important;
-    padding: 0 1.5mm !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-    z-index: 20 !important;
-    pointer-events: none !important;
-  }
-
   /* Contenedor de grilla de 7 etiquetas dentro de la hoja */
   .id-bolsas-page-grid {
-    height: calc(297mm - 13mm) !important;
-    max-height: calc(297mm - 13mm) !important;
     display: flex !important;
     flex-direction: column !important;
-    justify-content: space-between !important;
-    gap: 0.8mm !important;
+    justify-content: flex-start !important;
+    gap: 1.5mm !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
     position: relative !important;
@@ -497,9 +477,9 @@
   .id-bolsa-label-card {
     width: 100% !important;
     max-width: 100% !important;
-    height: 38.2mm !important;
-    min-height: 38.2mm !important;
-    max-height: 38.2mm !important;
+    height: 37.5mm !important;
+    min-height: 37.5mm !important;
+    max-height: 37.5mm !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
     page-break-inside: avoid !important;
