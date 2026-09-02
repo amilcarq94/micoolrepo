@@ -18,7 +18,8 @@ import {
   Check,
   AlertTriangle,
   Eye,
-  Printer,
+  Download,
+  Loader2,
   Search,
   Calendar,
   User,
@@ -27,6 +28,7 @@ import {
   X,
   ShieldCheck
 } from 'lucide-react';
+import { exportWithHtml2Pdf } from '../utils/exportPdf';
 import {
   getListaDespachantes,
   addDespachanteAutorizado,
@@ -213,6 +215,24 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
 
   // Ver comprobante
   const [comprobanteSeleccionado, setComprobanteSeleccionado] = useState<OrdenCarga | null>(null);
+  const [isExportingComprobantePdf, setIsExportingComprobantePdf] = useState(false);
+
+  const handleDownloadComprobantePdf = async () => {
+    if (!comprobanteSeleccionado) return;
+    try {
+      setIsExportingComprobantePdf(true);
+      const fileName = `Comprobante_Despacho_${comprobanteSeleccionado.id}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      await exportWithHtml2Pdf('comprobante-despacho-printable', fileName, {
+        scale: 2.0,
+        quality: 0.98,
+        margin: [8, 8, 8, 8],
+      });
+    } catch (err) {
+      console.error('Error al exportar comprobante de despacho a PDF:', err);
+    } finally {
+      setIsExportingComprobantePdf(false);
+    }
+  };
 
   // Opciones de especies y variedades para la generación de ordenes
   const genEspeciesOptions = useMemo(() => {
@@ -1554,10 +1574,10 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                 {o.estado === 'Despachada' ? (
                                   <button
                                     onClick={() => setComprobanteSeleccionado(o)}
-                                    className="p-1.5 bg-[#E3EFE7] text-[#00603C] rounded-lg hover:bg-[#00603C] hover:text-white transition"
+                                    className="p-1.5 bg-[#E3EFE7] text-[#00603C] rounded-lg hover:bg-[#00603C] hover:text-white transition cursor-pointer"
                                     title="Ver Comprobante de Despacho"
                                   >
-                                    <Printer className="w-4 h-4" />
+                                    <FileText className="w-4 h-4" />
                                   </button>
                                 ) : (
                                   <span className="text-gray-400 text-[10px]">—</span>
@@ -1596,7 +1616,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       {comprobanteSeleccionado && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto print:p-0 print:bg-white print:static">
           
-          <div className="bg-white w-full max-w-3xl rounded-3xl border-2 border-[#00603C] p-6 md:p-8 space-y-6 relative text-left shadow-2xl print:shadow-none print:border-none print:p-0 print:my-0">
+          <div id="comprobante-despacho-printable" className="bg-white w-full max-w-3xl rounded-3xl border-2 border-[#00603C] p-6 md:p-8 space-y-6 relative text-left shadow-2xl print:shadow-none print:border-none print:p-0 print:my-0">
             
             {/* Botón Cerrar */}
             <button
@@ -1795,17 +1815,25 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
             {/* Acciones del Comprobante */}
             <div className="flex justify-end gap-3 pt-3 border-t border-gray-100 print:hidden">
               <button
+                type="button"
                 onClick={() => setComprobanteSeleccionado(null)}
-                className="px-5 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 hover:bg-gray-100 rounded-xl transition"
+                className="px-5 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 hover:bg-gray-100 rounded-xl transition cursor-pointer"
               >
                 Cerrar Vista
               </button>
               <button
-                onClick={() => window.print()}
-                className="flex items-center gap-1.5 px-6 py-2 bg-[#00603C] hover:bg-[#254731] text-white font-bold uppercase tracking-wider text-xs rounded-xl transition shadow-md"
+                type="button"
+                onClick={handleDownloadComprobantePdf}
+                disabled={isExportingComprobantePdf}
+                className="flex items-center gap-2 px-6 py-2.5 bg-[#00603C] hover:bg-[#254731] text-white font-bold uppercase tracking-wider text-xs rounded-xl transition shadow-md cursor-pointer disabled:opacity-50"
+                title="Descargar Comprobante Oficial en formato PDF"
               >
-                <Printer className="w-4 h-4 text-[#C9922E]" />
-                Imprimir Comprobante
+                {isExportingComprobantePdf ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-[#C9922E]" />
+                ) : (
+                  <Download className="w-4 h-4 text-[#C9922E]" />
+                )}
+                <span>{isExportingComprobantePdf ? 'Generando PDF...' : 'Descargar PDF'}</span>
               </button>
             </div>
 

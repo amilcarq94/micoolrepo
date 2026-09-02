@@ -12,7 +12,6 @@ import { exportWithHtml2Pdf } from '../utils/exportPdf';
 import { printWithActiveClass } from '../utils/printHelper';
 import { FichaTecnicaOficialCard } from './FichaTecnicaOficialCard';
 import {
-  Printer,
   Download,
   Edit2,
   CheckCircle,
@@ -104,9 +103,9 @@ export const FichaTecnicaConBotonA4: React.FC<FichaTecnicaConBotonA4Props> = ({
         type="button"
         onClick={() => setIsOpen(true)}
         className={`inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#006837] hover:bg-[#254731] text-white text-xs font-black uppercase tracking-wider rounded-lg shadow-xs transition cursor-pointer border border-emerald-400/40 ${className}`}
-        title="Abrir e Imprimir Ficha Técnica Oficial en hoja A4"
+        title="Abrir y Descargar Ficha Técnica Oficial en hoja A4 (PDF)"
       >
-        <Printer className="w-3.5 h-3.5 text-[#C9922E]" />
+        <FileText className="w-3.5 h-3.5 text-[#C9922E]" />
         <span>FICHA A4</span>
       </button>
 
@@ -195,19 +194,11 @@ export const FichaTecnicaConBotonA4: React.FC<FichaTecnicaConBotonA4Props> = ({
                 type="button"
                 onClick={handleDownloadPdf}
                 disabled={isDownloadingPdf}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs uppercase tracking-wider rounded-lg border border-amber-500/30 transition cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-1.5 bg-[#006837] hover:bg-[#254731] text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-md transition cursor-pointer border border-emerald-400/40 disabled:opacity-50"
+                title="Descargar Ficha Técnica en Formato Oficial A4 (PDF)"
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>{isDownloadingPdf ? 'Generando PDF...' : 'Descargar PDF'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="flex items-center gap-1.5 px-4 py-1.5 bg-[#006837] hover:bg-[#254731] text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-md transition cursor-pointer border border-emerald-400/40"
-              >
-                <Printer className="w-3.5 h-3.5 text-[#C9922E]" />
-                <span>Imprimir A4</span>
+                <Download className="w-3.5 h-3.5 text-amber-300" />
+                <span>{isDownloadingPdf ? 'Generando PDF...' : 'Descargar PDF (A4)'}</span>
               </button>
 
               <button

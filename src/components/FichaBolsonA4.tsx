@@ -8,7 +8,6 @@ import { BolsonCampo, MovimientoSilo } from '../types';
 import { exportWithHtml2Pdf } from '../utils/exportPdf';
 import { FichaLoteJSON, FichaTecnicaLoteCard } from './FichaTecnicaLotePrintManager';
 import {
-  Printer,
   Download,
   X,
   FileText,
@@ -80,17 +79,6 @@ export const FichaBolsonA4: React.FC<FichaBolsonA4Props> = ({
   const safeName = (bolson.numeroBolson || bolson.id).replace(/\s+/g, '_');
   const fichaData = bolsonToFichaLoteJSON(bolson, movimientosSilo);
 
-  const handlePrint = async () => {
-    try {
-      if (document.fonts?.ready) {
-        await document.fonts.ready;
-      }
-      window.print();
-    } catch {
-      window.print();
-    }
-  };
-
   const handleDownloadPdf = async () => {
     try {
       setIsExportingPdf(true);
@@ -128,18 +116,9 @@ export const FichaBolsonA4: React.FC<FichaBolsonA4Props> = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={handlePrint}
-            className="flex items-center gap-2 px-4 py-2 bg-[#005A36] hover:bg-[#004227] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer border border-emerald-500/30 active:scale-95"
-          >
-            <Printer className="w-4 h-4 text-amber-300" />
-            <span>Imprimir A4</span>
-          </button>
-
-          <button
-            type="button"
             onClick={handleDownloadPdf}
             disabled={isExportingPdf}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-800 to-red-700 hover:from-red-700 hover:to-red-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl border border-red-500/40 shadow-sm transition cursor-pointer disabled:opacity-50 active:scale-95"
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#005A36] hover:bg-[#004227] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl border border-emerald-500/40 shadow-md transition cursor-pointer disabled:opacity-50 active:scale-95"
           >
             <Download className="w-4 h-4 text-amber-300" />
             <span>{isExportingPdf ? 'Generando PDF...' : 'Descargar PDF (A4)'}</span>

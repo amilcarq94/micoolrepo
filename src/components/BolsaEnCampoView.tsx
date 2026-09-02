@@ -36,7 +36,6 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Printer,
   CheckSquare,
   Square,
   Droplets,
@@ -799,9 +798,9 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
           <button
             onClick={() => setShowFichasViewerModal(true)}
             className="px-3 py-2 bg-emerald-100 hover:bg-emerald-200 text-[#00603C] font-extrabold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer border border-emerald-300 shadow-2xs"
-            title="Vista previa e impresión A4 de Fichas Técnicas de Lotes"
+            title="Vista previa y descarga de Fichas Técnicas de Lotes en PDF A4"
           >
-            <Printer className="w-4 h-4 text-[#00603C]" />
+            <FileText className="w-4 h-4 text-[#00603C]" />
             <span>Fichas A4</span>
           </button>
 

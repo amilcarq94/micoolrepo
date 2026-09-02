@@ -10,7 +10,8 @@ import { generateRemitoId, formatNumberArg, formatDateStr } from '../utils/forma
 import { LogoSiloLoose, LogoSiloSquare } from './Logo';
 import { ChoferSearchSelector } from './ChoferSearchSelector';
 import { ClienteSelect } from './ClienteSelect';
-import { FileText, ArrowRight, Printer, AlertTriangle, UserCheck, Check, Trash2, Plus, Paperclip, Upload, X, Download } from 'lucide-react';
+import { FileText, ArrowRight, AlertTriangle, UserCheck, Check, Trash2, Plus, Paperclip, Upload, X, Download, Loader2 } from 'lucide-react';
+import { exportWithHtml2Pdf } from '../utils/exportPdf';
 
 interface RegistrarSalidaProps {
   lotes: Lote[];
@@ -305,8 +306,23 @@ export const RegistrarSalida: React.FC<RegistrarSalidaProps> = ({
     setRemitoCreado(nuevoRemito);
   };
 
-  const handlePrintRemito = () => {
-    window.print();
+  const [isExportingRemitoPdf, setIsExportingRemitoPdf] = useState(false);
+
+  const handleDownloadRemitoPdf = async () => {
+    if (!remitoCreado) return;
+    try {
+      setIsExportingRemitoPdf(true);
+      const fileName = `Remito_Oficial_${remitoCreado.id}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      await exportWithHtml2Pdf('remito-oficial-card-container', fileName, {
+        scale: 2.0,
+        quality: 0.98,
+        margin: [6, 6, 6, 6],
+      });
+    } catch (err) {
+      console.error('Error al exportar remito a PDF:', err);
+    } finally {
+      setIsExportingRemitoPdf(false);
+    }
   };
 
   // Si el remito ya fue creado con éxito, mostramos la pantalla de comprobante para entregar al chofer
@@ -325,7 +341,7 @@ export const RegistrarSalida: React.FC<RegistrarSalidaProps> = ({
         </div>
 
         {/* Remito Imprimible Oficial (Estructura de Comprobante de Semillero) */}
-        <div className="bg-white p-8 rounded-2xl border-2 border-[#00603C] shadow-md relative text-[#1A1A1A] font-sans">
+        <div id="remito-oficial-card-container" className="bg-white p-8 rounded-2xl border-2 border-[#00603C] shadow-md relative text-[#1A1A1A] font-sans">
           
           {/* Sello de agua sutil */}
           <div className="absolute inset-0 flex items-center justify-center opacity-[0.06] pointer-events-none">
@@ -473,18 +489,26 @@ export const RegistrarSalida: React.FC<RegistrarSalidaProps> = ({
         {/* Acciones de comprobante */}
         <div className="flex items-center justify-end gap-3 border-t border-gray-100 pt-5 print:hidden">
           <button
+            type="button"
             onClick={onCancel}
-            className="px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500 rounded-lg hover:bg-gray-100 transition"
+            className="px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500 rounded-lg hover:bg-gray-100 transition cursor-pointer"
           >
             Terminar y Salir
           </button>
           
           <button
-            onClick={handlePrintRemito}
-            className="flex items-center gap-2 px-6 py-2.5 text-xs font-semibold uppercase tracking-wider bg-[#00603C] text-white rounded-lg hover:bg-[#254731] transition shadow-md"
+            type="button"
+            onClick={handleDownloadRemitoPdf}
+            disabled={isExportingRemitoPdf}
+            className="flex items-center gap-2 px-6 py-2.5 text-xs font-semibold uppercase tracking-wider bg-[#00603C] text-white rounded-lg hover:bg-[#254731] transition shadow-md cursor-pointer disabled:opacity-50"
+            title="Descargar Remito Oficial en PDF"
           >
-            <Printer className="w-4.5 h-4.5 text-[#C9922E]" />
-            Imprimir Remito Oficial
+            {isExportingRemitoPdf ? (
+              <Loader2 className="w-4.5 h-4.5 animate-spin text-[#C9922E]" />
+            ) : (
+              <Download className="w-4.5 h-4.5 text-[#C9922E]" />
+            )}
+            <span>{isExportingRemitoPdf ? 'Generando PDF...' : 'Descargar PDF Remito'}</span>
           </button>
         </div>
       </div>

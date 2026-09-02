@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { SalidaRegistrada, Lote, Chofer } from '../types';
 import { formatNumberArg, formatDateStr } from '../utils/formatters';
 import { LogoSiloLoose } from './Logo';
-import { Search, Calendar, User, FileText, Printer, ArrowLeft, Paperclip, Download } from 'lucide-react';
+import { Search, Calendar, User, FileText, ArrowLeft, Paperclip, Download, Loader2 } from 'lucide-react';
+import { exportWithHtml2Pdf } from '../utils/exportPdf';
 
 interface SalidasListProps {
   salidas: SalidaRegistrada[];
@@ -22,20 +23,35 @@ export const SalidasList: React.FC<SalidasListProps> = ({ salidas, lotes, chofer
   const [filterCliente, setFilterCliente] = useState('');
   const [filterChofer, setFilterChofer] = useState('');
 
+  // Filtrado de Salidas
+  const filteredSalidas = useMemo(() => {
+    return salidas.filter((s) => {
+      const matchFecha = !filterFecha || s.fecha?.includes(filterFecha);
+      const matchCliente = !filterCliente || s.cliente?.toLowerCase().includes(filterCliente.toLowerCase());
+      const matchChofer = !filterChofer || s.choferNombre?.toLowerCase().includes(filterChofer.toLowerCase());
+      return matchFecha && matchCliente && matchChofer;
+    });
+  }, [salidas, filterFecha, filterCliente, filterChofer]);
+
   // Estado para visualizar un remito histórico seleccionado
   const [remitoSeleccionado, setRemitoSeleccionado] = useState<SalidaRegistrada | null>(null);
+  const [isExportingRemitoPdf, setIsExportingRemitoPdf] = useState(false);
 
-  // Filtrado lógico
-  const filteredSalidas = salidas.filter(s => {
-    const matchFecha = filterFecha === '' || s.fecha === filterFecha;
-    const matchCliente = filterCliente === '' || s.cliente.toLowerCase().includes(filterCliente.toLowerCase());
-    const matchChofer = filterChofer === '' || s.choferNombre.toLowerCase().includes(filterChofer.toLowerCase());
-    
-    return matchFecha && matchCliente && matchChofer;
-  });
-
-  const handlePrintRemito = () => {
-    window.print();
+  const handleDownloadRemitoPdf = async () => {
+    if (!remitoSeleccionado) return;
+    try {
+      setIsExportingRemitoPdf(true);
+      const fileName = `Remito_Oficial_${remitoSeleccionado.id}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      await exportWithHtml2Pdf('remito-historico-card-container', fileName, {
+        scale: 2.0,
+        quality: 0.98,
+        margin: [6, 6, 6, 6],
+      });
+    } catch (err) {
+      console.error('Error al exportar remito histórico a PDF:', err);
+    } finally {
+      setIsExportingRemitoPdf(false);
+    }
   };
 
   // Exportar salidas a Excel (.xlsx) nativo
@@ -198,7 +214,7 @@ export const SalidasList: React.FC<SalidasListProps> = ({ salidas, lotes, chofer
         </button>
 
         {/* Remito Imprimible Oficial */}
-        <div className="bg-white p-8 rounded-2xl border-2 border-[#00603C] shadow-md relative text-[#1A1A1A] font-sans">
+        <div id="remito-historico-card-container" className="bg-white p-8 rounded-2xl border-2 border-[#00603C] shadow-md relative text-[#1A1A1A] font-sans">
           
           <div className="absolute inset-0 flex items-center justify-center opacity-[0.06] pointer-events-none">
             <LogoSiloLoose size={350} color="#00603C" />
@@ -333,18 +349,26 @@ export const SalidasList: React.FC<SalidasListProps> = ({ salidas, lotes, chofer
         {/* Acciones de comprobante */}
         <div className="flex items-center justify-end gap-3 print:hidden">
           <button
+            type="button"
             onClick={() => setRemitoSeleccionado(null)}
-            className="px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500 rounded-lg hover:bg-gray-100 transition"
+            className="px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500 rounded-lg hover:bg-gray-100 transition cursor-pointer"
           >
             Cerrar Copia
           </button>
           
           <button
-            onClick={handlePrintRemito}
-            className="flex items-center gap-2 px-6 py-2.5 text-xs font-semibold uppercase tracking-wider bg-[#00603C] text-white rounded-lg hover:bg-[#254731] transition shadow-md"
+            type="button"
+            onClick={handleDownloadRemitoPdf}
+            disabled={isExportingRemitoPdf}
+            className="flex items-center gap-2 px-6 py-2.5 text-xs font-semibold uppercase tracking-wider bg-[#00603C] text-white rounded-lg hover:bg-[#254731] transition shadow-md cursor-pointer disabled:opacity-50"
+            title="Descargar Remito Oficial en PDF"
           >
-            <Printer className="w-4.5 h-4.5 text-[#C9922E]" />
-            Reimprimir Remito
+            {isExportingRemitoPdf ? (
+              <Loader2 className="w-4.5 h-4.5 animate-spin text-[#C9922E]" />
+            ) : (
+              <Download className="w-4.5 h-4.5 text-[#C9922E]" />
+            )}
+            <span>{isExportingRemitoPdf ? 'Generando PDF...' : 'Descargar PDF Remito'}</span>
           </button>
         </div>
       </div>
@@ -502,11 +526,12 @@ export const SalidasList: React.FC<SalidasListProps> = ({ salidas, lotes, chofer
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <button
+                        type="button"
                         onClick={() => setRemitoSeleccionado(s)}
-                        className="p-1.5 text-[#00603C] hover:bg-[#E3EFE7] hover:text-[#254731] rounded-md transition"
-                        title="Ver Remito Impreso"
+                        className="p-1.5 text-[#00603C] hover:bg-[#E3EFE7] hover:text-[#254731] rounded-md transition cursor-pointer"
+                        title="Ver / Descargar PDF de Remito"
                       >
-                        <Printer className="w-4.5 h-4.5" />
+                        <FileText className="w-4.5 h-4.5" />
                       </button>
                     </td>
                   </tr>

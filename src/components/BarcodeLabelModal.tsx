@@ -6,8 +6,9 @@
 import React, { useRef, useEffect, useState } from 'react';
 import JsBarcode from 'jsbarcode';
 import { QRCodeCanvas } from 'qrcode.react';
-import { Barcode, Printer, X, Download, Columns, Grid, Layout } from 'lucide-react';
+import { Barcode, X, Download, Columns, Grid, Layout, Loader2 } from 'lucide-react';
 import { Lote } from '../types';
+import { exportWithHtml2Pdf } from '../utils/exportPdf';
 
 interface BarcodeLabelModalProps {
   lote: Lote;
@@ -522,16 +523,28 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ lote, onCl
           <div style="padding: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 95vh;">
             ${finalLabelsContent}
           </div>
-          <script>
-            window.onload = function() {
-              window.print();
-              setTimeout(function() { window.close(); }, 500);
-            }
-          </script>
         </body>
       </html>
     `);
     printWindow.document.close();
+  };
+
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    try {
+      setIsExporting(true);
+      const fileName = `Rotulo_${template.toUpperCase()}_Lote_${lote.loteNro || lote.id}.pdf`;
+      await exportWithHtml2Pdf('barcode-label-preview-card', fileName, {
+        scale: 2.0,
+        quality: 0.98,
+        margin: [4, 4, 4, 4],
+      });
+    } catch (err) {
+      console.error('Error al exportar rótulo:', err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -615,7 +628,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ lote, onCl
             Vista Previa de Impresión
           </span>
 
-          <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm w-full max-w-sm flex flex-col items-center">
+          <div id="barcode-label-preview-card" className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm w-full max-w-sm flex flex-col items-center">
             {/* Título de ayuda interna */}
             <div className="w-full text-left text-[9px] text-gray-400 border-b border-gray-100 pb-1.5 mb-2.5 flex justify-between items-center">
               <span>AGRO ABACUS S.A.</span>
@@ -676,17 +689,25 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ lote, onCl
         {/* Botones de Acción */}
         <div className="flex gap-3">
           <button
+            type="button"
             onClick={onClose}
-            className="flex-1 py-2.5 text-xs font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-xl transition"
+            className="flex-1 py-2.5 text-xs font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-xl transition cursor-pointer"
           >
             Cancelar
           </button>
           <button
-            onClick={handlePrint}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#00603C] text-white rounded-xl hover:bg-[#254731] transition text-xs font-bold shadow-md"
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={isExporting}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#00603C] text-white rounded-xl hover:bg-[#254731] transition text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
+            title="Descargar Rótulo en Formato PDF"
           >
-            <Printer className="w-4 h-4 text-[#C9922E]" />
-            Imprimir Rótulos ({copies})
+            {isExporting ? (
+              <Loader2 className="w-4 h-4 animate-spin text-[#C9922E]" />
+            ) : (
+              <Download className="w-4 h-4 text-[#C9922E]" />
+            )}
+            <span>{isExporting ? 'Generando PDF...' : 'Descargar PDF Rótulo'}</span>
           </button>
         </div>
 

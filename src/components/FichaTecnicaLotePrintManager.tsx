@@ -5,7 +5,6 @@
 
 import React, { useState, useRef } from 'react';
 import {
-  Printer,
   Download,
   X,
   FileText,
@@ -937,21 +936,12 @@ export const FichaTecnicaLoteViewerModal: React.FC<FichaTecnicaLoteViewerModalPr
 
           <button
             type="button"
-            onClick={handlePrintAll}
-            className="flex items-center gap-2 px-4 py-2 bg-[#005A36] hover:bg-[#004227] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer border border-emerald-500/40 active:scale-95"
-          >
-            <Printer className="w-4 h-4 text-amber-300" />
-            <span>Imprimir ({fichas.length})</span>
-          </button>
-
-          <button
-            type="button"
             onClick={handleDownloadAllPdf}
             disabled={isExportingPdf}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-800 to-red-700 hover:from-red-700 hover:to-red-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl border border-red-500/40 shadow-sm transition cursor-pointer disabled:opacity-50 active:scale-95"
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#005A36] hover:bg-[#004227] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl border border-emerald-500/40 shadow-md transition cursor-pointer disabled:opacity-50 active:scale-95"
           >
             <Download className="w-4 h-4 text-amber-300" />
-            <span>{isExportingPdf ? 'Generando PDF...' : 'Descargar PDF A4'}</span>
+            <span>{isExportingPdf ? 'Generando PDF...' : `Descargar PDF A4 (${fichas.length})`}</span>
           </button>
 
           <button

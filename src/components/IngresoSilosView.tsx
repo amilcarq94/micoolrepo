@@ -12,7 +12,7 @@ import { findExistingChofer, mergeChoferData } from '../utils/choferes';
 import { getSiloDetailedInfo, getSiloActiveData, validateSiloIngresoMatch } from '../utils/siloValidation';
 import { formatKg } from '../utils/formatters';
 import { SiloIcon, LogoSiloLoose } from './Logo';
-import { Warehouse, Plus, RotateCcw, History, FileText, Calendar, ArrowUpRight, ArrowDownRight, AlertTriangle, User, CheckCircle2, Search, Filter, ShieldAlert, MapPin, Droplets, Eye, Download, Printer, X, FileSpreadsheet, Lock, KeyRound, ShieldCheck, BarChart3, Trash2, QrCode, Truck, Upload, Edit, CreditCard, Building2, Scale, Layers, Grid3X3, Ban } from 'lucide-react';
+import { Warehouse, Plus, RotateCcw, History, FileText, Calendar, ArrowUpRight, ArrowDownRight, AlertTriangle, User, CheckCircle2, Search, Filter, ShieldAlert, MapPin, Droplets, Eye, Download, X, FileSpreadsheet, Lock, KeyRound, ShieldCheck, BarChart3, Trash2, QrCode, Truck, Upload, Edit, CreditCard, Building2, Scale, Layers, Grid3X3, Ban } from 'lucide-react';
 import { ClienteSelect } from './ClienteSelect';
 import { IngresoSiloBloqueCard, IngresoBloqueItem, createDefaultIngresoBloque } from './IngresoSiloBloqueCard';
 import { FichaTecnicaSiloModal } from './FichaTecnicaSiloModal';
@@ -743,64 +743,6 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
     setTimeout(() => setExportNoticeMsg(''), 4000);
   };
 
-  // Función para imprimir únicamente la Etiqueta QR del Silo
-  const handlePrintSiloQrLabel = (fichaData: ReturnType<typeof getSiloFichaData>) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    const qrData = encodeURIComponent(
-      `AGROABACUS - SILO: ${fichaData.siloId}\nCLIENTE: ${fichaData.cliente}\nESPECIE: ${fichaData.especie}\nVARIEDAD: ${fichaData.variedad}\nSTOCK: ${fichaData.stockKg} KG\nHUMEDAD: ${fichaData.humedad}%\nFECHA: ${fichaData.ultimoMovimiento}`
-    );
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${qrData}`;
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Etiqueta QR - ${fichaData.siloId}</title>
-          <style>
-            @page { size: A5 landscape; margin: 8mm; }
-            body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 20px; text-align: center; color: #0f172a; background: #fff; }
-            .card { border: 4px solid #00603C; border-radius: 20px; padding: 24px; max-width: 520px; margin: 0 auto; box-shadow: none; background: #fff; }
-            .header { font-size: 11px; font-weight: 800; color: #00603C; text-transform: uppercase; letter-spacing: 1.5px; }
-            .title { font-size: 32px; font-weight: 900; margin: 6px 0; color: #0f172a; font-family: serif; }
-            .qr-container { background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 16px; padding: 12px; display: inline-block; margin: 12px 0; }
-            .qr-img { width: 220px; height: 220px; display: block; margin: 0 auto; }
-            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px; text-align: left; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 12px; padding: 14px; margin-top: 8px; }
-            .info-item { font-weight: 800; color: #0f172a; }
-            .info-label { font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 2px; }
-            @media print {
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <div class="header">AGROABACUS · PLANTA DE ACOPIO Y CLASIFICACIÓN</div>
-            <div class="title">CÓDIGO QR · ${fichaData.siloId}</div>
-            <div class="qr-container">
-              <img class="qr-img" src="${qrUrl}" alt="QR ${fichaData.siloId}" />
-            </div>
-            <div class="info-grid">
-              <div><span class="info-label">Silo</span><span class="info-item">${fichaData.siloId}</span></div>
-              <div><span class="info-label">Stock Actual</span><span class="info-item">${fichaData.stockKg.toLocaleString('es-AR')} kg</span></div>
-              <div><span class="info-label">Cliente</span><span class="info-item">${fichaData.cliente}</span></div>
-              <div><span class="info-label">Especie / Variedad</span><span class="info-item">${fichaData.especie} (${fichaData.variedad})</span></div>
-              <div><span class="info-label">Humedad de Ingreso</span><span class="info-item">${fichaData.humedad}%</span></div>
-              <div><span class="info-label">Fecha Emisión</span><span class="info-item">${new Date().toLocaleDateString('es-AR')}</span></div>
-            </div>
-          </div>
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-  };
-
   // Datos procesados para el Gráfico de Barras Recharts de Ocupación por Silo
   const chartSilosData = SILOS_DISPONIBLES.map((siloId) => {
     const stock = getStockSilo(siloId);
@@ -1154,10 +1096,10 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
               type="button"
               onClick={() => setShowGrillaSeisSilos(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[#005E38] hover:bg-[#004D2E] text-white text-xs font-bold rounded-xl shadow-2xs transition active:scale-95 cursor-pointer self-start sm:self-auto"
-              title="Imprimir las 6 Fichas Técnicas de Silo en una única hoja A4 (Grilla 2x3)"
+              title="Descargar las 6 Fichas Técnicas de Silo en una única hoja PDF A4 (Grilla 2x3)"
             >
               <Grid3X3 className="w-3.5 h-3.5" />
-              <span>Imprimir 6 Silos (Hoja A4)</span>
+              <span>PDF 6 Silos (Hoja A4)</span>
             </button>
           </div>
         </div>
@@ -1683,20 +1625,10 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
                   type="button"
                   onClick={() => openFichaModal(activeSilo)}
                   className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 border border-slate-700 cursor-pointer active:scale-95"
-                  title="Imprimir Ficha Técnica de Silo"
-                >
-                  <Printer className="w-4 h-4 text-emerald-400" />
-                  <span>Imprimir Ficha</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => openFichaModal(activeSilo)}
-                  className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 border border-slate-700 cursor-pointer active:scale-95"
-                  title="Descargar Ficha en formato PDF"
+                  title="Descargar Ficha Técnica en formato PDF"
                 >
                   <Download className="w-4 h-4 text-emerald-400" />
-                  <span>Descargar (PDF)</span>
+                  <span>Descargar Ficha (PDF)</span>
                 </button>
 
                 <button

@@ -8,7 +8,7 @@ import { Lote, MovimientoStock, EstadoLoteType, AuditLogEntry, OrdenProceso, Mov
 import { getLoteAuditoria } from '../utils/audit';
 import { formatNumberArg, formatKg, formatBolsas, formatDateStr } from '../utils/formatters';
 import { LogoSiloLoose } from './Logo';
-import { ArrowLeft, ArrowUpRight, ArrowDownRight, Printer, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
 import { QrCodeModal } from './QrCodeModal';
 import { BarcodeLabelModal } from './BarcodeLabelModal';
 import { FichaTecnicaOficialCard } from './FichaTecnicaOficialCard';
@@ -322,11 +322,11 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-[#E3EFE7] rounded-lg">
-                <Printer className="w-5 h-5 text-[#00603C]" />
+                <FileText className="w-5 h-5 text-[#00603C]" />
               </div>
               <div className="text-left">
                 <h3 className="font-serif text-sm font-bold text-gray-800 uppercase tracking-wide flex items-center gap-2">
-                  <span>Vista de Impresión (A4)</span>
+                  <span>Vista Previa / Descarga PDF (A4)</span>
                   {fichaModificada && (
                     <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 text-[10px] rounded-full font-bold normal-case">
                       Ficha personalizada
@@ -363,13 +363,13 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                 Volver
               </button>
 
-              {/* Botón Descargar PDF con html2pdf.js */}
+              {/* Botón Descargar PDF */}
               <button
                 type="button"
                 onClick={handleDownloadPdf}
                 disabled={isDownloadingPdf}
-                className="px-4 py-2 text-xs font-semibold uppercase tracking-wider bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                title="Exportar el contenedor .ficha-a4 a un PDF de alta calidad con html2pdf.js"
+                className="px-5 py-2 text-xs font-black uppercase tracking-wider bg-[#00603C] hover:bg-[#004D30] text-white rounded-lg transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                title="Exportar Ficha Técnica a un PDF de alta calidad"
                 id="btn-descargar-pdf-printing"
               >
                 {isDownloadingPdf ? (
@@ -378,17 +378,6 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                   <Download className="w-4 h-4 text-amber-400" />
                 )}
                 <span>{isDownloadingPdf ? 'Generando PDF...' : 'Descargar PDF'}</span>
-              </button>
-
-              {/* Botón Imprimir con window.print() y clase temporal print-active */}
-              <button
-                type="button"
-                onClick={() => printWithActiveClass(`ficha-detail-card-${lote.id}`)}
-                className="px-5 py-2 text-xs font-semibold uppercase tracking-wider bg-[#00603C] hover:bg-[#004D30] text-white rounded-lg transition shadow-sm flex items-center gap-1.5 cursor-pointer"
-                id="btn-imprimir-ficha-printing"
-              >
-                <Printer className="w-4 h-4 text-[#C9922E]" />
-                <span>Imprimir</span>
               </button>
             </div>
           </div>

@@ -10,7 +10,6 @@ import { bolsonToFichaLoteJSON } from './FichaBolsonA4';
 import { FichaTecnicaLoteCard } from './FichaTecnicaLotePrintManager';
 import { printWithActiveClass } from '../utils/printHelper';
 import {
-  Printer,
   Download,
   X,
   Layers,
@@ -86,21 +85,12 @@ export const BatchPrintBolsonesModal: React.FC<BatchPrintBolsonesModalProps> = (
         <div className="flex items-center gap-2.5">
           <button
             type="button"
-            onClick={handlePrintAll}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#00603C] hover:bg-[#004227] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer border border-emerald-500/40 active:scale-95"
-          >
-            <Printer className="w-4 h-4 text-amber-300" />
-            <span>Imprimir Todo ({bolsones.length})</span>
-          </button>
-
-          <button
-            type="button"
             onClick={handleExportBatchPdf}
             disabled={isExporting}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-red-800 to-red-700 hover:from-red-700 hover:to-red-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl border border-red-500/40 shadow-md transition cursor-pointer disabled:opacity-50 active:scale-95"
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#00603C] hover:bg-[#004227] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl border border-emerald-500/40 shadow-md transition cursor-pointer disabled:opacity-50 active:scale-95"
           >
             <Download className="w-4 h-4 text-amber-300" />
-            <span>{isExporting ? `Exportando (${progress.current}/${progress.total})...` : 'Descargar PDF Consolidado'}</span>
+            <span>{isExporting ? `Exportando (${progress.current}/${progress.total})...` : `Descargar PDF (${bolsones.length} lotes)`}</span>
           </button>
 
           <button

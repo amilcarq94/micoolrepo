@@ -9,7 +9,6 @@ import { IdBolsaLabel } from './IdBolsaLabel';
 import { printWithActiveClass } from '../utils/printHelper';
 import { exportIdBolsasPagesAsPdf } from '../utils/exportPdf';
 import {
-  Printer,
   X,
   Download,
   Loader2,
@@ -103,7 +102,7 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
         .filter(Boolean) as HTMLElement[];
 
       if (pageElements.length === 0) {
-        window.print();
+        console.warn('No se encontraron páginas de etiquetas para exportar');
         return;
       }
 
@@ -163,27 +162,16 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
         <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
-            id="btn-print-id-bolsas-now"
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer active:scale-95"
-            title="Imprimir todas las etiquetas en formato A4 (7 etiquetas por hoja)"
-          >
-            <Printer className="w-4 h-4 text-slate-950" />
-            <span>Imprimir ({allTags.length})</span>
-          </button>
-
-          <button
-            type="button"
             id="btn-download-pdf-id-bolsas"
             onClick={handleDownloadPdf}
             disabled={isExportingPdf}
-            className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase tracking-wider rounded-xl border border-white/20 shadow-md transition cursor-pointer disabled:opacity-50 active:scale-95"
-            title="Descargar etiquetas en documento PDF de alta calidad"
+            className="flex items-center gap-1.5 px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition cursor-pointer disabled:opacity-50 active:scale-95"
+            title="Descargar etiquetas en documento PDF de alta calidad para hoja A4"
           >
             {isExportingPdf ? (
-              <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+              <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
             ) : (
-              <Download className="w-4 h-4 text-amber-400" />
+              <Download className="w-4 h-4 text-slate-950" />
             )}
             <span>
               {isExportingPdf

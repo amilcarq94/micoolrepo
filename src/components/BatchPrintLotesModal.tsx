@@ -6,7 +6,6 @@
 import React, { useEffect, useState } from 'react';
 import { Lote } from '../types';
 import {
-  Printer,
   X,
   CheckCircle2,
   Download,
@@ -154,7 +153,7 @@ export const BatchPrintLotesModal: React.FC<BatchPrintLotesModalProps> = ({
       <div className="w-full max-w-5xl bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6 sticky top-2 z-50 print:hidden">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-[#00603C] rounded-xl text-white shadow-xs">
-            <Printer className="w-5 h-5 text-[#C9922E]" />
+            <FileText className="w-5 h-5 text-[#C9922E]" />
           </div>
           <div>
             <h3 className="font-serif font-bold text-sm tracking-wide uppercase text-white flex items-center gap-2">
@@ -190,7 +189,7 @@ export const BatchPrintLotesModal: React.FC<BatchPrintLotesModalProps> = ({
             type="button"
             onClick={handleDownloadAllPdfCombined}
             disabled={isDownloadingAllPdf}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-red-800 to-red-700 hover:from-red-700 hover:to-red-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl border border-red-500/40 shadow-sm transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2 bg-[#00603C] hover:bg-[#254731] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl border border-emerald-500/40 shadow-md transition cursor-pointer disabled:opacity-50"
             title="Descargar documento PDF con todas las fichas (1 ficha por hoja A4)"
           >
             {isDownloadingAllPdf ? (
@@ -205,18 +204,6 @@ export const BatchPrintLotesModal: React.FC<BatchPrintLotesModalProps> = ({
                 ? 'Descargar PDF (A4)'
                 : `Descargar PDF (${lotes.length} lotes)`}
             </span>
-          </button>
-
-          {/* Botón Aceptar e Imprimir */}
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex items-center gap-2 px-4 py-2 bg-[#00603C] hover:bg-[#254731] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer border border-emerald-500/30"
-            title="Enviar a impresora física o guardar como PDF del navegador"
-          >
-            <CheckCircle2 className="w-4 h-4 text-amber-300" />
-            <Printer className="w-4 h-4 text-[#C9922E]" />
-            <span>Imprimir ({lotes.length})</span>
           </button>
 
           {/* Botón Cerrar */}
@@ -377,7 +364,7 @@ export const BatchPrintLotesModal: React.FC<BatchPrintLotesModalProps> = ({
             type="button"
             onClick={handleDownloadAllPdfCombined}
             disabled={isDownloadingAllPdf}
-            className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-red-800 to-red-700 hover:from-red-700 hover:to-red-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl border border-red-500/40 shadow-sm transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#00603C] hover:bg-[#254731] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl border border-emerald-500/40 shadow-md transition cursor-pointer disabled:opacity-50"
           >
             {isDownloadingAllPdf ? (
               <Loader2 className="w-4 h-4 animate-spin text-white" />
@@ -395,21 +382,11 @@ export const BatchPrintLotesModal: React.FC<BatchPrintLotesModalProps> = ({
             type="button"
             onClick={handleDownloadAllPdfSeparate}
             disabled={isDownloadingAllPdf}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-700 transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-700 transition cursor-pointer disabled:opacity-50"
             title="Descargar cada ficha como un archivo PDF separado"
           >
             <Download className="w-4 h-4 text-slate-400" />
             <span>PDFs Individuales</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex items-center gap-2 px-5 py-2 bg-[#00603C] hover:bg-[#254731] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer border border-emerald-500/30"
-          >
-            <CheckCircle2 className="w-4 h-4 text-amber-300" />
-            <Printer className="w-4 h-4 text-[#C9922E]" />
-            <span>Aceptar e Imprimir ({lotes.length})</span>
           </button>
         </div>
       </div>

@@ -7,7 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { Lote, AuditLogEntry, EstadoRegistroLote } from '../types';
 import { formatKg } from '../utils/formatters';
 import { recordGlobalAuditLog } from '../utils/auditLogger';
-import { CheckCircle2, AlertTriangle, QrCode, Clock, User, Sparkles, MapPin, Printer, ArrowRight, ShieldCheck, RefreshCw, X, FileText } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, QrCode, Clock, User, Sparkles, MapPin, ArrowRight, ShieldCheck, RefreshCw, X, FileText } from 'lucide-react';
 
 interface QrVerificacionOnlineModalProps {
   loteIdScanned: string;

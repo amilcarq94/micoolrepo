@@ -4,10 +4,9 @@
  */
 
 import React, { useState } from 'react';
-import { Printer, Download, X, Check, Grid3X3, FileText, Loader2 } from 'lucide-react';
+import { Download, X, Check, Grid3X3, FileText, Loader2 } from 'lucide-react';
 import { FichaTecnicaSiloCard, SiloFichaInfo } from './FichaTecnicaSiloCard';
 import { exportElementAsPdf } from '../utils/exportPdf';
-import { printWithActiveClass } from '../utils/printHelper';
 
 interface GrillaSeisSilosModalProps {
   fichas: SiloFichaInfo[];
@@ -19,10 +18,6 @@ export const GrillaSeisSilosModal: React.FC<GrillaSeisSilosModalProps> = ({
   onClose,
 }) => {
   const [isDownloading, setIsDownloading] = useState(false);
-
-  const handlePrint = async () => {
-    await printWithActiveClass('grilla-seis-silos-printable');
-  };
 
   const handleDownloadPdf = async () => {
     const el = document.getElementById('grilla-seis-silos-printable');
@@ -106,27 +101,17 @@ export const GrillaSeisSilosModal: React.FC<GrillaSeisSilosModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handlePrint}
-              className="px-4 py-2 bg-[#005E38] hover:bg-[#004D2E] text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-              title="Imprimir las 6 fichas en 1 hoja A4"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Imprimir Hoja A4 (6 Silos)</span>
-            </button>
-
-            <button
-              type="button"
               onClick={handleDownloadPdf}
               disabled={isDownloading}
-              className="px-3.5 py-2 bg-gradient-to-r from-red-800 to-red-700 hover:from-red-700 hover:to-red-600 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95 border border-red-500/40 disabled:opacity-50"
-              title="Descargar la grilla completa en formato PDF"
+              className="px-5 py-2 bg-[#005E38] hover:bg-[#004D2E] text-white font-bold text-xs rounded-xl transition flex items-center gap-2 shadow-md cursor-pointer active:scale-95 border border-emerald-400/40 disabled:opacity-50"
+              title="Descargar la grilla completa de los 6 silos en formato PDF A4"
             >
               {isDownloading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
               ) : (
-                <FileText className="w-3.5 h-3.5 text-amber-300" />
+                <FileText className="w-4 h-4 text-amber-300" />
               )}
-              <span>{isDownloading ? 'Generando...' : 'Descargar PDF'}</span>
+              <span>{isDownloading ? 'Generando PDF...' : 'Descargar PDF (6 Silos)'}</span>
             </button>
 
             <button
@@ -168,39 +153,21 @@ export const GrillaSeisSilosModal: React.FC<GrillaSeisSilosModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 bg-white hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition cursor-pointer"
           >
-            Cancelar
+            Cerrar
           </button>
 
           <button
             type="button"
             onClick={handleDownloadPdf}
             disabled={isDownloading}
-            className="px-4 py-2 bg-gradient-to-r from-red-800 to-red-700 hover:from-red-700 hover:to-red-600 text-white font-bold text-xs rounded-xl border border-red-600/50 transition flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+            className="px-5 py-2 bg-[#005E38] hover:bg-[#004D2E] text-white font-bold text-xs rounded-xl border border-emerald-500/40 transition flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
           >
             {isDownloading ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
             ) : (
               <FileText className="w-3.5 h-3.5 text-amber-300" />
             )}
-            <span>Descargar PDF</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="px-5 py-2 bg-[#005E38] hover:bg-[#004D2E] text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Imprimir 6 Silos (A4)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-          >
-            <Check className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Aceptar</span>
+            <span>Descargar PDF (6 Silos)</span>
           </button>
         </div>
       </div>

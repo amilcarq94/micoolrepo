@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { QrCode, Copy, Check, Download, Printer, X, Loader2 } from 'lucide-react';
+import { QrCode, Copy, Check, Download, X, Loader2 } from 'lucide-react';
 import { Lote } from '../types';
 import { QrTrazabilidadLote, getPublicLoteTraceUrl } from './QrTrazabilidadLote';
 import { exportCardAsPng } from '../utils/exportImage';
@@ -36,10 +36,6 @@ export const QrCodeModal: React.FC<QrCodeModalProps> = ({ lote, onClose }) => {
     const safeName = `QR_Trazabilidad_${(lote.loteNro || lote.id).replace(/\s+/g, '_')}`;
     await exportCardAsPng('modal-qr-container-box', safeName);
     setDownloading(false);
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   return (
@@ -104,27 +100,24 @@ export const QrCodeModal: React.FC<QrCodeModalProps> = ({ lote, onClose }) => {
 
         {/* Botones de acción y de cerrar */}
         <div className="flex flex-col gap-2 w-full">
-          <div className="grid grid-cols-2 gap-2 w-full">
-            <button
-              onClick={handleDownload}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:text-[#00603C] transition text-xs font-bold cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Descargar
-            </button>
-            
-            <button
-              onClick={handlePrint}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 bg-[#00603C] text-white rounded-xl hover:bg-[#254731] transition text-xs font-bold shadow-sm cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5 text-[#C9922E]" />
-              Imprimir
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={downloading}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#00603C] hover:bg-[#254731] text-white rounded-xl transition text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
+            title="Descargar Código QR en Alta Resolución"
+          >
+            {downloading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-[#C9922E]" />
+            ) : (
+              <Download className="w-4 h-4 text-[#C9922E]" />
+            )}
+            <span>{downloading ? 'Descargando QR...' : 'Descargar Código QR'}</span>
+          </button>
 
           <button
             onClick={onClose}
-            className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 rounded-xl text-xs font-bold font-sans tracking-wider uppercase transition cursor-pointer flex items-center justify-center gap-1.5 mt-1 border border-gray-200/50"
+            className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 rounded-xl text-xs font-bold font-sans tracking-wider uppercase transition cursor-pointer flex items-center justify-center gap-1.5 border border-gray-200/50"
             title="Cerrar Ventana"
           >
             <X className="w-3.5 h-3.5" />

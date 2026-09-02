@@ -11,7 +11,7 @@ import { validateLoteLimits, getLoteLimits } from '../utils/loteLimits';
 import { validateSiloLoteMatch } from '../utils/siloValidation';
 import { SilosSelector } from './SilosSelector';
 import { ClienteSelect } from './ClienteSelect';
-import { Save, RotateCcw, AlertTriangle, Plus, Check, Calendar, Factory, Truck, Clock, CheckCircle2, CalendarDays, Info, Trash2, Layers3, Printer } from 'lucide-react';
+import { Save, RotateCcw, AlertTriangle, Plus, Check, Calendar, Factory, Truck, Clock, CheckCircle2, CalendarDays, Info, Trash2, Layers3, Download } from 'lucide-react';
 import { ImprimirFichaTecnica } from './ImprimirFichaTecnica';
 
 interface LoteFormProps {
@@ -1078,10 +1078,10 @@ export const LoteForm: React.FC<LoteFormProps> = ({
             type="button"
             onClick={handlePrintCurrentLote}
             className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold font-sans uppercase tracking-wider bg-slate-800 hover:bg-slate-900 text-white rounded-lg shadow-sm transition cursor-pointer"
-            title="Imprimir la Ficha Técnica de este lote sin guardar ni perder los cambios ingresados"
+            title="Ver y descargar la Ficha Técnica en PDF de este lote"
           >
-            <Printer className="w-4 h-4 text-[#C9922E]" />
-            <span>Imprimir Ficha</span>
+            <Download className="w-4 h-4 text-[#C9922E]" />
+            <span>Descargar PDF Ficha</span>
           </button>
 
           <button

@@ -10,7 +10,6 @@ import { printWithActiveClass } from '../utils/printHelper';
 import { useFichaLoteData } from '../hooks/useFichaLoteData';
 import { FichaTecnicaOficialCard } from './FichaTecnicaOficialCard';
 import {
-  Printer,
   Download,
   Edit2,
   CheckCircle,
@@ -203,21 +202,11 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
             type="button"
             onClick={handleDownloadPdf}
             disabled={isDownloadingPdf}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs uppercase tracking-wider rounded-lg border border-amber-500/30 transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2 bg-[#006837] hover:bg-[#254731] text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-md transition cursor-pointer disabled:opacity-50 border border-emerald-400/40 active:scale-95"
             title="Descargar la Ficha Técnica completa como archivo PDF A4"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="w-4 h-4 text-amber-300" />
             <span>{isDownloadingPdf ? 'Generando PDF...' : 'Descargar PDF'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-[#006837] hover:bg-[#254731] text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-md transition cursor-pointer border border-emerald-400/40"
-            title="Imprimir Ficha Técnica de Lote Oficial en hoja A4"
-          >
-            <Printer className="w-3.5 h-3.5 text-[#C9922E]" />
-            <span>Imprimir A4</span>
           </button>
 
           {onClose && (
@@ -225,7 +214,7 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
               type="button"
               onClick={onClose}
               className="p-1.5 bg-slate-800 hover:bg-rose-900/60 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition cursor-pointer ml-1"
-              title="Cerrar ventana de impresión"
+              title="Cerrar ventana"
             >
               <X className="w-4 h-4" />
             </button>

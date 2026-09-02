@@ -16,7 +16,6 @@ import {
   Tag,
   MapPin,
   Package,
-  Printer,
   Download,
   Ban
 } from 'lucide-react';
@@ -906,27 +905,15 @@ export const CargaMultipleCamionesForm: React.FC<CargaMultipleCamionesFormProps>
           </span>
 
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            {onPrintFicha && (
-              <button
-                type="button"
-                onClick={onPrintFicha}
-                className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-sm border border-slate-700 cursor-pointer active:scale-95"
-                title="Imprimir Ficha Técnica de Silo"
-              >
-                <Printer className="w-4 h-4 text-emerald-400" />
-                <span>Imprimir Ficha</span>
-              </button>
-            )}
-
             {(onDownloadPdf || onDownloadPng) && (
               <button
                 type="button"
                 onClick={onDownloadPdf || onDownloadPng}
-                className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-sm border border-slate-700 cursor-pointer active:scale-95"
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl transition flex items-center gap-2 shadow-sm border border-slate-700 cursor-pointer active:scale-95"
                 title="Descargar Ficha Técnica en PDF (A4)"
               >
                 <Download className="w-4 h-4 text-emerald-400" />
-                <span>Descargar (PDF)</span>
+                <span>Descargar Ficha (PDF)</span>
               </button>
             )}
 

@@ -14,13 +14,15 @@ import {
   Calendar,
   X,
   FileSpreadsheet,
-  Printer,
+  Download,
+  Loader2,
   User,
   ArrowRight,
   Clock,
   Layers,
   Sparkles
 } from 'lucide-react';
+import { exportWithHtml2Pdf } from '../utils/exportPdf';
 
 interface AuditoriaGeneralModalProps {
   onClose: () => void;
@@ -75,13 +77,27 @@ export const AuditoriaGeneralModal: React.FC<AuditoriaGeneralModalProps> = ({
     return filteredLogs.slice(start, start + itemsPerPage);
   }, [filteredLogs, currentPage, itemsPerPage]);
 
-  const handlePrint = () => {
-    window.print();
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    try {
+      setIsExportingPdf(true);
+      const fileName = `Auditoria_General_Sistema_${new Date().toISOString().slice(0, 10)}.pdf`;
+      await exportWithHtml2Pdf('modal-auditoria-general-content', fileName, {
+        scale: 2.0,
+        quality: 0.98,
+        margin: [6, 6, 6, 6],
+      });
+    } catch (err) {
+      console.error('Error al exportar auditoría a PDF:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-5xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div id="modal-auditoria-general-content" className="bg-white w-full max-w-5xl max-h-[90vh] rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
         {/* Cabecera */}
         <div className="bg-[#00603C] text-white p-5 flex items-center justify-between shrink-0">
@@ -100,16 +116,21 @@ export const AuditoriaGeneralModal: React.FC<AuditoriaGeneralModalProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handlePrint}
-              className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
-              title="Imprimir Registro de Auditoría"
+              onClick={handleDownloadPdf}
+              disabled={isExportingPdf}
+              className="px-3.5 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              title="Descargar Registro de Auditoría en PDF"
             >
-              <Printer className="w-4 h-4 text-white" />
-              <span className="hidden sm:inline">Imprimir</span>
+              {isExportingPdf ? (
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+              ) : (
+                <Download className="w-4 h-4 text-white" />
+              )}
+              <span>{isExportingPdf ? 'Generando PDF...' : 'Descargar PDF'}</span>
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-white/10 text-gray-300 hover:text-white transition"
+              className="p-2 rounded-lg hover:bg-white/10 text-gray-300 hover:text-white transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

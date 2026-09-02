@@ -355,7 +355,7 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
                   type="button"
                   onClick={() => setShowGrillaSeisSilos(true)}
                   className="px-3 py-1.5 bg-[#E3EFE7] hover:bg-[#C2E0CC] text-[#00603C] font-bold text-xs rounded-xl transition flex items-center gap-1.5 border border-[#00603C]/30 shadow-2xs cursor-pointer"
-                  title="Ver e Imprimir Grilla de los 6 Silos en 1 Hoja A4"
+                  title="Ver y Descargar Grilla de los 6 Silos en PDF A4"
                 >
                   <Grid3X3 className="w-3.5 h-3.5" />
                   <span>Grilla 6 Silos (A4)</span>
