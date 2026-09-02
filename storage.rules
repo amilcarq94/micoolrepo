@@ -1,0 +1,84 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ==========================================
+    // FUNCIONES AUXILIARES GLOBALES
+    // ==========================================
+    
+    // Verifica si el usuario está autenticado en Firebase
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Verifica si el archivo es una imagen y tiene un tamaño seguro (menos de 5 MB)
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*')
+        && request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // Verifica si el archivo es un PDF y tiene un tamaño seguro (menos de 10 MB)
+    function isValidDocument() {
+      return request.resource.contentType == 'application/pdf'
+        && request.resource.size < 10 * 1024 * 1024;
+    }
+
+    // ==========================================
+    // EXPLICACIÓN: CÓMO RESTRINGIR EL ACCESO A NIVEL DE USUARIO
+    // ==========================================
+    //
+    // Para restringir el acceso a archivos de Storage de forma granular:
+    //
+    // 1. ASOCIANDO ARCHIVOS A UN ID DE USUARIO:
+    //    Si guardas archivos en carpetas nombradas con el UID del usuario, por ejemplo: /users/{userId}/firma.png
+    //    Puedes restringir el acceso para que solo ese usuario pueda ver o modificar sus archivos:
+    //    match /users/{userId}/{allPaths=**} {
+    //      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    //    }
+    //
+    // 2. RESTRINGIR POR ROL (Utilizando Firestore para verificar permisos):
+    //    Puedes leer documentos de Firestore desde Storage Rules (a partir de rules_version = '2')
+    //    usando la función `firestore.get(...)`:
+    //    function isAdmin() {
+    //      return isSignedIn() && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
+    //    }
+    //    match /reportes_confidenciales/{allPaths=**} {
+    //      allow read: if isAdmin();
+    //    }
+    //
+
+    // ==========================================
+    // REGLAS PARA ARCHIVOS DE LA PLATAFORMA
+    // ==========================================
+
+    // Nota para sandbox: se permiten lecturas y escrituras públicas para evitar errores si Auth no está habilitado.
+    // Para producción, comente las reglas públicas y descomente las reglas de isSignedIn().
+
+    // 1. Fotos de Remitos y Firmas de Choferes de las Órdenes de Carga
+    // Ubicaciones de subida en la app: ordenes/{ordenId}/foto_remito.png y ordenes/{ordenId}/firma_chofer.png
+    match /ordenes/{ordenId}/{fileName} {
+      // Acceso libre para sandbox
+      allow read, write: if true;
+
+      // RESTRICCIÓN AUTENTICADA (Descomente en producción):
+      // allow read: if isSignedIn();
+      // allow write: if isSignedIn() && isValidImage();
+    }
+
+    // 2. Firmas de Choferes y Remitos Adjuntos de las Salidas Registradas
+    // Ubicaciones de subida en la app: salidas/{salidaId}/firma_chofer.png y salidas/{salidaId}/adjunto_{nombreArchivo}
+    match /salidas/{salidaId}/{fileName} {
+      // Acceso libre para sandbox
+      allow read, write: if true;
+
+      // RESTRICCIÓN AUTENTICADA (Descomente en producción):
+      // allow read: if isSignedIn();
+      // allow write: if isSignedIn() && (isValidImage() || isValidDocument());
+    }
+
+    // 3. Regla por defecto para cualquier otro archivo no especificado (Bloquear acceso)
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

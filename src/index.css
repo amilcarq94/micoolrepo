@@ -1,0 +1,648 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Fraunces", "Playfair Display", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* ==========================================================
+   1. VARIABLES Y ESTILOS GENERALES (FICHA DE LOTE A4)
+   ========================================================== */
+:root {
+  --primary: #005A36;
+  --text: #0f172a;
+  --bg-subtle: #f8fafc;
+  --border: #cbd5e1;
+
+  /* Variables Oficiales Solicitadas para Fichas Técnicas */
+  --app-primary: #005A36;
+  --app-primary-hover: #004227;
+  --app-primary-light: #e8f5ec;
+  --app-secondary-bg: #f8fafc;
+  --app-text: #0f172a;
+  --app-text-muted: #64748b;
+  --app-border: #cbd5e1;
+  --app-card-bg: #ffffff;
+}
+
+/* Barra de botones de acción para Ficha */
+.actions-bar {
+  max-width: 210mm;
+  margin: 0 auto 15px auto;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btn {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s ease-in-out;
+}
+
+.btn-primary { background-color: var(--primary); color: #fff; }
+.btn-primary:hover { background-color: #256628; }
+.btn-secondary { background-color: #455a64; color: #fff; }
+.btn-secondary:hover { background-color: #37474f; }
+
+/* Lienzo de la Ficha A4 en pantalla */
+.ficha-a4 {
+  background: #ffffff;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 15mm;
+  box-sizing: border-box;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Encabezado */
+.ficha-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid var(--primary);
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+}
+
+.brand h1 { margin: 0; font-size: 22pt; color: var(--primary); font-weight: 800; line-height: 1.1; }
+.badge {
+  background: #e8f5e9;
+  color: var(--primary);
+  padding: 4px 8px;
+  font-size: 10pt;
+  font-weight: bold;
+  border-radius: 4px;
+  display: inline-block;
+}
+.meta-header p { margin: 2px 0; font-size: 9pt; color: #666; text-align: right; }
+
+/* Secciones y Grillas */
+.ficha-section { margin-bottom: 20px; }
+.section-title {
+  font-size: 11pt;
+  text-transform: uppercase;
+  color: var(--primary);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+  margin-bottom: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+
+.data-group label { display: block; font-size: 8pt; color: #757575; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.data-group p { margin: 2px 0 0 0; font-size: 10pt; font-weight: 600; color: var(--text); }
+
+/* Tablas */
+.ficha-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+.ficha-table th, .ficha-table td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+}
+.ficha-table th { background-color: var(--bg-subtle); color: #424242; font-weight: 700; }
+
+/* Mapa y Observaciones */
+.map-placeholder {
+  height: 150px;
+  background-color: var(--bg-subtle);
+  border: 1px dashed #bdbdbd;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #757575;
+  font-size: 9pt;
+  position: relative;
+  overflow: hidden;
+}
+.notes-body {
+  font-size: 9pt;
+  line-height: 1.4;
+  background: var(--bg-subtle);
+  padding: 10px;
+  border-radius: 4px;
+  border-left: 3px solid var(--primary);
+}
+
+/* Pie de página */
+.ficha-footer {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 8pt;
+  color: #9e9e9e;
+}
+
+/* Custom styles for Agro Abacus brand */
+.brand-watermark {
+  background-color: #ffffff;
+}
+
+/* Clase CSS dedicada para garantizar tamaño uniforme (24x24px) y alineación en iconos de silos */
+.silo-icon-institucional {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Animación de pulso suave (soft pulse) para el indicador de sincronización en tiempo real */
+@keyframes softPulseSyncDotGreen {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7), 0 0 4px rgba(16, 185, 129, 0.5);
+  }
+  50% {
+    transform: scale(1.18);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0), 0 0 8px rgba(16, 185, 129, 0.8);
+  }
+}
+
+@keyframes softPulseSyncDotRed {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8), 0 0 4px rgba(239, 68, 68, 0.5);
+  }
+  50% {
+    transform: scale(1.22);
+    box-shadow: 0 0 0 5px rgba(239, 68, 68, 0), 0 0 10px rgba(239, 68, 68, 0.9);
+  }
+}
+
+.sync-dot-pulse-green {
+  animation: softPulseSyncDotGreen 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.sync-dot-pulse-red {
+  animation: softPulseSyncDotRed 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Ocultar en pantalla las páginas que no son la activa en la vista previa del modal */
+@media screen {
+  .id-bolsas-screen-hidden {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
+   OPTIMIZACIÓN DE IMPRESIÓN Y EXPORTACIÓN A PDF (@media print)
+   ========================================================================== */
+@media print {
+  /* 1. Resetear fondos, márgenes y flujo de página para evitar hojas en blanco */
+  html, body, #root, main, div[data-reactroot], #modal-id-bolsas-root {
+    background: #FFFFFF !important;
+    background-color: #FFFFFF !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    float: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 0mm; /* Control total sobre los márgenes en A4 */
+  }
+
+  /* 2. REGLA MAESTRA DE AISLAMIENTO:
+        Ocultar absolutamente toda la interfaz de la Web App (barras, menús, botones, navegación) */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* 3. Mantener visible ÚNICAMENTE el contenedor de la vista previa del archivo a imprimir y sus elementos hijos */
+  #seccion-impresion,
+  #seccion-impresion *,
+  .seccion-impresion,
+  .seccion-impresion *,
+  .print-active,
+  .print-active *,
+  body.has-print-active .print-active,
+  body.has-print-active .print-active *,
+  .ficha-a4,
+  .ficha-a4 *,
+  .ficha-tecnica-container,
+  .ficha-tecnica-container *,
+  .ficha-tecnica-a4-container,
+  .ficha-tecnica-a4-container *,
+  .ficha-lote-a4-sheet,
+  .ficha-lote-a4-sheet *,
+  #printable-ficha-lote-detail,
+  #printable-ficha-lote-detail *,
+  #ficha-silo-printable-card,
+  #ficha-silo-printable-card *,
+  #grilla-seis-silos-printable,
+  #grilla-seis-silos-printable *,
+  #printable-id-bolsas-container,
+  #printable-id-bolsas-container *,
+  .pagina-etiquetas,
+  .pagina-etiquetas *,
+  .id-bolsas-a4-page,
+  .id-bolsas-a4-page *,
+  .id-bolsas-screen-hidden,
+  .id-bolsas-screen-hidden *,
+  .hoja-a4,
+  .hoja-a4 *,
+  .id-bolsa-label-card,
+  .id-bolsa-label-card *,
+  .etiqueta-id-lote,
+  .etiqueta-id-lote * {
+    visibility: visible !important;
+  }
+
+  /* 4. Ubicar el contenedor de impresión en flujo estático/relativo normal sin cortar páginas */
+  #seccion-impresion,
+  .seccion-impresion,
+  .print-active,
+  body.has-print-active .print-active,
+  .ficha-a4,
+  .ficha-tecnica-container,
+  .ficha-tecnica-a4-container,
+  #printable-ficha-lote-detail,
+  #printable-id-bolsas-container {
+    display: block !important;
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    width: 100% !important;
+    max-width: 210mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+    background-color: #FFFFFF !important;
+    box-shadow: none !important;
+    border: none !important;
+    z-index: 1 !important;
+    overflow: visible !important;
+  }
+
+  /* 5. REGLAS ESPECÍFICAS PARA EL GENERADOR 'ID BOLSAS' */
+  #printable-id-bolsas-container {
+    width: 210mm !important;
+    max-width: 210mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+    background-color: #FFFFFF !important;
+    counter-reset: page 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  /* 5.1 REGLAS ESPECÍFICAS PARA FICHA TÉCNICA OFICIAL DE LOTES (FUERZA A 1 SOLA PÁGINA EXACTA) */
+  [id^="ficha-tecnica-print-"],
+  .ficha-tecnica-container,
+  .ficha-tecnica-a4-container,
+  .ficha-a4,
+  .ficha-lote-a4-sheet {
+    width: 210mm !important;
+    min-width: 210mm !important;
+    max-width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
+    margin: 0 auto !important;
+    padding: 10mm !important; /* Margen interno constante de 10mm */
+    box-sizing: border-box !important;
+    background-color: #FFFFFF !important;
+    border: none !important;
+    box-shadow: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    overflow: hidden !important; /* Garantiza que ningún elemento genere una segunda página */
+    position: relative !important;
+  }
+
+  /* Evitar saltos de página dentro de las tarjetas o tablas de la ficha */
+  .card, table, tr, td, img, svg {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* 5.2 BLOQUE CONTENEDOR QUE AGRUPA LAS ETIQUETAS POR PÁGINA (PAGINA-ETIQUETAS) */
+  .pagina-etiquetas,
+  .hoja-a4,
+  .id-bolsas-a4-page,
+  .id-bolsas-screen-hidden {
+    width: 210mm !important;
+    min-width: 210mm !important;
+    max-width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
+    margin: 0 auto !important;
+    padding: 6mm 8mm 6mm 8mm !important;
+    box-sizing: border-box !important;
+    background-color: #FFFFFF !important;
+    border: none !important;
+    box-shadow: none !important;
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    page-break-after: always !important; /* Cada contenedor de página genera exactamente 1 salto de página */
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    overflow: hidden !important;
+    position: relative !important;
+    counter-increment: page !important;
+  }
+
+  /* Grilla interior de etiquetas ajustada dinámicamente a la altura de la página A4 */
+  .pagina-etiquetas .id-bolsas-page-grid {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    gap: 2mm !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Elimina el salto de página sobrante en la última hoja */
+  .pagina-etiquetas:last-child,
+  .hoja-a4:last-child,
+  .id-bolsas-a4-page:last-child,
+  .id-bolsas-screen-hidden:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  /* Marca de agua institucional discreta en el fondo de cada hoja */
+  .id-bolsas-a4-page::before {
+    content: "AGRO ABACUS · PLANTA LA BARRANCOSA · ID BOLSAS" !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) rotate(-35deg) !important;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    font-size: 28pt !important;
+    font-weight: 900 !important;
+    color: rgba(0, 96, 60, 0.035) !important;
+    letter-spacing: 0.18em !important;
+    text-transform: uppercase !important;
+    pointer-events: none !important;
+    z-index: 0 !important;
+    white-space: nowrap !important;
+  }
+
+  /* Pseudoelemento ::after que renderiza automáticamente el contador de página */
+  .id-bolsas-a4-page::after {
+    content: "Página " counter(page) !important;
+    position: absolute !important;
+    bottom: 1.5mm !important;
+    right: 5mm !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    font-size: 6.5pt !important;
+    font-weight: 800 !important;
+    color: #0f172a !important;
+    background-color: #ffffff !important;
+    padding: 0 1.5mm !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    z-index: 20 !important;
+    pointer-events: none !important;
+  }
+
+  /* Contenedor de grilla de 7 etiquetas dentro de la hoja */
+  .id-bolsas-page-grid {
+    height: calc(297mm - 13mm) !important;
+    max-height: calc(297mm - 13mm) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    gap: 0.8mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  /* Dimensionamiento estricto de cada etiqueta ID Bolsa para calzar 7 por hoja A4 sin desbordamiento */
+  .etiqueta-id-lote,
+  .id-bolsa-label-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 38.2mm !important;
+    min-height: 38.2mm !important;
+    max-height: 38.2mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin: 0 !important;
+    border: 2px solid #000000 !important;
+    background-color: #FFFFFF !important;
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  /* Asegurar que todo el contenido interno (textos, celdas, tabla y código QR) respete box-sizing y overflow hidden */
+  .etiqueta-id-lote *,
+  .id-bolsa-label-card * {
+    box-sizing: border-box !important;
+  }
+
+  .etiqueta-id-lote table,
+  .id-bolsa-label-card table {
+    width: 100% !important;
+    height: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .etiqueta-id-lote td,
+  .id-bolsa-label-card td {
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .etiqueta-id-lote div,
+  .id-bolsa-label-card div,
+  .etiqueta-id-lote span,
+  .id-bolsa-label-card span,
+  .etiqueta-id-lote p,
+  .id-bolsa-label-card p {
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .etiqueta-id-lote svg,
+  .id-bolsa-label-card svg,
+  .etiqueta-id-lote canvas,
+  .id-bolsa-label-card canvas,
+  .etiqueta-id-lote img,
+  .id-bolsa-label-card img {
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    display: block !important;
+  }
+
+  /* Barra de identificación única y footer por hoja A4 */
+  .id-bolsas-page-meta-bar {
+    height: 4.5mm !important;
+    max-height: 4.5mm !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    font-size: 6.5pt !important;
+    font-weight: 700 !important;
+    color: #475569 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    padding: 0 1mm !important;
+    border-top: 1px dashed #94a3b8 !important;
+    margin-top: 1mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    position: relative !important;
+    z-index: 5 !important;
+  }
+
+  /* 6. OCULTAR TODOS LOS ELEMENTOS DE UI NO ESENCIALES DURANTE LA IMPRESIÓN */
+  header:not(#seccion-impresion header):not(.seccion-impresion header):not(.ficha-a4 header),
+  aside,
+  nav,
+  footer:not(#seccion-impresion footer):not(.seccion-impresion footer):not(.ficha-a4 footer),
+  button,
+  .actions-bar,
+  .print\:hidden,
+  .print-hidden,
+  .no-print,
+  [aria-hidden="true"],
+  #main-sidebar,
+  #mobile-sidebar-drawer,
+  #sidebar-toggle-btn,
+  #nav-tab-dashboard,
+  #nav-tab-lotes,
+  #nav-tab-despachos,
+  #nav-tab-historial-salidas,
+  #nav-tab-importar,
+  #lotes-stats-summary-bar,
+  #lote-detail-interactive-view,
+  #lote-detail-actions-bar,
+  #ficha-actions-bar,
+  #ficha-actions-bar-printing,
+  #id-bolsas-modal-header,
+  #id-bolsas-preview-controls,
+  #id-bolsas-modal-footer,
+  .modal-header,
+  .modal-footer,
+  .modal-actions {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    overflow: hidden !important;
+  }
+
+  /* 7. Cuando se imprimen fichas o ID bolsas desde modales, ocultar vistas de fondo */
+  body:has(.batch-print-modal-container) #lotes-view-container,
+  body:has(.batch-print-modal-container) #lotes-view-content,
+  body:has(.batch-print-modal-container) #lote-detail-container,
+  body:has(.batch-print-modal-container) main > div:not(.batch-print-modal-container) {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+  }
+
+  /* 8. Desplegar los modales y contenedores de impresión en flujo estático normal */
+  .fixed,
+  .batch-print-modal-container,
+  .ficha-silo-modal-root,
+  .grilla-silos-modal-root,
+  div[role="dialog"] {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    max-height: none !important;
+    height: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    background: #FFFFFF !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  /* 9. Manejo de saltos de página en lotes múltiples (1 ficha exacta por hoja) */
+  .batch-print-page-break,
+  .ficha-lote-a4-sheet {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .batch-print-page-break:last-child,
+  .ficha-lote-a4-sheet:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+}
+

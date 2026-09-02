@@ -1,0 +1,134 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==========================================
+    // NOTA PARA PRODUCCIÓN Y RESTRICCIÓN DE USUARIO
+    // ==========================================
+    // Para entornos locales/sandbox donde Firebase Auth no está configurado o
+    // tiene el inicio de sesión anónimo deshabilitado (Error: auth/admin-restricted-operation),
+    // se permite el acceso público por defecto para evitar errores de permisos.
+    //
+    // Para activar la restricción de autenticación estricta:
+    // 1. Configure sus proveedores de autenticación en Firebase Console.
+    // 2. Comente las líneas de acceso público (allow read, write: if true;)
+    // 3. Descomente las líneas que contienen "isSignedIn()" abajo.
+
+    // ==========================================
+    // FUNCIONES AUXILIARES GLOBALES
+    // ==========================================
+    
+    // Verifica si el usuario está autenticado en Firebase
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Verifica si el correo del usuario está verificado (opcional para endurecer)
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Verifica si un ID tiene un formato seguro y longitud aceptable para evitar inyecciones
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // ==========================================
+    // EXPLICACIÓN: CÓMO RESTRINGIR EL ACCESO A NIVEL DE USUARIO
+    // ==========================================
+    //
+    // Si deseas implementar control de acceso por roles o propiedad en producción:
+    //
+    // 1. POR ROL DE ADMINISTRADOR (mediante Colección de Admins):
+    //    Si creas una colección llamada 'admins' donde el ID de documento es el UID del usuario:
+    //    function isAdmin() {
+    //      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    //    }
+    //
+    // 2. POR PROPIEDAD DEL RECURSO (ej. si cada lote u orden pertenece a un 'creador' o 'cliente'):
+    //    Si los documentos de Firestore guardan un campo 'usuarioId' o 'ownerId' que indica quién los creó:
+    //    - Para lectura: allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    //    - Para escritura: allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+    //                     allow update: if isSignedIn() && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == request.auth.uid;
+    //
+    // 3. POR CORREO ELECTRÓNICO (Verificación de Dominio):
+    //    Si deseas restringir el acceso para que solo los empleados de la organización (@agroabacus.com.ar) puedan escribir:
+    //    function isCompanyUser() {
+    //      return isSignedIn() && request.auth.token.email.endsWith('@agroabacus.com.ar');
+    //    }
+    //
+
+    // ==========================================
+    // COLECIONES PRINCIPALES PROTEGIDAS
+    // ==========================================
+
+    // 1. Colección de Lotes y sus subcolecciones de movimientos
+    match /lotes/{loteId} {
+      // Acceso libre para sandbox (evita "Missing or insufficient permissions" en este entorno)
+      allow read, write: if true;
+
+      // RESTRICCIÓN AUTENTICADA (Descomente en producción):
+      // allow read, write: if isSignedIn() && isValidId(loteId);
+
+      // Subcolección de Movimientos de Stock del lote
+      match /movimientos/{movId} {
+        // Acceso libre para sandbox
+        allow read, write: if true;
+
+        // RESTRICCIÓN AUTENTICADA (Descomente en producción):
+        // allow read, write: if isSignedIn() && isValidId(movId);
+      }
+    }
+
+    // 2. Colección de Órdenes de Carga (ordenesCarga)
+    match /ordenesCarga/{ordenId} {
+      // Acceso libre para sandbox
+      allow read, write: if true;
+
+      // RESTRICCIÓN AUTENTICADA (Descomente en producción):
+      // allow read, write: if isSignedIn() && isValidId(ordenId);
+    }
+
+    // 3. Colección de Salidas Registradas / Remitos (salidas)
+    match /salidas/{salidaId} {
+      // Acceso libre para sandbox
+      allow read, write: if true;
+
+      // RESTRICCIÓN AUTENTICADA (Descomente en producción):
+      // allow read, write: if isSignedIn() && isValidId(salidaId);
+    }
+    // 4. Colección de Órdenes de Proceso (ordenes_proceso)
+    match /ordenes_proceso/{ordenId} {
+      // Acceso libre para sandbox
+      allow read, write: if true;
+
+      // RESTRICCIÓN AUTENTICADA (Descomente en producción):
+      // allow read, write: if isSignedIn() && isValidId(ordenId);
+    }
+
+    // 5. Colección de Movimientos de Silos (movimientos_silo)
+    match /movimientos_silo/{movId} {
+      allow read, write: if true;
+    }
+
+    // 6. Colección de Choferes (choferes)
+    match /choferes/{choferId} {
+      allow read, write: if true;
+    }
+
+    // 7. Colección de Bolsones de Campo (bolsones_campo)
+    match /bolsones_campo/{bolsonId} {
+      allow read, write: if true;
+    }
+
+    // 8. Colección de Estados de Silos (silos_estado)
+    match /silos_estado/{docId} {
+      allow read, write: if true;
+    }
+
+    // 9. Colección de Catálogos de Planta (configuracion_planta)
+    match /configuracion_planta/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

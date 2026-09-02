@@ -1,0 +1,6 @@
+{
+  "name": "Planta Clasificadora · La Barrancosa",
+  "description": "Sistema de gestión de lotes de granos para la planta clasificadora de semillas de Agro Abacus S.A. · Estancia La Barrancosa.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

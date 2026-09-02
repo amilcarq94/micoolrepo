@@ -1,0 +1,112 @@
+{
+  "entities": {
+    "Lote": {
+      "title": "Lote",
+      "description": "Lote de semillas procesadas o en proceso en planta",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "especie": { "type": "string" },
+        "variedad": { "type": "string" },
+        "numeroLote": { "type": "string" },
+        "cliente": { "type": "string" },
+        "tipoLote": { "type": "string" },
+        "categoria": { "type": "string" },
+        "stockBolsas": { "type": "number" },
+        "kgPorBolsa": { "type": "number" },
+        "stockKgTotal": { "type": "number" },
+        "estado": { "type": "string" },
+        "fechaIngreso": { "type": "string" }
+      },
+      "required": ["id", "especie", "cliente", "numeroLote"]
+    },
+    "SilosEstado": {
+      "title": "SilosEstado",
+      "description": "Estado operativo manual de los 6 silos físicos (OCUPADO, VACIO_SUCIO, VACIO_LIMPIO)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "estados": { "type": "object" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["id"]
+    },
+    "MovimientoSilo": {
+      "title": "MovimientoSilo",
+      "description": "Registro de ingreso o egreso de stock en silos",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "siloId": { "type": "string" },
+        "fecha": { "type": "string" },
+        "tipo": { "type": "string" },
+        "kg": { "type": "number" }
+      },
+      "required": ["id", "siloId", "fecha", "tipo", "kg"]
+    },
+    "BolsonCampo": {
+      "title": "BolsonCampo",
+      "description": "Gestión agronómica de silobolsas y almacenamiento en campo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "numeroBolson": { "type": "string" },
+        "cliente": { "type": "string" },
+        "cultivo": { "type": "string" },
+        "variedad": { "type": "string" },
+        "campo": { "type": "string" },
+        "zona": { "type": "string" },
+        "tipoBolsa": { "type": "string" },
+        "capacidadTn": { "type": "number" },
+        "humedad": { "type": "number" },
+        "rendimiento": { "type": "number" },
+        "superficieHa": { "type": "number" },
+        "coordenadasGis": { "type": "string" },
+        "entradasKg": { "type": "number" },
+        "salidasKg": { "type": "number" },
+        "stockKg": { "type": "number" },
+        "categoria": { "type": "string" },
+        "material": { "type": "string" }
+      },
+      "required": ["id", "numeroBolson", "cliente", "cultivo"]
+    },
+    "PlantaCatalogos": {
+      "title": "PlantaCatalogos",
+      "description": "Listas maestras de planta: clientes, especies, variedades, tipos, categorias y tratamientos",
+      "type": "object",
+      "properties": {
+        "clientes": { "type": "array" },
+        "especies": { "type": "array" },
+        "variedades": { "type": "array" },
+        "tipos": { "type": "array" },
+        "categorias": { "type": "array" },
+        "tratamientos": { "type": "array" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/lotes/{loteId}": {
+      "schema": "Lote",
+      "description": "Colección de lotes de granos"
+    },
+    "/silos_estado/{docId}": {
+      "schema": "SilosEstado",
+      "description": "Estado manual de silos (Ocupado, Vacío Sucio, Vacío Limpio)"
+    },
+    "/movimientos_silo/{movId}": {
+      "schema": "MovimientoSilo",
+      "description": "Movimientos de ingreso y egreso de silos"
+    },
+    "/bolsones_campo/{bolsonId}": {
+      "schema": "BolsonCampo",
+      "description": "Colección de silobolsas y lotes en campo con datos agronómicos y GIS"
+    },
+    "/configuracion_planta/{docId}": {
+      "schema": "PlantaCatalogos",
+      "description": "Catálogos maestros y filtros de planta"
+    }
+  }
+}
