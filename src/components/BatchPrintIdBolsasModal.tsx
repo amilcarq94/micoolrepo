@@ -7,7 +7,7 @@ import React, { useState, useMemo } from 'react';
 import { Lote } from '../types';
 import { IdBolsaLabel } from './IdBolsaLabel';
 import { printWithActiveClass } from '../utils/printHelper';
-import { exportWithHtml2Pdf } from '../utils/exportPdf';
+import { exportIdBolsasPagesAsPdf } from '../utils/exportPdf';
 import {
   Printer,
   X,
@@ -42,6 +42,7 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
   autoLaunchPrint = false,
 }) => {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
   const [activePreviewPage, setActivePreviewPage] = useState(1);
 
   // Generar la lista plana de todas las etiquetas solicitadas
@@ -84,15 +85,11 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
     await printWithActiveClass('printable-id-bolsas-container');
   };
 
-  // Manejar exportación a PDF
+  // Manejar exportación a PDF: 1 página PDF por cada hoja A4 generada (7 etiquetas máx por hoja)
   const handleDownloadPdf = async () => {
     try {
       setIsExportingPdf(true);
-      const container = document.getElementById('printable-id-bolsas-container');
-      if (!container) {
-        window.print();
-        return;
-      }
+      setExportProgress({ current: 1, total: pages.length });
 
       const firstLote = lotes[0];
       const safeLoteName = lotes.length === 1
@@ -100,15 +97,32 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
         : `${lotes.length}_Lotes`;
       const fileName = `ID_Bolsas_${safeLoteName}_${allTags.length}_etiquetas_${new Date().toISOString().slice(0, 10)}.pdf`;
 
-      await exportWithHtml2Pdf(container, fileName, {
-        scale: 2.0,
-        quality: 0.98,
-        margin: [4, 6, 4, 6],
-      });
+      // Obtener todos los elementos de página de etiquetas
+      const pageElements = pages
+        .map((_, idx) => document.getElementById(`id-bolsas-page-sheet-${idx}`))
+        .filter(Boolean) as HTMLElement[];
+
+      if (pageElements.length === 0) {
+        window.print();
+        return;
+      }
+
+      await exportIdBolsasPagesAsPdf(
+        pageElements,
+        fileName,
+        {
+          scale: 2.0,
+          quality: 0.98,
+        },
+        (current, total) => {
+          setExportProgress({ current, total });
+        }
+      );
     } catch (err) {
       console.error('Error al exportar PDF de ID Bolsas:', err);
     } finally {
       setIsExportingPdf(false);
+      setExportProgress(null);
     }
   };
 
@@ -171,7 +185,13 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
             ) : (
               <Download className="w-4 h-4 text-amber-400" />
             )}
-            <span>{isExportingPdf ? 'Generando...' : 'Descargar PDF'}</span>
+            <span>
+              {isExportingPdf
+                ? exportProgress
+                  ? `Generando pág. ${exportProgress.current} de ${exportProgress.total}...`
+                  : 'Generando PDF...'
+                : 'Descargar PDF'}
+            </span>
           </button>
 
           <button
@@ -184,6 +204,26 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
           </button>
         </div>
       </div>
+
+      {/* Indicador de exportación de PDF multi-página */}
+      {isExportingPdf && exportProgress && (
+        <div className="w-full max-w-5xl bg-amber-500/20 border border-amber-500/40 text-amber-200 px-5 py-3 rounded-xl mb-4 flex items-center justify-between gap-4 animate-pulse print:hidden">
+          <div className="flex items-center gap-3">
+            <Loader2 className="w-5 h-5 animate-spin text-amber-400 shrink-0" />
+            <div className="text-xs">
+              <p className="font-bold text-amber-300">
+                Generando documento PDF completo con todas las {totalPages} páginas del lote...
+              </p>
+              <p className="text-amber-200/80">
+                Procesando página {exportProgress.current} de {exportProgress.total} ({allTags.length} etiquetas en total)
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 font-mono text-xs font-bold text-amber-300">
+            <span>{Math.round((exportProgress.current / exportProgress.total) * 100)}%</span>
+          </div>
+        </div>
+      )}
 
       {/* 2. CONTROLES DE PAGINACIÓN DE VISTA PREVIA EN PANTALLA */}
       {totalPages > 1 && (
@@ -223,7 +263,7 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
       >
         {pages.map((pageTags, pageIndex) => {
           const pageNumber = pageIndex + 1;
-          const isCurrentScreenPage = pageNumber === activePreviewPage;
+          const isCurrentScreenPage = pageNumber === activePreviewPage || isExportingPdf;
           const isLastPage = pageIndex === pages.length - 1;
           const firstTag = pageTags[0];
           const lastTag = pageTags[pageTags.length - 1];
@@ -234,7 +274,7 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
             <div
               key={`id-bolsas-page-${pageIndex}`}
               id={`id-bolsas-page-sheet-${pageIndex}`}
-              className={`pagina-etiquetas id-bolsas-a4-page bg-white text-black shadow-2xl border border-gray-300 rounded-sm p-3.5 print:p-0 print:border-none print:shadow-none ${
+              className={`pagina-etiquetas id-bolsas-a4-page bg-white text-black shadow-2xl border border-gray-300 rounded-sm print:p-0 print:border-none print:shadow-none ${
                 isCurrentScreenPage ? 'active-preview-page' : 'id-bolsas-screen-hidden'
               }`}
               style={{
@@ -245,25 +285,29 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
                 minHeight: '296mm',
                 maxHeight: '296mm',
                 boxSizing: 'border-box',
-                padding: '3.5mm 5mm 3mm 5mm',
+                padding: '6mm 8mm 5mm 8mm',
                 backgroundColor: '#FFFFFF',
                 pageBreakAfter: isLastPage ? 'auto' : 'always',
                 breakAfter: isLastPage ? 'auto' : 'page',
                 pageBreakInside: 'avoid',
                 breakInside: 'avoid',
                 overflow: 'hidden',
+                display: isCurrentScreenPage ? 'flex' : 'none',
+                flexDirection: 'column',
+                justifyContent: 'flex-start',
+                gap: '1.2mm',
               }}
             >
               {/* Renderizar exactamente 7 etiquetas dentro de la grilla A4 */}
               <div
-                className="id-bolsas-page-grid w-full flex flex-col justify-between"
+                className="id-bolsas-page-grid w-full"
                 style={{
-                  height: 'calc(297mm - 12mm)',
-                  maxHeight: 'calc(297mm - 12mm)',
                   display: 'flex',
                   flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  gap: '1mm',
+                  justifyContent: 'flex-start',
+                  gap: '1.2mm',
+                  flex: '1 1 auto',
+                  width: '100%',
                 }}
               >
                 {pageTags.map((tag) => (
@@ -283,9 +327,9 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
                       key={`empty-placeholder-${emptyIdx}`}
                       className="border border-dashed border-gray-200 opacity-20 print:opacity-0"
                       style={{
-                        height: '38.5mm',
-                        minHeight: '38.5mm',
-                        maxHeight: '38.5mm',
+                        height: '38.2mm',
+                        minHeight: '38.2mm',
+                        maxHeight: '38.2mm',
                         boxSizing: 'border-box',
                       }}
                     />
@@ -293,7 +337,7 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
               </div>
 
               {/* Barra de pie de página: Contador y Marca de Identificación Única por Hoja A4 */}
-              <div className="id-bolsas-page-meta-bar">
+              <div className="id-bolsas-page-meta-bar shrink-0" style={{ height: '5mm', marginTop: 'auto' }}>
                 <div className="flex items-center gap-2">
                   <span>PLANTA CLASIFICADORA LA BARRANCOSA · AGRO ABACUS S.A.</span>
                   <span>·</span>

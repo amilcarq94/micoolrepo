@@ -115,15 +115,19 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
         @media print {
           @page {
             size: A4 portrait;
-            margin: 0;
+            margin: 0mm !important;
           }
-          body {
+          html, body {
+            width: 210mm !important;
+            height: 297mm !important;
+            max-height: 297mm !important;
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
             color: black !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            overflow: hidden !important;
           }
           /* Oculta los controles de la interfaz en la impresión */
           .print\\:hidden, header, nav, aside, footer {
@@ -134,18 +138,24 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
             width: 210mm !important;
             min-width: 210mm !important;
             max-width: 210mm !important;
-            height: 297mm !important;
-            min-height: 297mm !important;
-            max-height: 297mm !important;
-            padding: 10mm !important;
+            height: 296mm !important;
+            min-height: 296mm !important;
+            max-height: 296mm !important;
+            padding: 8mm 10mm !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
+            border: none !important;
             margin: 0 auto !important;
+            page-break-before: avoid !important;
+            break-before: avoid !important;
             page-break-after: avoid !important;
             break-after: avoid !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             overflow: hidden !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
           }
         }
       `}</style>
@@ -451,10 +461,12 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
 
       {/* 3. VISTA PREVIA / HOJA OFICIAL A4 IMPRIMIBLE */}
       <div className="w-full flex justify-center print:w-full print:block">
-        <div ref={cardRef} id={cardDomId} className="w-full max-w-[780px] print:max-w-full">
+        <div ref={cardRef} className="w-full max-w-[780px] print:max-w-full print:w-full print:p-0 print:m-0">
           <FichaTecnicaOficialCard
+            id={cardDomId}
             lote={draftLote}
             showWatermark={false}
+            isExpandedA4={true}
           />
         </div>
       </div>

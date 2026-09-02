@@ -202,6 +202,21 @@
   animation: softPulseSyncDotRed 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* Contenedor de grilla flexible de etiquetas por página A4 */
+.pagina-etiquetas {
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  max-width: 100%;
+  margin: 0 auto;
+  background-color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 1.5mm;
+  position: relative;
+}
+
 /* Ocultar en pantalla las páginas que no son la activa en la vista previa del modal */
 @media screen {
   .id-bolsas-screen-hidden {
@@ -336,11 +351,11 @@
     width: 210mm !important;
     min-width: 210mm !important;
     max-width: 210mm !important;
-    height: 297mm !important;
-    min-height: 297mm !important;
-    max-height: 297mm !important;
+    height: 296mm !important;
+    min-height: 296mm !important;
+    max-height: 296mm !important;
     margin: 0 auto !important;
-    padding: 10mm !important; /* Margen interno constante de 10mm */
+    padding: 8mm 10mm !important; /* Margen interno balanceado para evitar desbordes */
     box-sizing: border-box !important;
     background-color: #FFFFFF !important;
     border: none !important;
@@ -364,19 +379,20 @@
     break-inside: avoid !important;
   }
 
-  /* 5.2 BLOQUE CONTENEDOR QUE AGRUPA LAS ETIQUETAS POR PÁGINA (PAGINA-ETIQUETAS) */
+  /* 5.2 BLOQUE CONTENEDOR QUE AGRUPA LAS ETIQUETAS POR PÁGINA (PAGINA-ETIQUETAS & PDF-PAGE-A4) */
   .pagina-etiquetas,
   .hoja-a4,
   .id-bolsas-a4-page,
-  .id-bolsas-screen-hidden {
+  .id-bolsas-screen-hidden,
+  .pdf-page-a4 {
     width: 210mm !important;
     min-width: 210mm !important;
     max-width: 210mm !important;
-    height: 297mm !important;
-    min-height: 297mm !important;
-    max-height: 297mm !important;
+    height: 296mm !important;
+    min-height: 296mm !important;
+    max-height: 296mm !important;
     margin: 0 auto !important;
-    padding: 6mm 8mm 6mm 8mm !important;
+    padding: 6mm 8mm 5mm 8mm !important;
     box-sizing: border-box !important;
     background-color: #FFFFFF !important;
     border: none !important;
@@ -385,7 +401,8 @@
     visibility: visible !important;
     opacity: 1 !important;
     flex-direction: column !important;
-    justify-content: space-between !important;
+    justify-content: flex-start !important;
+    gap: 1.2mm !important;
     page-break-before: avoid !important;
     break-before: avoid !important;
     page-break-after: always !important; /* Cada contenedor de página genera exactamente 1 salto de página */
@@ -397,15 +414,19 @@
     counter-increment: page !important;
   }
 
+  .pdf-export-wrapper {
+    width: 100% !important;
+    background: transparent !important;
+  }
+
   /* Grilla interior de etiquetas ajustada dinámicamente a la altura de la página A4 */
   .pagina-etiquetas .id-bolsas-page-grid {
     width: 100% !important;
-    height: 100% !important;
-    max-height: 100% !important;
     display: flex !important;
     flex-direction: column !important;
-    justify-content: space-between !important;
-    gap: 2mm !important;
+    justify-content: flex-start !important;
+    gap: 1.2mm !important;
+    flex: 1 1 auto !important;
     box-sizing: border-box !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
@@ -415,7 +436,8 @@
   .pagina-etiquetas:last-child,
   .hoja-a4:last-child,
   .id-bolsas-a4-page:last-child,
-  .id-bolsas-screen-hidden:last-child {
+  .id-bolsas-screen-hidden:last-child,
+  .pdf-page-a4:last-child {
     page-break-after: auto !important;
     break-after: auto !important;
   }
