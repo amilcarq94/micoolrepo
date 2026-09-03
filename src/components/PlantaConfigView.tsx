@@ -162,8 +162,9 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
     }, 4000);
   };
 
-  // Estado para gestión relacional de Variedades (Especie + Cliente obligatorios)
+  // Estado para gestión relacional de Variedades (Especie + Cliente obligatorios + Semillero opcional)
   const [nuevaVariedadNombre, setNuevaVariedadNombre] = useState<string>('');
+  const [nuevaVariedadSemillero, setNuevaVariedadSemillero] = useState<string>('');
   const [nuevaVariedadEspecie, setNuevaVariedadEspecie] = useState<string>(() => plantaConfig.especies?.[0] || '');
   const [nuevaVariedadCliente, setNuevaVariedadCliente] = useState<string>(() => plantaConfig.clientes?.[0] || '');
   
@@ -171,27 +172,46 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
   const [selectedVariedadesIds, setSelectedVariedadesIds] = useState<string[]>([]);
   const [showBulkAddVariedades, setShowBulkAddVariedades] = useState<boolean>(false);
   const [bulkTextVariedades, setBulkTextVariedades] = useState<string>('');
+  const [bulkVariedadSemillero, setBulkVariedadSemillero] = useState<string>('');
 
   // Filtros en cascada para la vista de Variedades
   const [filtroVariedadEspecie, setFiltroVariedadEspecie] = useState<string>('TODAS');
   const [filtroVariedadCliente, setFiltroVariedadCliente] = useState<string>('TODOS');
+  const [filtroVariedadSemillero, setFiltroVariedadSemillero] = useState<string>('TODOS');
 
   // Estado para edición en línea de variedad relacional
   const [editingVariedadId, setEditingVariedadId] = useState<string | null>(null);
   const [editingVariedadNombre, setEditingVariedadNombre] = useState<string>('');
+  const [editingVariedadSemillero, setEditingVariedadSemillero] = useState<string>('');
   const [editingVariedadEspecie, setEditingVariedadEspecie] = useState<string>('');
   const [editingVariedadCliente, setEditingVariedadCliente] = useState<string>('');
 
   // Lista normalizada de variedades relacionales en base de datos
   const variedadesDbList = useMemo<VariedadItem[]>(() => {
     if (Array.isArray(plantaConfig.variedadesDb) && plantaConfig.variedadesDb.length > 0) {
+      // Si aún contiene variedades antiguas residuales como CASUARINA, dar prioridad al catálogo oficial depurado
+      const hasOldCatalog = plantaConfig.variedadesDb.some(v => v.nombre === 'CASUARINA' || v.nombre === 'CATALPA');
+      if (hasOldCatalog) {
+        return VARIEDADES_DB_DEFAULT;
+      }
       return plantaConfig.variedadesDb;
     }
-    // Fallback: si aún no tiene variedadesDb, inicializar con las predeterminadas
+    // Fallback: si aún no tiene variedadesDb, inicializar con las predeterminadas oficiales (24 variedades)
     return VARIEDADES_DB_DEFAULT;
   }, [plantaConfig.variedadesDb]);
 
-  // Lista de variedades filtrada por cascada (Especie + Cliente + SearchTerm)
+  // Lista única de semilleros existentes para el filtro
+  const semillerosDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    variedadesDbList.forEach(v => {
+      if (v.semillero && v.semillero.trim()) {
+        set.add(v.semillero.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [variedadesDbList]);
+
+  // Lista de variedades filtrada por cascada (Especie + Cliente + Semillero + SearchTerm)
   const filteredVariedadesDbList = useMemo(() => {
     let result = [...variedadesDbList];
     if (filtroVariedadEspecie !== 'TODAS') {
@@ -200,16 +220,20 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
     if (filtroVariedadCliente !== 'TODOS') {
       result = result.filter(v => (v.cliente || '').trim().toLowerCase() === filtroVariedadCliente.trim().toLowerCase());
     }
+    if (filtroVariedadSemillero !== 'TODOS') {
+      result = result.filter(v => (v.semillero || '').trim().toLowerCase() === filtroVariedadSemillero.trim().toLowerCase());
+    }
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
       result = result.filter(v => 
         (v.nombre || '').toLowerCase().includes(term) ||
         (v.especie || '').toLowerCase().includes(term) ||
-        (v.cliente || '').toLowerCase().includes(term)
+        (v.cliente || '').toLowerCase().includes(term) ||
+        (v.semillero || '').toLowerCase().includes(term)
       );
     }
     return result;
-  }, [variedadesDbList, filtroVariedadEspecie, filtroVariedadCliente, searchTerm]);
+  }, [variedadesDbList, filtroVariedadEspecie, filtroVariedadCliente, filtroVariedadSemillero, searchTerm]);
 
   // Manejo de Selección Múltiple de Variedades
   const handleToggleSelectVariedad = (id: string) => {
@@ -275,6 +299,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
   const handleBulkAddVariedades = () => {
     const cleanEspecie = nuevaVariedadEspecie.trim();
     const cleanCliente = nuevaVariedadCliente.trim();
+    const cleanSemillero = bulkVariedadSemillero.trim();
 
     if (!cleanEspecie || !cleanCliente) {
       showFeedback('Selecciona una Especie y un Cliente antes de agregar variedades.', 'error');
@@ -310,6 +335,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
           nombre,
           especie: cleanEspecie,
           cliente: cleanCliente,
+          semillero: cleanSemillero || undefined,
         });
       }
     });
@@ -330,16 +356,32 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
 
     onSavePlantaConfig(newConfig);
     setBulkTextVariedades('');
+    setBulkVariedadSemillero('');
     setShowBulkAddVariedades(false);
     showFeedback(`Se registraron ${newItems.length} nuevas variedades para ${cleanEspecie} (${cleanCliente}).${duplicates.length > 0 ? ` (${duplicates.length} duplicadas omitidas)` : ''}`);
   };
 
-  // Guardar nueva Variedad Relacional
+  // Restablecer catálogo a las 24 variedades oficiales depuradas
+  const handleResetToOficialVariedades = () => {
+    if (window.confirm('¿Confirmas borrar todas las variedades actuales de esta base de datos y restablecer exclusivamente las 24 variedades oficiales depuradas (Soja - Don Mario, Stine, Pioneer)?')) {
+      const newConfig: PlantaConfig = {
+        ...plantaConfig,
+        variedades: Array.from(new Set(VARIEDADES_DB_DEFAULT.map(v => v.nombre))),
+        variedadesDb: VARIEDADES_DB_DEFAULT,
+      };
+      onSavePlantaConfig(newConfig);
+      setSelectedVariedadesIds([]);
+      showFeedback('Se han cargado exitosamente las 24 variedades oficiales depuradas.');
+    }
+  };
+
+  // Guardar nueva Variedad Relacional con Carga Manual de Semillero
   const handleAddVariedadRelacional = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanNombre = nuevaVariedadNombre.trim();
     const cleanEspecie = nuevaVariedadEspecie.trim();
     const cleanCliente = nuevaVariedadCliente.trim();
+    const cleanSemillero = nuevaVariedadSemillero.trim();
 
     if (!cleanNombre) {
       showFeedback('Ingresa el nombre de la variedad a registrar.', 'error');
@@ -382,6 +424,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
       nombre: cleanNombre.toUpperCase(),
       especie: cleanEspecie,
       cliente: cleanCliente,
+      semillero: cleanSemillero || undefined,
     };
 
     const updatedVariedadesDb = [...variedadesDbList, newVariedadItem];
@@ -396,6 +439,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
 
     onSavePlantaConfig(newConfig);
     setNuevaVariedadNombre('');
+    setNuevaVariedadSemillero('');
     showFeedback(`Variedad "${newVariedadItem.nombre}" vinculada a ${cleanEspecie} (${cleanCliente}) guardada con éxito.`);
   };
 
@@ -404,6 +448,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
     const cleanNombre = editingVariedadNombre.trim().toUpperCase();
     const cleanEspecie = editingVariedadEspecie.trim();
     const cleanCliente = editingVariedadCliente.trim();
+    const cleanSemillero = editingVariedadSemillero.trim();
 
     if (!cleanNombre) {
       showFeedback('El nombre de la variedad no puede estar vacío.', 'error');
@@ -417,6 +462,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
           nombre: cleanNombre,
           especie: cleanEspecie,
           cliente: cleanCliente,
+          semillero: cleanSemillero || undefined,
         };
       }
       return v;
@@ -432,6 +478,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
 
     onSavePlantaConfig(newConfig);
     setEditingVariedadId(null);
+    setEditingVariedadSemillero('');
     showFeedback(`Variedad "${cleanNombre}" actualizada correctamente.`);
   };
 
@@ -891,6 +938,15 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                   </div>
                   <button
                     type="button"
+                    onClick={handleResetToOficialVariedades}
+                    className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="Restablece la base de datos a las 24 variedades oficiales (Soja - Don Mario, Stine, Pioneer)"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-800" />
+                    <span>Restablecer 24 Oficiales</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setShowBulkAddVariedades(!showBulkAddVariedades)}
                     className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
                   >
@@ -913,7 +969,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 mb-1">
                         Especie Destino *
@@ -947,6 +1003,19 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                         ))}
                       </select>
                     </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Semillero (Carga Manual)
+                      </label>
+                      <input
+                        type="text"
+                        value={bulkVariedadSemillero}
+                        onChange={(e) => setBulkVariedadSemillero(e.target.value)}
+                        placeholder="Ej: Don Mario, Stine, Pioneer..."
+                        className="w-full px-3 py-2 bg-white text-xs font-semibold text-slate-800 rounded-lg border border-purple-300"
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -957,7 +1026,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                       rows={3}
                       value={bulkTextVariedades}
                       onChange={(e) => setBulkTextVariedades(e.target.value)}
-                      placeholder="Ej: DM 46R18, DON MARIO 4800, DM 40R16, BIO 4.50..."
+                      placeholder="Ej: DM40E25, 43EE53, P42A84SE, DM38E26..."
                       className="w-full p-2.5 bg-white text-xs font-mono font-bold text-slate-800 border border-purple-300 rounded-lg uppercase"
                     />
                   </div>
@@ -982,7 +1051,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                 </div>
               )}
 
-              {/* Formulario de Alta Individual con Selectores de Especie y Cliente */}
+              {/* Formulario de Alta Individual con Selectores de Especie, Cliente y Carga Manual de Semillero */}
               {plantaConfig.especies.length === 0 || plantaConfig.clientes.length === 0 ? (
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-center gap-2.5">
                   <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
@@ -996,7 +1065,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
               ) : (
                 <form onSubmit={handleAddVariedadRelacional} className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-4 bg-white rounded-xl border border-purple-200/80 shadow-xs">
                   {/* 1. Nombre de la Variedad */}
-                  <div className="sm:col-span-4">
+                  <div className="sm:col-span-3">
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
                       Nombre de Variedad *
                     </label>
@@ -1004,16 +1073,16 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                       type="text"
                       value={nuevaVariedadNombre}
                       onChange={(e) => setNuevaVariedadNombre(e.target.value)}
-                      placeholder="Ej: DM 46i20, CASUARINA..."
+                      placeholder="Ej: DM40E25, 43EE53..."
                       className="w-full px-3 py-2 bg-slate-50 focus:bg-white text-xs font-bold text-slate-800 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 uppercase"
                       required
                     />
                   </div>
 
                   {/* 2. Selector de Especie (Especies_DB) */}
-                  <div className="sm:col-span-3">
+                  <div className="sm:col-span-2">
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-                      Especie (Especies_DB) *
+                      Especie *
                     </label>
                     <select
                       value={nuevaVariedadEspecie}
@@ -1032,7 +1101,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                   {/* 3. Selector de Cliente (Clientes_DB) */}
                   <div className="sm:col-span-3">
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-                      Cliente (Clientes_DB) *
+                      Cliente *
                     </label>
                     <select
                       value={nuevaVariedadCliente}
@@ -1048,7 +1117,21 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                     </select>
                   </div>
 
-                  {/* 4. Botón de Agregar */}
+                  {/* 4. Semillero (Carga Manual) */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Semillero (Manual)
+                    </label>
+                    <input
+                      type="text"
+                      value={nuevaVariedadSemillero}
+                      onChange={(e) => setNuevaVariedadSemillero(e.target.value)}
+                      placeholder="Ej: Don Mario, Stine..."
+                      className="w-full px-3 py-2 bg-slate-50 focus:bg-white text-xs font-semibold text-slate-800 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+
+                  {/* 5. Botón de Agregar */}
                   <div className="sm:col-span-2 flex items-end">
                     <button
                       type="submit"
@@ -1095,6 +1178,22 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                     {plantaConfig.clientes.map((cli) => (
                       <option key={`filter-cli-${cli}`} value={cli}>
                         {cli}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filtro por Semillero */}
+                <div className="flex-1 sm:max-w-xs">
+                  <select
+                    value={filtroVariedadSemillero}
+                    onChange={(e) => setFiltroVariedadSemillero(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-white text-xs font-medium text-slate-700 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-xs"
+                  >
+                    <option value="TODOS">Semillero: Todos ({semillerosDisponibles.length})</option>
+                    {semillerosDisponibles.map((sem) => (
+                      <option key={`filter-sem-${sem}`} value={sem}>
+                        {sem}
                       </option>
                     ))}
                   </select>
@@ -1214,7 +1313,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                                 className="w-full px-2.5 py-1.5 bg-white text-xs font-bold text-slate-800 border border-amber-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 uppercase"
                               />
                             </div>
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                               <div>
                                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
                                   Especie
@@ -1246,6 +1345,18 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                                     </option>
                                   ))}
                                 </select>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                                  Semillero (Manual)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editingVariedadSemillero}
+                                  onChange={(e) => setEditingVariedadSemillero(e.target.value)}
+                                  placeholder="Ej: Don Mario, Stine..."
+                                  className="w-full px-2 py-1 bg-white text-xs font-semibold text-slate-800 border border-amber-400 rounded-lg focus:outline-none"
+                                />
                               </div>
                             </div>
                             <div className="flex items-center justify-end gap-1.5 pt-1">
@@ -1294,6 +1405,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                                     setEditingVariedadNombre(item.nombre);
                                     setEditingVariedadEspecie(item.especie);
                                     setEditingVariedadCliente(item.cliente);
+                                    setEditingVariedadSemillero(item.semillero || '');
                                   }}
                                   className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
                                   title={`Editar variedad ${item.nombre}`}
@@ -1321,6 +1433,12 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                                 <Building2 className="w-3 h-3 text-sky-700" />
                                 <span>{item.cliente}</span>
                               </span>
+                              {item.semillero && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-800 bg-indigo-100/90 px-2 py-0.5 rounded-md border border-indigo-300">
+                                  <Award className="w-3 h-3 text-indigo-700" />
+                                  <span>Semillero: {item.semillero}</span>
+                                </span>
+                              )}
                             </div>
 
                             {/* Indicador de Uso en Planta */}

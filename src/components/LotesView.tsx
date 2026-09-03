@@ -237,6 +237,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
   const [loteToTratar, setLoteToTratar] = useState<Lote | null>(null);
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const [selectedIdBolsasLote, setSelectedIdBolsasLote] = useState<Lote | null>(null);
+  const [batchIdBolsasLotes, setBatchIdBolsasLotes] = useState<Lote[] | null>(null);
   const [selectedFichaLote, setSelectedFichaLote] = useState<Lote | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshToast, setRefreshToast] = useState<string | null>(null);
@@ -2021,6 +2022,23 @@ export const LotesView: React.FC<LotesViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Botón Vista Previa / Descargar ID Bolsas de Lotes Seleccionados */}
+              <button
+                type="button"
+                id="btn-vista-previa-id-bolsas-seleccionados"
+                onClick={() => {
+                  const selected = lotes.filter((l) => selectedLoteIds.includes(l.id));
+                  if (selected.length > 0) {
+                    setBatchIdBolsasLotes(selected);
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-xl shadow-md hover:shadow-lg transition cursor-pointer tracking-wider uppercase font-sans active:scale-95 border border-amber-300"
+                title={`Abrir Vista Previa y Descargar ID Bolsas de los ${selectedLoteIds.length} lotes seleccionados`}
+              >
+                <Tag className="w-4 h-4 text-slate-950 stroke-[2.5]" />
+                <span>Vista Previa / Descargar ID Bolsas ({selectedLoteIds.length})</span>
+              </button>
+
               {/* Botón Eliminar Seleccionados con Validación Estricta por Prompt */}
               <button
                 type="button"
@@ -3169,12 +3187,15 @@ export const LotesView: React.FC<LotesViewProps> = ({
         />
       )}
 
-      {/* Modal Generador de Etiquetas ID Bolsas (Individual por Lote) */}
-      {selectedIdBolsasLote && (
+      {/* Modal Generador y Vista Previa de Etiquetas ID Bolsas (Individual o Por Lotes Múltiples) */}
+      {(selectedIdBolsasLote || (batchIdBolsasLotes && batchIdBolsasLotes.length > 0)) && (
         <BatchPrintIdBolsasModal
-          isOpen={Boolean(selectedIdBolsasLote)}
-          lotes={[selectedIdBolsasLote]}
-          onClose={() => setSelectedIdBolsasLote(null)}
+          isOpen={Boolean(selectedIdBolsasLote || (batchIdBolsasLotes && batchIdBolsasLotes.length > 0))}
+          lotes={selectedIdBolsasLote ? [selectedIdBolsasLote] : batchIdBolsasLotes || []}
+          onClose={() => {
+            setSelectedIdBolsasLote(null);
+            setBatchIdBolsasLotes(null);
+          }}
         />
       )}
 

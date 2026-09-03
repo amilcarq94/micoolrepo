@@ -35,7 +35,8 @@ import {
   ScanLine,
   ChevronDown,
   ChevronUp,
-  ChevronsUpDown
+  ChevronsUpDown,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface ModoPlantaMobileViewProps {
@@ -90,6 +91,7 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
 }) => {
   // Pestañas principales de Planta Móvil: Silos, Mapa de Calor, Despachos (Playa)
   const [subTab, setSubTab] = useState<'SILOS' | 'MAPA_CALOR' | 'DESPACHOS_PLAYA'>('SILOS');
+  const [isNavDropdownOpen, setIsNavDropdownOpen] = useState(false);
   const [siloSeleccionado, setSiloSeleccionado] = useState<SiloId>('Silo 1');
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
 
@@ -305,107 +307,280 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
           unlockScannerAudio();
           onOpenQrScanner();
         }}
-        className="w-full relative overflow-hidden group bg-gradient-to-r from-[#005031] via-[#00603C] to-[#004729] hover:from-[#00603C] hover:to-[#005031] text-white p-4 sm:p-5 rounded-2xl shadow-lg shadow-[#00603C]/25 border-2 border-[#C9922E] hover:border-[#dfab43] transition-all duration-200 cursor-pointer active:scale-[0.985] flex items-center justify-between gap-4 ring-4 ring-[#C9922E]/20"
+        className="w-full relative overflow-hidden group bg-gradient-to-r from-[#003d24] via-[#00603C] to-[#004e2e] hover:from-[#004e2e] hover:to-[#00603C] text-white p-5 sm:p-7 rounded-3xl shadow-xl shadow-[#00603C]/35 border-2 border-[#C9922E] hover:border-[#f5ba42] transition-all duration-200 cursor-pointer active:scale-[0.985] flex items-center justify-between gap-4 sm:gap-6 ring-4 ring-[#C9922E]/25 min-h-[105px] sm:min-h-[120px]"
         title="Abrir Cámara para Escanear Código QR de Trazabilidad"
       >
-        {/* Glow animado de fondo */}
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+        {/* Glow animado y destello dinámico de fondo */}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+        <div className="absolute -top-12 -right-12 w-40 h-40 bg-[#C9922E]/15 rounded-full blur-2xl pointer-events-none" />
 
-        {/* Lado izquierdo: Ícono llamativo y texto grande */}
-        <div className="flex items-center gap-3.5 sm:gap-4.5 z-10">
-          <div className="w-13 h-13 sm:w-16 sm:h-16 rounded-2xl bg-slate-950/30 backdrop-blur-xs border-2 border-[#C9922E] flex items-center justify-center shrink-0 shadow-inner group-hover:scale-105 transition-transform">
+        {/* Lado izquierdo: Ícono llamativo y texto maximizado */}
+        <div className="flex items-center gap-4 sm:gap-5 z-10 min-w-0">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-slate-950/40 backdrop-blur-md border-2 border-[#C9922E] flex items-center justify-center shrink-0 shadow-xl group-hover:scale-105 group-hover:border-[#f5ba42] transition-transform">
             <div className="relative flex items-center justify-center">
-              <QrCode className="w-8 h-8 sm:w-9 sm:h-9 text-[#C9922E]" />
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-[#C9922E] border border-black"></span>
+              <QrCode className="w-9 h-9 sm:w-11 sm:h-11 text-[#C9922E] drop-shadow-md" />
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-80"></span>
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-[#C9922E] border-2 border-black"></span>
               </span>
             </div>
           </div>
-          <div className="text-left">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-lg sm:text-xl font-black uppercase tracking-wider text-white font-sans drop-shadow-xs">
+          <div className="text-left min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="text-xl sm:text-2xl md:text-3xl font-black uppercase tracking-wider text-white font-sans drop-shadow-md leading-tight">
                 Escanear Código QR
               </span>
-              <span className="inline-flex items-center gap-1 text-[10.5px] font-mono font-black bg-[#C9922E] text-slate-950 px-2.5 py-0.5 rounded-full uppercase shadow-xs">
-                <Camera className="w-3.5 h-3.5" /> Cámara
+              <span className="inline-flex items-center gap-1.5 text-xs font-mono font-black bg-[#C9922E] text-slate-950 px-3 py-0.5 rounded-full uppercase shadow-md">
+                <Camera className="w-3.5 h-3.5" /> Cámara Activa
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-emerald-100/90 font-medium mt-0.5">
+            <p className="text-xs sm:text-sm text-emerald-100 font-medium leading-relaxed">
               Lectura de alta velocidad para Bolsas, Bolsones y Lotes
             </p>
           </div>
         </div>
 
-        {/* Lado derecho: Botón táctil indicador */}
-        <div className="hidden xs:flex items-center gap-2 z-10 shrink-0 bg-white/15 group-hover:bg-white/25 border border-white/25 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wider text-white shadow-xs transition-colors">
-          <ScanLine className="w-4 h-4 sm:w-5 sm:h-5 text-[#C9922E]" />
-          <span>Activar</span>
+        {/* Lado derecho: Botón táctil indicador prominente */}
+        <div className="flex items-center gap-2.5 z-10 shrink-0 bg-white/20 group-hover:bg-white/30 border border-white/30 px-4 sm:px-5 py-3 sm:py-3.5 rounded-2xl text-xs sm:text-sm font-black uppercase tracking-wider text-white shadow-lg transition-all group-hover:scale-105">
+          <ScanLine className="w-5 h-5 text-[#C9922E]" />
+          <span className="hidden xs:inline">Escanear</span>
         </div>
       </button>
 
-      {/* 2. SELECTOR DE PESTAÑAS PRINCIPALES: SILOS, MAPA DE CALOR, MIS ÓRDENES */}
-      <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/60 shadow-2xs">
-        {/* Botón 1: Silos */}
-        <button
-          id="btn-subtab-silos"
-          type="button"
-          onClick={() => setSubTab('SILOS')}
-          className={`py-3 px-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer ${
-            subTab === 'SILOS'
-              ? 'bg-[#00603C] text-white shadow-md'
-              : 'text-slate-600 hover:text-slate-950 hover:bg-white/60'
-          }`}
-        >
-          <SiloIcon size={24} color={subTab === 'SILOS' ? '#ffffff' : '#00603C'} className="silo-icon-institucional shrink-0" />
-          <span className="truncate">Silos</span>
-          <span
-            className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0 ${
-              subTab === 'SILOS' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-            }`}
+      {/* 2. BOTÓN DESPLEGABLE VERTICAL: SILOS, MAPA DE CALOR, PLAYA */}
+      <div className="w-full">
+        {!isNavDropdownOpen ? (
+          /* Estado Colapsado: Solo es visible el botón seleccionado actual con indicador para desplegar */
+          <button
+            type="button"
+            id="btn-nav-dropdown-toggle"
+            onClick={() => setIsNavDropdownOpen(true)}
+            className="w-full bg-white hover:bg-slate-50/90 text-slate-900 p-3 sm:p-3.5 rounded-2xl border-2 border-[#00603C]/30 hover:border-[#00603C] shadow-sm hover:shadow-md transition-all duration-150 cursor-pointer flex items-center justify-between gap-3 text-left group active:scale-[0.99]"
+            title="Tocar para desplegar todas las opciones de Planta Móvil"
           >
-            6
-          </span>
-        </button>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 rounded-xl bg-[#00603C]/10 border border-[#00603C]/20 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+                {subTab === 'SILOS' && (
+                  <SiloIcon size={24} color="#00603C" className="silo-icon-institucional shrink-0" />
+                )}
+                {subTab === 'MAPA_CALOR' && (
+                  <Flame className="w-6 h-6 text-amber-600 shrink-0" />
+                )}
+                {subTab === 'DESPACHOS_PLAYA' && (
+                  <ClipboardList className="w-6 h-6 text-sky-700 shrink-0" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">
+                    VISTA ACTIVA:
+                  </span>
+                  <span className="text-sm font-black text-slate-950 uppercase tracking-wide">
+                    {subTab === 'SILOS' && 'Silos'}
+                    {subTab === 'MAPA_CALOR' && 'Mapa de Calor'}
+                    {subTab === 'DESPACHOS_PLAYA' && 'Playa (Despachos)'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 truncate mt-0.5">
+                  {subTab === 'SILOS' && 'Control de capacidad, semáforo y estado de los 6 silos'}
+                  {subTab === 'MAPA_CALOR' && 'Distribución térmica de bolsas por sectores de acopio'}
+                  {subTab === 'DESPACHOS_PLAYA' && `${ordenesCarga.length} órdenes registradas para carga y camiones`}
+                </p>
+              </div>
+            </div>
 
-        {/* Botón 2: Mapa de Calor de Acopio */}
-        <button
-          id="btn-subtab-mapa-calor"
-          type="button"
-          onClick={() => setSubTab('MAPA_CALOR')}
-          className={`py-3 px-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer ${
-            subTab === 'MAPA_CALOR'
-              ? 'bg-[#00603C] text-white shadow-md'
-              : 'text-slate-600 hover:text-slate-950 hover:bg-white/60'
-          }`}
-        >
-          <Flame className={`w-4 h-4 shrink-0 ${subTab === 'MAPA_CALOR' ? 'text-[#C9922E]' : 'text-slate-500'}`} />
-          <span className="truncate">Mapa de Calor</span>
-        </button>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#E3EFE7] text-[#00603C] font-black text-xs rounded-xl border border-[#00603C]/30 shrink-0 group-hover:bg-[#00603C] group-hover:text-white transition-colors">
+              <span className="hidden xs:inline">Cambiar</span>
+              <ChevronDown className="w-4 h-4" />
+            </div>
+          </button>
+        ) : (
+          /* Estado Desplegado: Se muestran todas las opciones ordenadas de manera vertical */
+          <div className="w-full bg-white rounded-2xl border-2 border-[#00603C] shadow-xl p-3 sm:p-4 space-y-2 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-xs">
+              <span className="font-sans font-bold uppercase tracking-wider text-slate-500">
+                Seleccionar Vista de Planta Móvil
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsNavDropdownOpen(false)}
+                className="flex items-center gap-1 text-slate-500 hover:text-slate-900 font-bold px-2 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <span>Cerrar</span>
+                <ChevronUp className="w-4 h-4" />
+              </button>
+            </div>
 
-        {/* Botón 3: Mis Órdenes (Playa) */}
-        <button
-          id="btn-subtab-despachos"
-          type="button"
-          onClick={() => setSubTab('DESPACHOS_PLAYA')}
-          className={`py-3 px-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer ${
-            subTab === 'DESPACHOS_PLAYA'
-              ? 'bg-[#00603C] text-white shadow-md'
-              : 'text-slate-600 hover:text-slate-950 hover:bg-white/60'
-          }`}
-        >
-          <ClipboardList className={`w-4 h-4 shrink-0 ${subTab === 'DESPACHOS_PLAYA' ? 'text-[#C9922E]' : 'text-slate-500'}`} />
-          <span className="truncate">Playa</span>
-          {ordenesCarga.length > 0 && (
-            <span
-              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0 ${
-                subTab === 'DESPACHOS_PLAYA' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-              }`}
-            >
-              {ordenesCarga.length}
-            </span>
-          )}
-        </button>
+            {/* Lista ordenada verticalmente de opciones */}
+            <div className="flex flex-col gap-2 pt-1">
+              {/* Opción 1: Silos */}
+              <button
+                type="button"
+                id="btn-dropdown-option-silos"
+                onClick={() => {
+                  setSubTab('SILOS');
+                  setIsNavDropdownOpen(false);
+                }}
+                className={`w-full p-3 rounded-xl transition-all flex items-center justify-between gap-3 text-left cursor-pointer border ${
+                  subTab === 'SILOS'
+                    ? 'bg-[#00603C] text-white border-[#00603C] shadow-md'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                      subTab === 'SILOS' ? 'bg-white/20' : 'bg-[#00603C]/10'
+                    }`}
+                  >
+                    <SiloIcon
+                      size={22}
+                      color={subTab === 'SILOS' ? '#ffffff' : '#00603C'}
+                      className="silo-icon-institucional shrink-0"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-sm uppercase tracking-wide">Silos</span>
+                      <span
+                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                          subTab === 'SILOS' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
+                        }`}
+                      >
+                        6 Silos
+                      </span>
+                    </div>
+                    <p
+                      className={`text-xs mt-0.5 truncate ${
+                        subTab === 'SILOS' ? 'text-emerald-100' : 'text-slate-500'
+                      }`}
+                    >
+                      Control de capacidad, semáforo y fichas técnicas de los 6 silos
+                    </p>
+                  </div>
+                </div>
+
+                {subTab === 'SILOS' ? (
+                  <CheckCircle2 className="w-5 h-5 text-amber-300 shrink-0" />
+                ) : (
+                  <span className="text-xs font-bold text-slate-400">Elegir</span>
+                )}
+              </button>
+
+              {/* Opción 2: Mapa de Calor */}
+              <button
+                type="button"
+                id="btn-dropdown-option-mapa-calor"
+                onClick={() => {
+                  setSubTab('MAPA_CALOR');
+                  setIsNavDropdownOpen(false);
+                }}
+                className={`w-full p-3 rounded-xl transition-all flex items-center justify-between gap-3 text-left cursor-pointer border ${
+                  subTab === 'MAPA_CALOR'
+                    ? 'bg-[#00603C] text-white border-[#00603C] shadow-md'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                      subTab === 'MAPA_CALOR' ? 'bg-white/20' : 'bg-amber-500/10'
+                    }`}
+                  >
+                    <Flame
+                      className={`w-5 h-5 shrink-0 ${
+                        subTab === 'MAPA_CALOR' ? 'text-amber-300' : 'text-amber-600'
+                      }`}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-sm uppercase tracking-wide">Mapa de Calor</span>
+                      <span
+                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                          subTab === 'MAPA_CALOR' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        Acopio
+                      </span>
+                    </div>
+                    <p
+                      className={`text-xs mt-0.5 truncate ${
+                        subTab === 'MAPA_CALOR' ? 'text-emerald-100' : 'text-slate-500'
+                      }`}
+                    >
+                      Monitoreo térmico y distribución de bolsas por sectores de acopio
+                    </p>
+                  </div>
+                </div>
+
+                {subTab === 'MAPA_CALOR' ? (
+                  <CheckCircle2 className="w-5 h-5 text-amber-300 shrink-0" />
+                ) : (
+                  <span className="text-xs font-bold text-slate-400">Elegir</span>
+                )}
+              </button>
+
+              {/* Opción 3: Playa */}
+              <button
+                type="button"
+                id="btn-dropdown-option-despachos"
+                onClick={() => {
+                  setSubTab('DESPACHOS_PLAYA');
+                  setIsNavDropdownOpen(false);
+                }}
+                className={`w-full p-3 rounded-xl transition-all flex items-center justify-between gap-3 text-left cursor-pointer border ${
+                  subTab === 'DESPACHOS_PLAYA'
+                    ? 'bg-[#00603C] text-white border-[#00603C] shadow-md'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                      subTab === 'DESPACHOS_PLAYA' ? 'bg-white/20' : 'bg-sky-500/10'
+                    }`}
+                  >
+                    <ClipboardList
+                      className={`w-5 h-5 shrink-0 ${
+                        subTab === 'DESPACHOS_PLAYA' ? 'text-amber-300' : 'text-sky-700'
+                      }`}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-sm uppercase tracking-wide">Playa</span>
+                      {ordenesCarga.length > 0 && (
+                        <span
+                          className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                            subTab === 'DESPACHOS_PLAYA'
+                              ? 'bg-white/20 text-white'
+                              : 'bg-sky-100 text-sky-800'
+                          }`}
+                        >
+                          {ordenesCarga.length} órdenes
+                        </span>
+                      )}
+                    </div>
+                    <p
+                      className={`text-xs mt-0.5 truncate ${
+                        subTab === 'DESPACHOS_PLAYA' ? 'text-emerald-100' : 'text-slate-500'
+                      }`}
+                    >
+                      Gestión de órdenes de carga, camiones y despachos en planta
+                    </p>
+                  </div>
+                </div>
+
+                {subTab === 'DESPACHOS_PLAYA' ? (
+                  <CheckCircle2 className="w-5 h-5 text-amber-300 shrink-0" />
+                ) : (
+                  <span className="text-xs font-bold text-slate-400">Elegir</span>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ========================================================================= */}

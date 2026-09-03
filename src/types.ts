@@ -26,6 +26,7 @@ export interface VariedadItem {
   nombre: string;
   especie: string;
   cliente: string;
+  semillero?: string;
   idEspecie?: string;
   idCliente?: string;
 }
@@ -40,23 +41,56 @@ export interface PlantaConfig {
   tratamientos: string[];
 }
 
-export const VARIEDADES_DB_DEFAULT: VariedadItem[] = [
-  { id: 'var-soja-sd-casuarina', nombre: 'CASUARINA', especie: 'Soja', cliente: 'San Diego Semillas' },
-  { id: 'var-soja-sd-catalpa', nombre: 'CATALPA', especie: 'Soja', cliente: 'San Diego Semillas' },
-  { id: 'var-soja-sd-araucaria', nombre: 'ARAUCARIA', especie: 'Soja', cliente: 'San Diego Semillas' },
-  { id: 'var-soja-sd-tipa', nombre: 'DM TIPA', especie: 'Soja', cliente: 'San Diego Semillas' },
-  { id: 'var-soja-sd-dm46i20', nombre: 'DM 46i20', especie: 'Soja', cliente: 'San Diego Semillas' },
-  { id: 'var-soja-sd-dm50i22', nombre: 'DON MARIO 50i22', especie: 'Soja', cliente: 'San Diego Semillas' },
-  { id: 'var-soja-er-pehuen', nombre: 'PEHUEN', especie: 'Soja', cliente: 'Eco Rural' },
-  { id: 'var-soja-pam-balltrap', nombre: 'BALLTRAP', especie: 'Soja', cliente: 'Pampa' },
-  { id: 'var-soja-st-p46a03', nombre: 'P46A03', especie: 'Soja', cliente: 'Stine' },
-  { id: 'var-trigo-sd-baguette620', nombre: 'BAGUETTE 620', especie: 'Trigo', cliente: 'San Diego Semillas' },
-  { id: 'var-trigo-sd-sy120', nombre: 'SY 120', especie: 'Trigo', cliente: 'San Diego Semillas' },
-  { id: 'var-trigo-er-bio45', nombre: 'BIO 4.5', especie: 'Trigo', cliente: 'Eco Rural' },
-  { id: 'var-trigo-pam-aca360', nombre: 'ACA 360', especie: 'Trigo', cliente: 'Pampa' },
-  { id: 'var-arveja-sd-sarina', nombre: 'SARINA', especie: 'Arveja', cliente: 'San Diego Semillas' },
-  { id: 'var-arveja-ef-pulsar', nombre: 'PULSAR', especie: 'Arveja', cliente: 'Elementa Foods' },
+export const VARIEDADES_DATASET_OFICIAL: { ESPECIE: string; VARIEDAD: string; CLIENTE: string; SEMILLERO: string }[] = [
+  {"ESPECIE": "Soja", "VARIEDAD": "DM40E25", "CLIENTE": "San Diego", "SEMILLERO": "Don Mario"},
+  {"ESPECIE": "Soja", "VARIEDAD": "DM40E25", "CLIENTE": "Eco Rural", "SEMILLERO": "Don Mario"},
+  {"ESPECIE": "Soja", "VARIEDAD": "P42A84SE", "CLIENTE": "Pampa", "SEMILLERO": "Pioneer"},
+  {"ESPECIE": "Soja", "VARIEDAD": "DM40E25E", "CLIENTE": "Eco Rural", "SEMILLERO": "Don Mario"},
+  {"ESPECIE": "Soja", "VARIEDAD": "DM40E25E", "CLIENTE": "San Diego", "SEMILLERO": "Don Mario"},
+  {"ESPECIE": "Soja", "VARIEDAD": "DM46E25", "CLIENTE": "Eco Rural", "SEMILLERO": "Don Mario"},
+  {"ESPECIE": "Soja", "VARIEDAD": "DM46E25", "CLIENTE": "San Diego", "SEMILLERO": "Don Mario"},
+  {"ESPECIE": "Soja", "VARIEDAD": "43EE53", "CLIENTE": "Stine", "SEMILLERO": "Stine"},
+  {"ESPECIE": "Soja", "VARIEDAD": "45EB52E", "CLIENTE": "Stine", "SEMILLERO": "Stine"},
+  {"ESPECIE": "Soja", "VARIEDAD": "46EA23", "CLIENTE": "Stine", "SEMILLERO": "Stine"},
+  {"ESPECIE": "Soja", "VARIEDAD": "47EA32", "CLIENTE": "Stine", "SEMILLERO": "Stine"},
+  {"ESPECIE": "Soja", "VARIEDAD": "P46A03E", "CLIENTE": "Pampa", "SEMILLERO": "Pioneer"},
+  {"ESPECIE": "Soja", "VARIEDAD": "25EB32", "CLIENTE": "Stine", "SEMILLERO": "Stine"},
+  {"ESPECIE": "Soja", "VARIEDAD": "31EC21", "CLIENTE": "Stine", "SEMILLERO": "Stine"},
+  {"ESPECIE": "Soja", "VARIEDAD": "33EA52", "CLIENTE": "Stine", "SEMILLERO": "Stine"},
+  {"ESPECIE": "Soja", "VARIEDAD": "38EF52", "CLIENTE": "Stine", "SEMILLERO": "Stine"},
+  {"ESPECIE": "Soja", "VARIEDAD": "40EC52", "CLIENTE": "Stine", "SEMILLERO": "Stine"},
+  {"ESPECIE": "Soja", "VARIEDAD": "DM40R26", "CLIENTE": "San Diego", "SEMILLERO": "Don Mario"},
+  {"ESPECIE": "Soja", "VARIEDAD": "DM40R26", "CLIENTE": "Eco Rural", "SEMILLERO": "Don Mario"},
+  {"ESPECIE": "Soja", "VARIEDAD": "DM38E26", "CLIENTE": "Eco Rural", "SEMILLERO": "Don Mario"},
+  {"ESPECIE": "Soja", "VARIEDAD": "DM38E26", "CLIENTE": "San Diego", "SEMILLERO": "Don Mario"},
+  {"ESPECIE": "Soja", "VARIEDAD": "48EC53", "CLIENTE": "Stine", "SEMILLERO": "Stine"},
+  {"ESPECIE": "Soja", "VARIEDAD": "50EE59", "CLIENTE": "Stine", "SEMILLERO": "Stine"},
+  {"ESPECIE": "Soja", "VARIEDAD": "DM46R25", "CLIENTE": "San Diego", "SEMILLERO": "Don Mario"}
 ];
+
+// Función para eliminar duplicados exactos en cliente-variedad
+export function depurarDatosVariedades(datosEntrada: typeof VARIEDADES_DATASET_OFICIAL): VariedadItem[] {
+  const mapa = new Map<string, VariedadItem>();
+  
+  datosEntrada.forEach(item => {
+    const clave = `${item.ESPECIE}-${item.VARIEDAD}-${item.CLIENTE}`;
+    if (!mapa.has(clave)) {
+      const slugCli = item.CLIENTE.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const slugVar = item.VARIEDAD.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      mapa.set(clave, {
+        id: `var-${slugCli}-${slugVar}`,
+        nombre: item.VARIEDAD,
+        especie: item.ESPECIE,
+        cliente: item.CLIENTE,
+        semillero: item.SEMILLERO,
+      });
+    }
+  });
+  
+  return Array.from(mapa.values());
+}
+
+export const VARIEDADES_DB_DEFAULT: VariedadItem[] = depurarDatosVariedades(VARIEDADES_DATASET_OFICIAL);
 
 /**
  * Consulta condicional de filtrado reactivo de variedades:
@@ -71,14 +105,17 @@ export function getVariedadesVisibles(
   const espNorm = especie.trim().toLowerCase();
   const cliNorm = cliente.trim().toLowerCase();
 
-  const list = Array.isArray(variedadesDb)
+  const list = Array.isArray(variedadesDb) && variedadesDb.length > 0
     ? variedadesDb
     : VARIEDADES_DB_DEFAULT;
 
   return list.filter((v) => {
     const vEsp = (v.especie || '').trim().toLowerCase();
     const vCli = (v.cliente || '').trim().toLowerCase();
-    return vEsp === espNorm && vCli === cliNorm;
+    // Coincidencia exacta o flexible entre "San Diego" y "San Diego Semillas"
+    const matchCliente = vCli === cliNorm ||
+      (cliNorm.startsWith('san diego') && vCli.startsWith('san diego'));
+    return vEsp === espNorm && matchCliente;
   });
 }
 
@@ -91,7 +128,7 @@ export function getVariedadesPorEspecie(
 ): VariedadItem[] {
   if (!especie) return [];
   const espNorm = especie.trim().toLowerCase();
-  const list = Array.isArray(variedadesDb)
+  const list = Array.isArray(variedadesDb) && variedadesDb.length > 0
     ? variedadesDb
     : VARIEDADES_DB_DEFAULT;
 
@@ -103,10 +140,11 @@ export function getVariedadesPorEspecie(
 
 export const PLANTA_CONFIG_DEFAULT: PlantaConfig = {
   clientes: [
-    'San Diego Semillas',
+    'San Diego',
     'Eco Rural',
     'Pampa',
     'Stine',
+    'San Diego Semillas',
     'Elementa Foods'
   ],
   especies: [
@@ -119,23 +157,7 @@ export const PLANTA_CONFIG_DEFAULT: PlantaConfig = {
     'Centeno',
     'Avena'
   ],
-  variedades: [
-    'CASUARINA',
-    'CATALPA',
-    'ARAUCARIA',
-    'PEHUEN',
-    'DM TIPA',
-    'BALLTRAP',
-    'DM 46i20',
-    'P46A03',
-    'SY 120',
-    'BIO 4.5',
-    'ACA 360',
-    'BAGUETTE 620',
-    'DON MARIO 50i22',
-    'SARINA',
-    'PULSAR'
-  ],
+  variedades: Array.from(new Set(VARIEDADES_DB_DEFAULT.map(v => v.nombre))),
   variedadesDb: VARIEDADES_DB_DEFAULT,
   tipos: [
     'Final',

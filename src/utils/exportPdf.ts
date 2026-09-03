@@ -89,11 +89,17 @@ export async function exportIdBolsasPagesAsPdf(
         onProgress(i + 1, sheetElementsOrIds.length);
       }
 
-      // Desactivar temporalmente cualquier clase oculta de previsualización en pantalla
+      // Desactivar temporalmente cualquier clase de borde, sombra o previsualización oculta
       const hadHiddenClass = el.classList.contains('id-bolsas-screen-hidden');
       if (hadHiddenClass) {
         el.classList.remove('id-bolsas-screen-hidden');
       }
+      const hadShadow = el.classList.contains('shadow-2xl');
+      if (hadShadow) el.classList.remove('shadow-2xl');
+      const hadBorder = el.classList.contains('border');
+      if (hadBorder) el.classList.remove('border', 'border-gray-300');
+      const hadRounded = el.classList.contains('rounded-sm');
+      if (hadRounded) el.classList.remove('rounded-sm');
 
       // Guardar estilos inline previos
       const prevDisplay = el.style.display;
@@ -102,14 +108,21 @@ export async function exportIdBolsasPagesAsPdf(
       const prevWidth = el.style.width;
       const prevHeight = el.style.height;
       const prevPadding = el.style.padding;
+      const prevMargin = el.style.margin;
       const prevBoxShadow = el.style.boxShadow;
       const prevBorder = el.style.border;
       const prevBorderRadius = el.style.borderRadius;
       const prevBoxSizing = el.style.boxSizing;
       const prevOverflow = el.style.overflow;
+      const prevJustifyContent = el.style.justifyContent;
+      const prevAlignItems = el.style.alignItems;
+      const prevFlexDirection = el.style.flexDirection;
 
-      // Forzar dimensiones estrictas A4, márgenes sin bordes cortados y visibilidad perfecta
+      // Forzar dimensiones estrictas A4, centrado óptimo sin bordes cortados ni márgenes asimétricos
       el.style.setProperty('display', 'flex', 'important');
+      el.style.setProperty('flex-direction', 'column', 'important');
+      el.style.setProperty('justify-content', 'space-between', 'important');
+      el.style.setProperty('align-items', 'center', 'important');
       el.style.setProperty('visibility', 'visible', 'important');
       el.style.setProperty('width', '210mm', 'important');
       el.style.setProperty('min-width', '210mm', 'important');
@@ -118,9 +131,11 @@ export async function exportIdBolsasPagesAsPdf(
       el.style.setProperty('min-height', '297mm', 'important');
       el.style.setProperty('max-height', '297mm', 'important');
       el.style.setProperty('box-sizing', 'border-box', 'important');
-      el.style.setProperty('padding', '8mm 10mm 8mm 10mm', 'important');
+      el.style.setProperty('padding', '6mm 8mm 6mm 8mm', 'important');
+      el.style.setProperty('margin', '0 auto', 'important');
       el.style.setProperty('box-shadow', 'none', 'important');
       el.style.setProperty('border', 'none', 'important');
+      el.style.setProperty('outline', 'none', 'important');
       el.style.setProperty('border-radius', '0px', 'important');
       el.style.setProperty('background-color', '#FFFFFF', 'important');
       el.style.setProperty('overflow', 'hidden', 'important');
@@ -138,20 +153,26 @@ export async function exportIdBolsasPagesAsPdf(
       });
 
       // Restaurar estilos y clases previos
-      if (hadHiddenClass) {
-        el.classList.add('id-bolsas-screen-hidden');
-      }
+      if (hadHiddenClass) el.classList.add('id-bolsas-screen-hidden');
+      if (hadShadow) el.classList.add('shadow-2xl');
+      if (hadBorder) el.classList.add('border', 'border-gray-300');
+      if (hadRounded) el.classList.add('rounded-sm');
+
       el.style.display = prevDisplay;
       el.style.visibility = prevVisibility;
       el.style.position = prevPosition;
       el.style.width = prevWidth;
       el.style.height = prevHeight;
       el.style.padding = prevPadding;
+      el.style.margin = prevMargin;
       el.style.boxShadow = prevBoxShadow;
       el.style.border = prevBorder;
       el.style.borderRadius = prevBorderRadius;
       el.style.boxSizing = prevBoxSizing;
       el.style.overflow = prevOverflow;
+      el.style.justifyContent = prevJustifyContent;
+      el.style.alignItems = prevAlignItems;
+      el.style.flexDirection = prevFlexDirection;
 
       if (processedCount > 0) {
         pdf.addPage('a4', 'portrait');
