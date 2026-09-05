@@ -10,6 +10,7 @@ import { validateLoteLimits, getLoteLimits } from '../utils/loteLimits';
 import { getCampaniaIdFromDate } from '../utils/campanias';
 import { generarLoteId } from '../utils/loteId';
 import { CalculoBolsasDashboard } from './CalculoBolsasDashboard';
+import { PrecargaMovimientosTab } from './PrecargaMovimientosTab';
 import { CategoriaEnvaseKg, LoteDesgloseItem } from '../utils/calculoBolsas';
 import {
   PackagePlus,
@@ -27,7 +28,8 @@ import {
   FlaskConical,
   X,
   Calculator,
-  FileText
+  FileText,
+  ArrowRightLeft
 } from 'lucide-react';
 
 const TIPOS_LOTE: TipoLoteType[] = ['Intermedio', 'Final'];
@@ -76,8 +78,8 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
 }) => {
   const activeLimits = loteLimits || getLoteLimits();
 
-  // Submódulo activo: 'formulario' (Precarga de Lotes) | 'calculo-bolsas' (Dashboard Cálculo de Bolsas)
-  const [activeSubModule, setActiveSubModule] = useState<'formulario' | 'calculo-bolsas'>('formulario');
+  // Submódulo activo: 'precarga-produccion' (reemplaza a Precarga de Lotes) | 'precarga-movimientos' | 'calculo-bolsas'
+  const [activeSubModule, setActiveSubModule] = useState<'precarga-produccion' | 'precarga-movimientos' | 'calculo-bolsas'>('precarga-produccion');
 
   // Helper para buscar el mayor número correlativo
   const getNextLoteNumber = (offset = 0, currentList: LoteDraftItem[] = []) => {
@@ -445,7 +447,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
         return prev ? `${prev} | ${extra}` : extra;
       });
     }
-    setActiveSubModule('formulario');
+    setActiveSubModule('precarga-produccion');
     const detalleLotesDecimal = config.cantidadLotes1Decimal && config.permitirLotesConDecimal
       ? `(${config.cantidadLotes1Decimal} lotes en total, incluyendo lote fraccionario)`
       : `(${newDrafts.length} lote(s) de ${config.stockBolsasPorLote} bolsas)`;
@@ -459,23 +461,35 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
       <div className="bg-gradient-to-r from-emerald-950 via-[#00603C] to-slate-900 text-white rounded-2xl p-6 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="p-3 bg-amber-500/20 rounded-2xl border border-amber-400/40 text-amber-300 shrink-0">
-            <PackagePlus className="w-8 h-8" />
+            {activeSubModule === 'precarga-movimientos' ? (
+              <ArrowRightLeft className="w-8 h-8" />
+            ) : (
+              <PackagePlus className="w-8 h-8" />
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono font-bold tracking-widest text-amber-300 uppercase bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/20">
-                Sección: Precarga de Lotes
+                {activeSubModule === 'precarga-movimientos'
+                  ? 'Sección: Precarga de Movimientos'
+                  : 'Sección: Precarga de Producción'}
               </span>
               <span className="text-[10px] font-bold text-emerald-200 bg-emerald-800/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
                 AgroAbacus Suite
               </span>
             </div>
             <h2 className="font-serif text-2xl md:text-3xl font-bold mt-1">
-              {activeSubModule === 'formulario' ? 'Generar Lote en Precarga' : 'Dashboard: Cálculo de Bolsas'}
+              {activeSubModule === 'precarga-produccion'
+                ? 'Precarga de Producción'
+                : activeSubModule === 'precarga-movimientos'
+                ? 'Precarga de Movimientos'
+                : 'Dashboard: Cálculo de Bolsas'}
             </h2>
             <p className="text-xs text-emerald-100 max-w-2xl mt-1">
-              {activeSubModule === 'formulario'
-                ? 'Alta rápida individual o múltiple. Precargado con 35 bolsas x 800 kg y tratamiento Sin tratar por defecto.'
+              {activeSubModule === 'precarga-produccion'
+                ? 'Alta rápida individual o múltiple de lotes de producción (reemplaza a precarga de lotes). Precargado con 35 bolsas x 800 kg y tratamiento Sin tratar por defecto.'
+                : activeSubModule === 'precarga-movimientos'
+                ? 'Filtre lotes en stock, seleccione orden de movimiento y transforme lotes (Intermedio a Final, Final Tratado) generando lotes MOV y descontando stock inicial.'
                 : 'Estimación matemática según stock bruto en silos, % merma y envases (25, 40, 800 kg), o consolidación de ingresos.'}
             </p>
           </div>
@@ -483,27 +497,29 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
 
         {/* Action buttons: Sub-navigation & Volver */}
         <div className="flex flex-wrap items-center gap-2.5 shrink-0 w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={() => setActiveSubModule(activeSubModule === 'formulario' ? 'calculo-bolsas' : 'formulario')}
-            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-wider transition cursor-pointer shadow-sm ${
-              activeSubModule === 'calculo-bolsas'
-                ? 'bg-white text-emerald-950 hover:bg-slate-100'
-                : 'bg-amber-400 text-slate-950 hover:bg-amber-300'
-            }`}
-          >
-            {activeSubModule === 'formulario' ? (
-              <>
-                <Calculator className="w-4 h-4 text-slate-950" />
-                <span>Abrir Cálculo de Bolsas</span>
-              </>
-            ) : (
-              <>
-                <FileText className="w-4 h-4 text-emerald-950" />
-                <span>Ir al Formulario de Lotes</span>
-              </>
-            )}
-          </button>
+          {activeSubModule !== 'precarga-movimientos' && (
+            <button
+              type="button"
+              onClick={() => setActiveSubModule(activeSubModule === 'precarga-produccion' ? 'calculo-bolsas' : 'precarga-produccion')}
+              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-wider transition cursor-pointer shadow-sm ${
+                activeSubModule === 'calculo-bolsas'
+                  ? 'bg-white text-emerald-950 hover:bg-slate-100'
+                  : 'bg-amber-400 text-slate-950 hover:bg-amber-300'
+              }`}
+            >
+              {activeSubModule === 'precarga-produccion' ? (
+                <>
+                  <Calculator className="w-4 h-4 text-slate-950" />
+                  <span>Abrir Cálculo de Bolsas</span>
+                </>
+              ) : (
+                <>
+                  <FileText className="w-4 h-4 text-emerald-950" />
+                  <span>Ir a Precarga de Producción</span>
+                </>
+              )}
+            </button>
+          )}
 
           <button
             type="button"
@@ -511,52 +527,67 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition border border-white/20 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Volver sin guardar</span>
+            <span>Volver a Lotes</span>
           </button>
         </div>
       </div>
 
-      {/* Selector de Submódulo (Tabs Horizontales) */}
+      {/* Selector de Submódulo: 2 OPCIONES DISPONIBLES EN EL SECTOR:
+          1 PRECARGA DE PRODUCCION (REEMPLAZA A PRECARGA DE LOTES)
+          2 PRECARGA DE MOVIMIENTOS */}
       <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
         <button
           type="button"
-          onClick={() => setActiveSubModule('formulario')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-            activeSubModule === 'formulario'
-              ? 'bg-white text-[#00603C] shadow-sm font-black'
-              : 'text-slate-600 hover:text-slate-900'
+          id="btn-tab-precarga-produccion"
+          onClick={() => setActiveSubModule('precarga-produccion')}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
+            activeSubModule === 'precarga-produccion' || activeSubModule === 'calculo-bolsas'
+              ? 'bg-white text-[#00603C] shadow-md font-black border border-slate-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
           }`}
         >
-          <FileText className="w-4 h-4" />
-          <span>1. Formulario de Precarga ({draftLotes.length} Lote{draftLotes.length !== 1 ? 's' : ''})</span>
+          <FileText className="w-4 h-4 text-emerald-700" />
+          <span>1. Precarga de Producción ({draftLotes.length} Lote{draftLotes.length !== 1 ? 's' : ''})</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveSubModule('calculo-bolsas')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-            activeSubModule === 'calculo-bolsas'
-              ? 'bg-white text-[#00603C] shadow-sm font-black'
-              : 'text-slate-600 hover:text-slate-900'
+          id="btn-tab-precarga-movimientos"
+          onClick={() => setActiveSubModule('precarga-movimientos')}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
+            activeSubModule === 'precarga-movimientos'
+              ? 'bg-blue-600 text-white shadow-md font-black'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
           }`}
         >
-          <Calculator className="w-4 h-4 text-amber-600" />
-          <span>2. Dashboard: Cálculo de Bolsas (Silos, Merma & Consolidado)</span>
-          <span className="text-[10px] bg-amber-100 text-amber-900 font-mono font-black px-1.5 py-0.2 rounded-md">
-            2 Opciones
+          <ArrowRightLeft className="w-4 h-4 text-blue-200" />
+          <span>2. Precarga de Movimientos</span>
+          <span className={`text-[10px] font-mono font-black px-2 py-0.5 rounded-full ${
+            activeSubModule === 'precarga-movimientos' ? 'bg-blue-800 text-white' : 'bg-blue-100 text-blue-900'
+          }`}>
+            Stock &rarr; MOV
           </span>
         </button>
       </div>
 
-      {/* RENDERIZADO DEL DASHBOARD O DEL FORMULARIO */}
-      {activeSubModule === 'calculo-bolsas' ? (
+      {/* RENDERIZADO SEGÚN SUBMÓDULO ACTIVO */}
+      {activeSubModule === 'precarga-movimientos' ? (
+        <PrecargaMovimientosTab
+          lotes={lotes}
+          ordenesProceso={ordenesProceso}
+          clientes={clientes}
+          especies={especies}
+          onSaveLote={onSaveLote}
+          onNavigateToLotes={onNavigateToLotes}
+        />
+      ) : activeSubModule === 'calculo-bolsas' ? (
         <CalculoBolsasDashboard
           siloStocks={siloStocks}
           movimientosSilo={movimientosSilo}
           clientes={clientes}
           especies={especies}
           onAplicarAPrecarga={handleAplicarDesdeCalculoBolsas}
-          onCerrar={() => setActiveSubModule('formulario')}
+          onCerrar={() => setActiveSubModule('precarga-produccion')}
         />
       ) : (
         <>

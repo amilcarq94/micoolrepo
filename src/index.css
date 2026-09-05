@@ -280,6 +280,10 @@
   #ficha-silo-printable-card *,
   #grilla-seis-silos-printable,
   #grilla-seis-silos-printable *,
+  #reporte-silos-planilla-printable,
+  #reporte-silos-planilla-printable *,
+  .reporte-silos-modal-root,
+  .reporte-silos-modal-root *,
   #printable-id-bolsas-container,
   #printable-id-bolsas-container *,
   .pagina-etiquetas,
@@ -616,6 +620,7 @@
   .batch-print-modal-container,
   .ficha-silo-modal-root,
   .grilla-silos-modal-root,
+  .reporte-silos-modal-root,
   div[role="dialog"] {
     position: static !important;
     inset: auto !important;

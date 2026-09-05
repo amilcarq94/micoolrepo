@@ -8,11 +8,12 @@ import { Lote, MovimientoStock, EstadoLoteType, AuditLogEntry, OrdenProceso, Mov
 import { getLoteAuditoria } from '../utils/audit';
 import { formatNumberArg, formatKg, formatBolsas, formatDateStr } from '../utils/formatters';
 import { LogoSiloLoose } from './Logo';
-import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, SlidersHorizontal, ChevronDown, ChevronUp, Tag } from 'lucide-react';
 import { QrCodeModal } from './QrCodeModal';
 import { BarcodeLabelModal } from './BarcodeLabelModal';
 import { FichaTecnicaOficialCard } from './FichaTecnicaOficialCard';
 import { ImprimirFichaTecnica } from './ImprimirFichaTecnica';
+import { BatchPrintIdBolsasModal } from './BatchPrintIdBolsasModal';
 import { QrTrazabilidadLote } from './QrTrazabilidadLote';
 import { exportWithHtml2Pdf } from '../utils/exportPdf';
 import { printWithActiveClass } from '../utils/printHelper';
@@ -88,6 +89,8 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   const [showEditFichaDrawer, setShowEditFichaDrawer] = useState(false);
   const [showEditFichaModal, setShowEditFichaModal] = useState(false);
   const [showImprimirFichaModal, setShowImprimirFichaModal] = useState(false);
+  const [showBatchIdBolsasModal, setShowBatchIdBolsasModal] = useState(false);
+  const [nombreLoteColor, setNombreLoteColor] = useState<'default' | 'red'>('default');
   const [initialFichaEditMode, setInitialFichaEditMode] = useState(false);
   const [fichaModificada, setFichaModificada] = useState(false);
 
@@ -354,6 +357,38 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                 <span>{showEditFichaDrawer ? 'Ocultar Editor' : 'Editar Ficha'}</span>
                 {showEditFichaDrawer ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
               </button>
+
+              {/* Selector Color Nombre Lote (Negro / Rojo) */}
+              <div className="flex items-center gap-1 bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-300 text-xs">
+                <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider mr-1">Nombre Lote:</span>
+                <button
+                  type="button"
+                  id="btn-printing-nombre-lote-negro"
+                  onClick={() => setNombreLoteColor('default')}
+                  className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition cursor-pointer ${
+                    nombreLoteColor === 'default'
+                      ? 'bg-slate-800 text-white shadow-xs'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                  title="Color de texto estándar para el nombre de lote"
+                >
+                  Negro
+                </button>
+                <button
+                  type="button"
+                  id="btn-printing-nombre-lote-rojo"
+                  onClick={() => setNombreLoteColor('red')}
+                  className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                    nombreLoteColor === 'red'
+                      ? 'bg-red-600 text-white shadow-xs'
+                      : 'text-red-500 hover:text-red-700'
+                  }`}
+                  title="Color de texto rojo para el nombre de lote"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
+                  Rojo
+                </button>
+              </div>
 
               <button
                 type="button"
@@ -626,7 +661,11 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
 
         {/* Contenedor del Reporte Oficial Definitivo */}
         <div className="ficha-tecnica-a4-container max-w-4xl mx-auto print:max-w-none print:w-full">
-          <FichaTecnicaOficialCard id={`ficha-detail-card-${lote.id}`} lote={draftFichaLote} />
+          <FichaTecnicaOficialCard
+            id={`ficha-detail-card-${lote.id}`}
+            lote={draftFichaLote}
+            nombreLoteColor={nombreLoteColor}
+          />
         </div>
       </div>
     );
@@ -656,20 +695,31 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
             </h1>
           </div>
 
-          {/* Barra de Acciones Superior: VER FICHA TECNICA */}
+          {/* Barra de Acciones Superior: IMPRIMIR ETIQUETAS y IMPRIMIR FICHA TECNICA */}
           <div className="flex flex-wrap items-center gap-2.5" id="lote-detail-actions-bar">
-            {/* Botón VER FICHA TECNICA */}
+            {/* Botón IMPRIMIR ETIQUETAS */}
+            <button
+              id="btn-imprimir-etiquetas-lotedetail"
+              onClick={() => setShowBatchIdBolsasModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl transition text-xs font-black uppercase tracking-wider shadow-sm cursor-pointer active:scale-95 border border-amber-300"
+              title="Abrir módulo de impresión de etiquetas (ID Bolsas / Rótulos) con selector de color para identificación"
+            >
+              <Tag className="w-4 h-4 text-slate-950 stroke-[2.5]" />
+              <span>IMPRIMIR ETIQUETAS</span>
+            </button>
+
+            {/* Botón VER/IMPRIMIR FICHA TECNICA */}
             <button
               id="btn-ver-ficha-lotedetail"
               onClick={() => {
                 setInitialFichaEditMode(false);
                 setShowImprimirFichaModal(true);
               }}
-              className="flex items-center gap-2 px-5 py-2.5 bg-[#00603C] text-white border border-[#00603C] hover:bg-[#004D30] rounded-xl transition text-xs font-black uppercase tracking-wider shadow-xs cursor-pointer active:scale-95"
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#00603C] text-white border border-[#00603C] hover:bg-[#004D30] rounded-xl transition text-xs font-black uppercase tracking-wider shadow-sm cursor-pointer active:scale-95"
               title="Previsualizar Ficha Técnica Oficial del Lote en pantalla e imprimir"
             >
               <FileText className="w-4 h-4 text-[#C9922E]" />
-              <span>VER FICHA TECNICA</span>
+              <span>IMPRIMIR FICHA TECNICA</span>
             </button>
           </div>
         </div>
@@ -1603,6 +1653,13 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
           setDraftFichaLote(updated);
           setFichaModificada(true);
         }}
+      />
+
+      {/* Modal de Impresión de Etiquetas ID Bolsas con Selector de Color Identificación */}
+      <BatchPrintIdBolsasModal
+        isOpen={showBatchIdBolsasModal}
+        lotes={[draftFichaLote]}
+        onClose={() => setShowBatchIdBolsasModal(false)}
       />
 
       {/* Contenedor off-screen de la Ficha Técnica para exportación directa a JPG */}

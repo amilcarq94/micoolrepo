@@ -266,7 +266,7 @@ export interface OfflinePendingIngreso {
 export interface MovimientoStock {
   id: string;
   fecha: string; // Formato YYYY-MM-DD
-  tipo: 'Entrada' | 'Salida' | 'Entrada por Excel' | 'Entrada manual' | 'Ajuste';
+  tipo: 'Entrada' | 'Salida' | 'Salida por movimiento' | 'Entrada por Excel' | 'Entrada manual' | 'Ajuste';
   cantidadBolsas: number;
   kgPorBolsa: number;
   cantidadKg: number;
@@ -316,6 +316,26 @@ export interface Lote {
   ubicacionAcopio?: string; // Ubicación acopio (e.g., 'Ala A - Sector 1' o texto personalizado)
   humedad?: number; // Porcentaje de humedad del lote (% ej: 13.5). Dato informativo, no modifica los kg.
   cicloGerminacion?: CicloGerminacionType | string; // 'Grupo Corto' | 'Grupo Intermedio' | 'Grupo Largo'
+  preMovimientos?: PreMovimientoLote[]; // Movimientos pendientes de confirmación vinculados a Órdenes de Movimiento
+  loteOrigen?: string; // N° de Lote de origen del movimiento (ej: L-1001)
+  tipoMovimiento?: string; // 'Intermedio a Final' | 'Intermedio a Final Tratado' | 'Final a Final Tratado'
+  fechaMovimiento?: string; // YYYY-MM-DD
+  fechaRealizacionMovimiento?: string; // YYYY-MM-DD fecha en que se confirmó el movimiento
+  estadoMovimiento?: 'PRE-MOVIMIENTO' | 'REALIZADO';
+  esMovimiento?: boolean;
+  productoAplicado?: string; // Principio Activo o producto aplicado en el movimiento
+}
+
+export interface PreMovimientoLote {
+  ordenMovimientoId: string;
+  numeroOrdenMovimiento: string;
+  kgExtraidos: number;
+  cantidadBolsas?: number;
+  tipoMovimiento?: string;
+  fechaCreacion: string; // YYYY-MM-DD
+  estado: 'PRE-MOVIMIENTO' | 'CONFIRMADO';
+  fechaRealizacion?: string; // YYYY-MM-DD fecha en que se confirmó el movimiento
+  observaciones?: string;
 }
 
 export interface LoteLimitsConfig {
@@ -488,6 +508,8 @@ export interface LoteOrigenItem {
   kgTotales: number;
   kgExtraidos?: number;
   stockOriginalKg?: number;
+  estadoMovimiento?: 'PRE-MOVIMIENTO' | 'REALIZADO';
+  fechaRealizacion?: string; // YYYY-MM-DD
 }
 
 export interface OrdenCarga {
@@ -524,9 +546,11 @@ export interface OrdenProceso {
   numeroOrden: string; // N° de Orden de Proceso (numérico/texto único, ej: "1001")
   tipoOrden: TipoOrdenProceso; // 'PRODUCCION' | 'MOVIMIENTO'
   cliente?: string; // ej: 'San Diego Semilla'
+  semillero?: string; // ej: 'Don Mario' | 'Pioneer' | 'Stine'
   especie?: EspecieType | string; // ej: 'Soja' | 'Trigo' | 'Arveja'
   tipoMovimiento?: string; // "Intermedio a Final" | "Final a Final Tratado" (solo si MOVIMIENTO)
   numeroOrdenMovimiento?: string; // N° de Orden de Movimiento (solo si MOVIMIENTO)
+  estadoMovimiento?: 'PRE-MOVIMIENTO' | 'REALIZADO';
   envaseDestino?: string; // "Bolsa x 25 Kg" | "Bolsa x 40 Kg" | "Big Bag x 800 Kg"
   tratamiento: string; // ej. "Acelerador / Fungicida" o "Sin tratamiento"
   variedad: string; // ej. "P46A03"

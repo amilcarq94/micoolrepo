@@ -13,6 +13,7 @@ interface IdBolsaLabelProps {
   bagNumber?: number;
   totalBags?: number;
   className?: string;
+  identificacionColor?: 'black' | 'red';
 }
 
 /**
@@ -35,6 +36,7 @@ export const IdBolsaLabel: React.FC<IdBolsaLabelProps> = ({
   bagNumber,
   totalBags,
   className = '',
+  identificacionColor = 'black',
 }) => {
   const qrUrl = getPublicLoteTraceUrl(lote.id || lote.loteNro || 'LOTE');
 
@@ -106,13 +108,13 @@ export const IdBolsaLabel: React.FC<IdBolsaLabelProps> = ({
           boxSizing: 'border-box',
         }}
       >
-        {/* Fila 0: Encabezado Institucional */}
+        {/* Fila 0: Encabezado Institucional (Fuente blanca, opción fondo Negro / Rojo #b82222) */}
         <div
           style={{
             height: '4.2mm',
             minHeight: '4.2mm',
             maxHeight: '4.2mm',
-            backgroundColor: '#F1F5F9',
+            backgroundColor: identificacionColor === 'red' ? '#b82222' : '#000000',
             borderBottom: '1.5px solid #000000',
             display: 'flex',
             alignItems: 'center',
@@ -121,18 +123,21 @@ export const IdBolsaLabel: React.FC<IdBolsaLabelProps> = ({
             boxSizing: 'border-box',
           }}
         >
-          <div className="font-black text-[7pt] uppercase tracking-wider text-black truncate leading-none font-sans text-center">
+          <div
+            className="font-black text-[7pt] uppercase tracking-wider text-white truncate leading-none font-sans text-center"
+            style={{ color: '#FFFFFF' }}
+          >
             PLANTA CLASIFICADORA LA BARRANCOSA — AGRO ABACUS S.A.
           </div>
         </div>
 
-        {/* Fila 1: NÚMERO DE BOLSA A LO LARGO */}
+        {/* Fila 1: NÚMERO DE BOLSA A LO LARGO (Fondo Negro o Rojo #b82222, fuente blanca) */}
         <div
           style={{
             height: '7.5mm',
             minHeight: '7.5mm',
             maxHeight: '7.5mm',
-            backgroundColor: '#000000',
+            backgroundColor: identificacionColor === 'red' ? '#b82222' : '#000000',
             color: '#FFFFFF',
             borderBottom: '2px solid #000000',
             display: 'flex',
@@ -142,18 +147,34 @@ export const IdBolsaLabel: React.FC<IdBolsaLabelProps> = ({
             boxSizing: 'border-box',
           }}
         >
-          <span className="font-sans font-black text-[6.5pt] text-gray-300 uppercase tracking-widest leading-none">
+          <span
+            className="font-sans font-black text-[6.5pt] uppercase tracking-widest leading-none text-white"
+            style={{ color: '#FFFFFF' }}
+          >
             IDENTIFICACIÓN:
           </span>
           <div className="flex items-baseline justify-center gap-1.5 font-mono">
-            <span className="font-black text-[13.5pt] tracking-widest text-white leading-none">
+            <span
+              className="font-black text-[13.5pt] tracking-widest leading-none text-white"
+              style={{ color: '#FFFFFF' }}
+            >
               BOLSA N° {bolsaNumStr}
             </span>
-            <span className="font-bold text-[9.5pt] text-amber-300 leading-none">
+            <span
+              className="font-bold text-[9.5pt] leading-none text-white"
+              style={{ color: '#FFFFFF' }}
+            >
               DE {bolsaTotalStr}
             </span>
           </div>
-          <span className="font-mono font-black text-[8.5pt] text-gray-100 uppercase tracking-tight bg-slate-800 px-1.5 py-0.5 rounded border border-slate-600 leading-none">
+          <span
+            className="font-mono font-black text-[8.5pt] uppercase tracking-tight px-1.5 py-0.5 rounded border leading-none text-white"
+            style={{
+              backgroundColor: identificacionColor === 'red' ? '#7f1d1d' : '#1e293b',
+              borderColor: identificacionColor === 'red' ? '#dc2626' : '#475569',
+              color: '#FFFFFF'
+            }}
+          >
             {envaseStr}
           </span>
         </div>

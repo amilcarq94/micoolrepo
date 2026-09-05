@@ -26,7 +26,11 @@ import {
   Trash2,
   UserPlus,
   X,
-  ShieldCheck
+  ShieldCheck,
+  ChevronDown,
+  ChevronUp,
+  Pin,
+  PinOff
 } from 'lucide-react';
 import { exportWithHtml2Pdf } from '../utils/exportPdf';
 import {
@@ -71,10 +75,22 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   initialSubView = 'generar',
   onlyMisOrdenes = false,
 }) => {
-  // 1. Navegación de Sub-vistas
+  // 1. Navegación de Sub-vistas y Cortina vertical
   const [subView, setSubView] = useState<'generar' | 'mis-ordenes' | 'listado'>(
     onlyMisOrdenes ? 'mis-ordenes' : initialSubView
   );
+  const [isNavCortinaOpen, setIsNavCortinaOpen] = useState(false);
+
+  // Clave para fijar filtros en Despachos (persistencia hasta ser eliminados manualmente)
+  const PIN_STORAGE_KEY_DESPACHOS = 'agroabacus_pinned_despachos_filters_v1';
+  const [isFilterPinned, setIsFilterPinned] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('agroabacus_pinned_despachos_filters_v1');
+      return saved ? JSON.parse(saved).isPinned === true : false;
+    } catch {
+      return false;
+    }
+  });
 
   // 2. Estados para "Generar orden de carga"
   // Filtros obligatorios y combinables para buscar lotes candidatos
@@ -212,6 +228,75 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   const [filterDespachante, setFilterDespachante] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [filterFecha, setFilterFecha] = useState('');
+
+  // Cargar filtros fijados desde localStorage al montar el componente
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PIN_STORAGE_KEY_DESPACHOS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.isPinned) {
+          if (parsed.filterCliente !== undefined) setFilterCliente(parsed.filterCliente);
+          if (parsed.filterAutor !== undefined) setFilterAutor(parsed.filterAutor);
+          if (parsed.filterDespachante !== undefined) setFilterDespachante(parsed.filterDespachante);
+          if (parsed.filterEstado !== undefined) setFilterEstado(parsed.filterEstado);
+          if (parsed.filterFecha !== undefined) setFilterFecha(parsed.filterFecha);
+          if (parsed.genCliente !== undefined) setGenCliente(parsed.genCliente);
+          if (parsed.genCategoria !== undefined) setGenCategoria(parsed.genCategoria);
+          if (parsed.genTipo !== undefined) setGenTipo(parsed.genTipo);
+          if (parsed.genTratamiento !== undefined) setGenTratamiento(parsed.genTratamiento);
+          if (parsed.genEspecie !== undefined) setGenEspecie(parsed.genEspecie);
+          if (parsed.genVariedad !== undefined) setGenVariedad(parsed.genVariedad);
+        }
+      }
+    } catch (e) {
+      console.error('Error restaurando filtros fijados en Despachos:', e);
+    }
+  }, []);
+
+  // Guardar en localStorage cuando se fija o cuando cambian los filtros estando fijados
+  useEffect(() => {
+    if (isFilterPinned) {
+      const toSave = {
+        isPinned: true,
+        filterCliente,
+        filterAutor,
+        filterDespachante,
+        filterEstado,
+        filterFecha,
+        genCliente,
+        genCategoria,
+        genTipo,
+        genTratamiento,
+        genEspecie,
+        genVariedad,
+      };
+      localStorage.setItem(PIN_STORAGE_KEY_DESPACHOS, JSON.stringify(toSave));
+    } else {
+      localStorage.removeItem(PIN_STORAGE_KEY_DESPACHOS);
+    }
+  }, [
+    isFilterPinned,
+    filterCliente,
+    filterAutor,
+    filterDespachante,
+    filterEstado,
+    filterFecha,
+    genCliente,
+    genCategoria,
+    genTipo,
+    genTratamiento,
+    genEspecie,
+    genVariedad,
+  ]);
+
+  const handleClearDespachosFilters = () => {
+    setFilterCliente('');
+    setFilterAutor('');
+    setFilterDespachante('');
+    setFilterEstado('');
+    setFilterFecha('');
+  };
 
   // Ver comprobante
   const [comprobanteSeleccionado, setComprobanteSeleccionado] = useState<OrdenCarga | null>(null);
@@ -516,62 +601,168 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
         <LogoSiloLoose size={450} color="#00603C" />
       </div>
 
-      {/* CABECERA */}
+      {/* CABECERA: TÍTULO CENTRADO CON TAMAÑO ENGRANDECIDO Y BOTONES POR DEBAJO CON CORTINA VERTICAL */}
       {!onlyMisOrdenes ? (
-        <div className="border-b border-gray-100 pb-5 flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-          <div>
-            <span className="text-xs font-sans font-semibold tracking-widest text-[#00603C] uppercase">
+        <div className="border-b border-gray-200 pb-6 flex flex-col items-center justify-center text-center gap-4 relative z-10">
+          {/* TÍTULO CENTRADO Y AGRANDADO */}
+          <div className="max-w-3xl mx-auto text-center space-y-1">
+            <span className="text-xs sm:text-sm font-sans font-black tracking-widest text-[#00603C] uppercase block">
               SISTEMA DE DESPACHOS Y EXPEDICIÓN
             </span>
-            <h2 className="font-serif text-3xl font-bold text-[#1A1A1A] mt-1">
+            <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-black text-[#1A1A1A] tracking-tight leading-tight">
               Playa de Carga — Agro Abacus S.A.
             </h2>
+            <p className="text-xs text-gray-500 font-medium">
+              Control logístico, generación de órdenes de retiro y monitoreo en tiempo real
+            </p>
           </div>
 
-          {/* NAVEGACIÓN INTERNA EN SUB-VISTAS */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex bg-[#E3EFE7] bg-opacity-40 p-1 rounded-xl border border-gray-200 self-start text-xs font-sans font-bold">
+          {/* BOTONES UBICADOS POR DEBAJO DEL TÍTULO */}
+          <div className="w-full flex flex-col items-center gap-3">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="flex bg-[#E3EFE7] bg-opacity-60 p-1.5 rounded-2xl border border-emerald-200 text-xs font-sans font-bold shadow-xs">
+                <button
+                  onClick={() => setSubView('generar')}
+                  className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl uppercase tracking-wider transition cursor-pointer ${
+                    subView === 'generar' ? 'bg-[#00603C] text-white shadow-md' : 'text-gray-700 hover:text-[#00603C] hover:bg-emerald-50'
+                  }`}
+                >
+                  <ClipboardList className="w-4 h-4" />
+                  <span>1. Crear Orden</span>
+                </button>
+                <button
+                  onClick={() => setSubView('mis-ordenes')}
+                  className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl uppercase tracking-wider transition cursor-pointer ${
+                    subView === 'mis-ordenes' ? 'bg-[#00603C] text-white shadow-md' : 'text-gray-700 hover:text-[#00603C] hover:bg-emerald-50'
+                  }`}
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>2. Mis Órdenes (Playa)</span>
+                </button>
+                <button
+                  onClick={() => setSubView('listado')}
+                  className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl uppercase tracking-wider transition cursor-pointer ${
+                    subView === 'listado' ? 'bg-[#00603C] text-white shadow-md' : 'text-gray-700 hover:text-[#00603C] hover:bg-emerald-50'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>3. Registro General</span>
+                </button>
+              </div>
+
+              {/* Botón para desplegar cortina vertical */}
               <button
-                onClick={() => setSubView('generar')}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg uppercase tracking-wider transition ${
-                  subView === 'generar' ? 'bg-[#00603C] text-white shadow-md' : 'text-gray-600 hover:text-[#00603C]'
+                type="button"
+                onClick={() => setIsNavCortinaOpen(prev => !prev)}
+                className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
+                  isNavCortinaOpen
+                    ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-xs'
+                    : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700'
                 }`}
+                title="Desplegar u ocultar opciones en cortina vertical"
               >
-                <ClipboardList className="w-4 h-4" />
-                1. Crear Orden
+                <span>Menú en Cortina</span>
+                {isNavCortinaOpen ? <ChevronUp className="w-4 h-4 text-amber-700" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
               </button>
+
               <button
-                onClick={() => setSubView('mis-ordenes')}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg uppercase tracking-wider transition ${
-                  subView === 'mis-ordenes' ? 'bg-[#00603C] text-white shadow-md' : 'text-gray-600 hover:text-[#00603C]'
-                }`}
+                onClick={() => {
+                  setAddDespError('');
+                  setAddDespSuccess('');
+                  setShowAddDespModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 bg-[#00603C] hover:bg-[#254731] text-white text-xs font-sans font-bold uppercase tracking-wider rounded-xl shadow-xs transition cursor-pointer"
+                title="Agregar despachante autorizado con usuario y clave de Malcon Baez o Amilcar Quiroz"
               >
-                <UserCheck className="w-4 h-4" />
-                2. Mis Órdenes (Playa)
-              </button>
-              <button
-                onClick={() => setSubView('listado')}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg uppercase tracking-wider transition ${
-                  subView === 'listado' ? 'bg-[#00603C] text-white shadow-md' : 'text-gray-600 hover:text-[#00603C]'
-                }`}
-              >
-                <FileText className="w-4 h-4" />
-                3. Registro General
+                <UserPlus className="w-4 h-4 text-[#F6EFDC]" />
+                <span>+ Agregar Despachante</span>
               </button>
             </div>
 
-            <button
-              onClick={() => {
-                setAddDespError('');
-                setAddDespSuccess('');
-                setShowAddDespModal(true);
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-[#00603C] hover:bg-[#254731] text-white text-xs font-sans font-bold uppercase tracking-wider rounded-xl shadow-sm transition"
-              title="Agregar despachante autorizado con usuario y clave de Malcon Baez o Amilcar Quiroz"
-            >
-              <UserPlus className="w-4 h-4 text-[#F6EFDC]" />
-              <span>+ Agregar Despachante</span>
-            </button>
+            {/* CORTINA VERTICAL DESPLEGABLE */}
+            {isNavCortinaOpen && (
+              <div className="w-full max-w-xl bg-white rounded-2xl border border-emerald-200 p-3 shadow-lg transition-all animate-in slide-in-from-top duration-200 space-y-2 text-left">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-100 px-2">
+                  <span className="text-[11px] font-black text-emerald-900 uppercase tracking-wider">
+                    Navegación Desplegable (Cortina Vertical)
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-medium">Haga clic en una opción</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubView('generar');
+                      setIsNavCortinaOpen(false);
+                    }}
+                    className={`p-3 rounded-xl border transition flex items-center justify-between cursor-pointer ${
+                      subView === 'generar'
+                        ? 'bg-[#00603C] text-white border-[#00603C] shadow-md font-bold'
+                        : 'bg-slate-50 hover:bg-emerald-50/60 border-slate-200 text-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <ClipboardList className={`w-5 h-5 ${subView === 'generar' ? 'text-amber-300' : 'text-emerald-700'}`} />
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-wide">1. Crear Orden</div>
+                        <div className={`text-[11px] ${subView === 'generar' ? 'text-emerald-100' : 'text-slate-500'}`}>
+                          Generar nueva orden de carga para camiones y transportistas
+                        </div>
+                      </div>
+                    </div>
+                    {subView === 'generar' && <Check className="w-4 h-4 text-amber-300" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubView('mis-ordenes');
+                      setIsNavCortinaOpen(false);
+                    }}
+                    className={`p-3 rounded-xl border transition flex items-center justify-between cursor-pointer ${
+                      subView === 'mis-ordenes'
+                        ? 'bg-[#00603C] text-white border-[#00603C] shadow-md font-bold'
+                        : 'bg-slate-50 hover:bg-emerald-50/60 border-slate-200 text-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <UserCheck className={`w-5 h-5 ${subView === 'mis-ordenes' ? 'text-amber-300' : 'text-emerald-700'}`} />
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-wide">2. Mis Órdenes (Playa)</div>
+                        <div className={`text-[11px] ${subView === 'mis-ordenes' ? 'text-emerald-100' : 'text-slate-500'}`}>
+                          Órdenes activas para recepción, firma y despacho en playa
+                        </div>
+                      </div>
+                    </div>
+                    {subView === 'mis-ordenes' && <Check className="w-4 h-4 text-amber-300" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubView('listado');
+                      setIsNavCortinaOpen(false);
+                    }}
+                    className={`p-3 rounded-xl border transition flex items-center justify-between cursor-pointer ${
+                      subView === 'listado'
+                        ? 'bg-[#00603C] text-white border-[#00603C] shadow-md font-bold'
+                        : 'bg-slate-50 hover:bg-emerald-50/60 border-slate-200 text-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileText className={`w-5 h-5 ${subView === 'listado' ? 'text-amber-300' : 'text-emerald-700'}`} />
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-wide">3. Registro General</div>
+                        <div className={`text-[11px] ${subView === 'listado' ? 'text-emerald-100' : 'text-slate-500'}`}>
+                          Histórico consolidado con comprobantes y exportación a PDF
+                        </div>
+                      </div>
+                    </div>
+                    {subView === 'listado' && <Check className="w-4 h-4 text-amber-300" />}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : null}
@@ -614,11 +805,26 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
 
               <form onSubmit={handleGenerarOrden} className="space-y-6">
                 
-                {/* 1. SECCIÓN FILTROS (6 FILTROS COMBINABLES) */}
+                {/* 1. SECCIÓN FILTROS (6 FILTROS COMBINABLES) CON BOTÓN DE FIJAR FILTROS */}
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-4">
-                  <span className="text-[9px] font-sans font-bold tracking-widest text-[#00603C] uppercase block mb-1">
-                    Criterios del Lote a Cargar
-                  </span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-gray-200/60">
+                    <span className="text-[9px] font-sans font-bold tracking-widest text-[#00603C] uppercase block">
+                      Criterios del Lote a Cargar
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsFilterPinned(prev => !prev)}
+                      className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                        isFilterPinned
+                          ? 'bg-[#00603C] text-white shadow-xs ring-1 ring-emerald-400'
+                          : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                      title={isFilterPinned ? "Filtros fijados (solo se quitan manualmente)" : "Fijar filtros para que se conserven"}
+                    >
+                      {isFilterPinned ? <Pin className="w-3 h-3 text-amber-300 fill-amber-300" /> : <PinOff className="w-3 h-3 text-gray-400" />}
+                      <span>{isFilterPinned ? 'Filtros Fijados' : 'Fijar Filtros'}</span>
+                    </button>
+                  </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
                     {/* Cliente */}
@@ -1384,99 +1590,128 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
         {subView === 'listado' && (
           <div className="space-y-6 text-left">
             
-            {/* Filtros de la Tabla */}
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm grid grid-cols-1 sm:grid-cols-5 gap-4 text-xs">
-              
-              {/* Cliente */}
-              <div>
-                <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                  Cliente Comitente
-                </label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
-                    <Search className="w-4 h-4" />
-                  </span>
-                  <input
-                    type="text"
-                    value={filterCliente}
-                    onChange={(e) => setFilterCliente(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] h-10"
-                    placeholder="Buscar cliente..."
-                  />
+            {/* Filtros de la Tabla con Fijar Filtros */}
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-100">
+                <span className="text-[10px] font-sans font-bold tracking-wider text-gray-500 uppercase">
+                  Filtrar Órdenes de Carga Registradas
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterPinned(prev => !prev)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                      isFilterPinned
+                        ? 'bg-[#00603C] text-white shadow-xs ring-1 ring-emerald-400'
+                        : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
+                    }`}
+                    title={isFilterPinned ? "Filtros fijados (solo se quitan manualmente)" : "Fijar filtros para que se conserven"}
+                  >
+                    {isFilterPinned ? <Pin className="w-3.5 h-3.5 text-amber-300 fill-amber-300" /> : <PinOff className="w-3.5 h-3.5 text-gray-400" />}
+                    <span>{isFilterPinned ? 'Filtros Fijados' : 'Fijar Filtros'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearDespachosFilters}
+                    className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg border border-gray-200 transition cursor-pointer"
+                    title="Restablecer todos los filtros manualmente"
+                  >
+                    Limpiar
+                  </button>
                 </div>
               </div>
 
-              {/* Autor */}
-              <div>
-                <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                  Autorizado por
-                </label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
-                    <Search className="w-4 h-4" />
-                  </span>
-                  <input
-                    type="text"
-                    value={filterAutor}
-                    onChange={(e) => setFilterAutor(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] h-10"
-                    placeholder="Buscar autor..."
-                  />
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 text-xs">
+                {/* Cliente */}
+                <div>
+                  <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                    Cliente Comitente
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                      <Search className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="text"
+                      value={filterCliente}
+                      onChange={(e) => setFilterCliente(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] h-10"
+                      placeholder="Buscar cliente..."
+                    />
+                  </div>
+                </div>
+
+                {/* Autor */}
+                <div>
+                  <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                    Autorizado por
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                      <Search className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="text"
+                      value={filterAutor}
+                      onChange={(e) => setFilterAutor(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] h-10"
+                      placeholder="Buscar autor..."
+                    />
+                  </div>
+                </div>
+
+                {/* Despachante */}
+                <div>
+                  <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                    Despachante Asignado
+                  </label>
+                  <select
+                    value={filterDespachante}
+                    onChange={(e) => setFilterDespachante(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] h-10"
+                  >
+                    <option value="">Todos los despachantes</option>
+                    {despachantesList.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Estado */}
+                <div>
+                  <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                    Estado
+                  </label>
+                  <select
+                    value={filterEstado}
+                    onChange={(e) => setFilterEstado(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] h-10"
+                  >
+                    <option value="">Todos los estados</option>
+                    <option value="Disponible">Disponible (Pendiente)</option>
+                    <option value="Aceptada">Aceptada (Cargando)</option>
+                    <option value="Despachada">Despachada (Entregada)</option>
+                  </select>
+                </div>
+
+                {/* Fecha */}
+                <div>
+                  <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                    Fecha
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                      <Calendar className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="date"
+                      value={filterFecha}
+                      onChange={(e) => setFilterFecha(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] h-10"
+                    />
+                  </div>
                 </div>
               </div>
-
-              {/* Despachante */}
-              <div>
-                <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                  Despachante Asignado
-                </label>
-                <select
-                  value={filterDespachante}
-                  onChange={(e) => setFilterDespachante(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] h-10"
-                >
-                  <option value="">Todos los despachantes</option>
-                  {despachantesList.map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Estado */}
-              <div>
-                <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                  Estado
-                </label>
-                <select
-                  value={filterEstado}
-                  onChange={(e) => setFilterEstado(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] h-10"
-                >
-                  <option value="">Todos los estados</option>
-                  <option value="Disponible">Disponible (Pendiente)</option>
-                  <option value="Aceptada">Aceptada (Cargando)</option>
-                  <option value="Despachada">Despachada (Entregada)</option>
-                </select>
-              </div>
-
-              {/* Fecha */}
-              <div>
-                <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                  Fecha
-                </label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
-                    <Calendar className="w-4 h-4" />
-                  </span>
-                  <input
-                    type="date"
-                    value={filterFecha}
-                    onChange={(e) => setFilterFecha(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] h-10"
-                  />
-                </div>
-              </div>
-
             </div>
 
             {/* Tabla */}

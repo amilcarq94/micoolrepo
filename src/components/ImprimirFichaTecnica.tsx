@@ -43,6 +43,7 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
   const [isModified, setIsModified] = useState<boolean>(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const [downloadSuccess, setDownloadSuccess] = useState<boolean>(false);
+  const [nombreLoteColor, setNombreLoteColor] = useState<'default' | 'red'>('default');
 
   // Sincronizar borrador si cambia el lote desde las props
   useEffect(() => {
@@ -197,6 +198,38 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
             <Edit2 className="w-3.5 h-3.5" />
             <span>{isEditing ? 'Ocultar Edición' : 'Editar Ficha'}</span>
           </button>
+
+          {/* Selector de Color de Fondo de Identificación (Negro / Rojo #b82222) */}
+          <div className="flex items-center gap-1 bg-slate-800/90 px-2 py-1 rounded-lg border border-slate-700 text-xs">
+            <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mr-1">Fondo Identificación:</span>
+            <button
+              type="button"
+              id="btn-ficha-nombre-lote-negro"
+              onClick={() => setNombreLoteColor('default')}
+              className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition cursor-pointer ${
+                nombreLoteColor === 'default'
+                  ? 'bg-black text-white shadow-xs ring-1 ring-slate-400'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="Fondo negro (#000000) con texto blanco para el cuadro de identificación"
+            >
+              Negro
+            </button>
+            <button
+              type="button"
+              id="btn-ficha-nombre-lote-rojo"
+              onClick={() => setNombreLoteColor('red')}
+              className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                nombreLoteColor === 'red'
+                  ? 'bg-[#b82222] text-white shadow-xs ring-1 ring-red-400'
+                  : 'text-red-400 hover:text-red-300'
+              }`}
+              title="Fondo rojo oscuro (#b82222) con texto blanco para el cuadro de identificación"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#b82222] inline-block border border-white" />
+              Rojo
+            </button>
+          </div>
 
           <button
             type="button"
@@ -456,6 +489,7 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
             lote={draftLote}
             showWatermark={false}
             isExpandedA4={true}
+            nombreLoteColor={nombreLoteColor}
           />
         </div>
       </div>

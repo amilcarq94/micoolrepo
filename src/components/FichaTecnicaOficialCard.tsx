@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Lote } from '../types';
 import { LogoSiloLoose } from './Logo';
 import { useFichaLoteData } from '../hooks/useFichaLoteData';
@@ -17,6 +17,7 @@ interface FichaTecnicaOficialCardProps {
   id?: string;
   showWatermark?: boolean;
   isExpandedA4?: boolean;
+  nombreLoteColor?: 'black' | 'red' | 'negro' | 'rojo' | 'default';
 }
 
 /**
@@ -34,7 +35,21 @@ export const FichaTecnicaOficialCard: React.FC<FichaTecnicaOficialCardProps> = (
   index,
   id,
   isExpandedA4 = false,
+  nombreLoteColor = 'default',
 }) => {
+  const [selectedBgColor, setSelectedBgColor] = useState<'black' | 'red'>(() => {
+    return nombreLoteColor === 'red' || nombreLoteColor === 'rojo' ? 'red' : 'black';
+  });
+
+  useEffect(() => {
+    if (nombreLoteColor === 'red' || nombreLoteColor === 'rojo') {
+      setSelectedBgColor('red');
+    } else if (nombreLoteColor === 'black' || nombreLoteColor === 'negro' || nombreLoteColor === 'default') {
+      setSelectedBgColor('black');
+    }
+  }, [nombreLoteColor]);
+
+  const isRed = selectedBgColor === 'red';
   const {
     kgPorBolsaNum,
     fechaRealizadoDisplay,
@@ -100,8 +115,8 @@ export const FichaTecnicaOficialCard: React.FC<FichaTecnicaOficialCardProps> = (
         backgroundColor: '#FFFFFF',
       }}
     >
-      {/* 0. MINI BRAND HEADER INSTITUCIONAL */}
-      <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-100">
+      {/* 0. MINI BRAND HEADER INSTITUCIONAL CON SELECTOR DE FONDO */}
+      <div className="flex flex-wrap items-center justify-between pb-3 mb-4 border-b border-gray-100 gap-2">
         <div className="flex items-center gap-2.5">
           <LogoSiloLoose size={28} color="#005A36" />
           <div className="text-left leading-tight">
@@ -114,7 +129,37 @@ export const FichaTecnicaOficialCard: React.FC<FichaTecnicaOficialCardProps> = (
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-right">
+        <div className="flex items-center gap-2 text-right flex-wrap">
+          {/* Selector de color de fondo interactivo (Negro / Rojo #b82222) */}
+          <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-lg border border-slate-700 print:hidden">
+            <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mr-1">Fondo Identificación:</span>
+            <button
+              type="button"
+              onClick={() => setSelectedBgColor('black')}
+              className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition cursor-pointer ${
+                !isRed
+                  ? 'bg-black text-white shadow-xs ring-1 ring-slate-400'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="Fondo negro (#000000) con texto blanco"
+            >
+              Negro
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedBgColor('red')}
+              className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                isRed
+                  ? 'bg-[#b82222] text-white shadow-xs ring-1 ring-red-400'
+                  : 'text-red-400 hover:text-red-300'
+              }`}
+              title="Fondo rojo oscuro (#b82222) con texto blanco"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#b82222] inline-block border border-white" />
+              Rojo
+            </button>
+          </div>
+
           {fechaRealizadoDisplay && (
             <div className="text-[11px] font-mono font-bold text-gray-600 flex items-center gap-1 bg-gray-50 px-2.5 py-1 rounded-md border border-gray-200">
               <Calendar className="w-3 h-3 text-[#005A36]" />
@@ -130,7 +175,7 @@ export const FichaTecnicaOficialCard: React.FC<FichaTecnicaOficialCardProps> = (
         </div>
       </div>
 
-      {/* 1. BANNER PRINCIPAL (VERDE BOSQUE CON CAJA NEGRA Y TEXTOS GIGANTES) */}
+      {/* 1. BANNER PRINCIPAL (VERDE BOSQUE CON CAJA NEGRA/ROJA Y TEXTOS GIGANTES) */}
       <div
         className="w-full rounded-3xl p-6 sm:p-7 text-center relative shadow-sm overflow-hidden mb-5"
         style={{
@@ -148,12 +193,23 @@ export const FichaTecnicaOficialCard: React.FC<FichaTecnicaOficialCardProps> = (
           </span>
         </div>
 
-        {/* Caja Negra Central con el Número de Lote */}
+        {/* Caja de Identificación Central con el Número de Lote (Fondo Negro o Rojo #b82222, fuente blanca) */}
         <div className="flex justify-center items-center my-2.5">
-          <div className="bg-[#0A0A0A] text-white px-8 sm:px-14 py-3 sm:py-4 rounded-2xl border-2 border-black/80 shadow-md inline-flex items-center justify-center max-w-full">
+          <div
+            className="px-8 sm:px-14 py-3 sm:py-4 rounded-2xl border-2 shadow-md inline-flex items-center justify-center max-w-full transition-colors"
+            style={{
+              backgroundColor: isRed ? '#b82222' : '#000000',
+              borderColor: isRed ? '#dc2626' : 'rgba(0,0,0,0.8)',
+            }}
+          >
             <span
-              className="font-mono font-black text-white tracking-tight uppercase leading-none text-3xl sm:text-5xl md:text-6xl truncate"
-              style={{ letterSpacing: '-0.02em' }}
+              className="font-mono font-black tracking-tight uppercase leading-none truncate transition-colors"
+              style={{
+                letterSpacing: '-0.02em',
+                color: '#FFFFFF', // Fuente blanca siempre
+                fontSize: 'clamp(32px, 5.5vw, 70px)',
+                lineHeight: 'clamp(36px, 5.5vw, 70px)',
+              }}
             >
               {displayLoteNro}
             </span>
@@ -164,18 +220,26 @@ export const FichaTecnicaOficialCard: React.FC<FichaTecnicaOficialCardProps> = (
         <div className="mt-4 space-y-1.5">
           {/* CLIENTE GIGANTE */}
           <div
-            className="font-sans font-black text-white text-2xl sm:text-3xl md:text-4xl lg:text-[42px] tracking-tight uppercase leading-tight break-words"
+            className="font-sans font-black text-white tracking-tight uppercase leading-tight break-words"
             title={displayCliente}
-            style={{ textShadow: '0 2px 4px rgba(0,0,0,0.25)' }}
+            style={{
+              textShadow: '0 2px 4px rgba(0,0,0,0.25)',
+              fontSize: 'clamp(28px, 4.5vw, 60px)',
+              lineHeight: 'clamp(32px, 4.5vw, 60.5px)',
+            }}
           >
             {displayCliente}
           </div>
 
           {/* ESPECIE Y VARIEDAD */}
           <div
-            className="font-sans font-extrabold text-[#FDF0CD] text-lg sm:text-2xl md:text-3xl tracking-tight uppercase leading-tight break-words"
+            className="font-sans font-extrabold text-[#FDF0CD] tracking-tight uppercase leading-tight break-words"
             title={`${cleanEspecie} - ${cleanVariedad}`}
-            style={{ textShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
+            style={{
+              textShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              fontSize: 'clamp(22px, 3.5vw, 60px)',
+              lineHeight: 'clamp(26px, 3.5vw, 60px)',
+            }}
           >
             {cleanEspecie} · {cleanVariedad}
           </div>

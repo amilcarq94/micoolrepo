@@ -96,7 +96,7 @@ export const SiloAlertsConfigModal: React.FC<SiloAlertsConfigModalProps> = ({
                 {kgUmbral.toLocaleString('es-AR')} kg ({(kgUmbral / 1000).toFixed(1)} Tn)
               </p>
               <p className="text-[11px] text-amber-800">
-                Sobre una capacidad máxima nominal de {CAPACIDAD_MAX_SILO.toLocaleString('es-AR')} kg (180 Tn) por silo.
+                Sobre una capacidad máxima nominal de {CAPACIDAD_MAX_SILO.toLocaleString('es-AR')} kg por silo.
               </p>
             </div>
           </div>

@@ -66,6 +66,7 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
   const [showSelectorSidebar, setShowSelectorSidebar] = useState(true);
   const [previewZoom, setPreviewZoom] = useState<number>(100);
   const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
+  const [identificacionColor, setIdentificacionColor] = useState<'black' | 'red'>('black');
 
   // Rango manual temporal por lote
   const [rangeInputs, setRangeInputs] = useState<Record<string, { from: string; to: string }>>({});
@@ -382,18 +383,6 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
             <span className="hidden sm:inline">
               {showSelectorSidebar ? 'Ocultar Filtros' : 'Seleccionar Lotes / Etiquetas'}
             </span>
-          </button>
-
-          {/* Botón de Impresión Nativa Rápida */}
-          <button
-            type="button"
-            onClick={handlePrint}
-            disabled={activeTags.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 transition cursor-pointer disabled:opacity-40"
-            title="Imprimir directamente en impresora física"
-          >
-            <Printer className="w-3.5 h-3.5 text-slate-300" />
-            <span className="hidden sm:inline">Imprimir</span>
           </button>
 
           {/* Botón Principal: Confirmar y Descargar PDF */}
@@ -772,6 +761,38 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
               </button>
             </div>
 
+            {/* Selector de Color de Fondo de Identificación (Negro vs Rojo #b82222) */}
+            <div className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-[11px]">
+              <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mr-1">Fondo Identificación:</span>
+              <button
+                type="button"
+                id="btn-color-identificacion-negro"
+                onClick={() => setIdentificacionColor('black')}
+                className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition cursor-pointer ${
+                  identificacionColor === 'black'
+                    ? 'bg-black text-white shadow-sm ring-1 ring-slate-400'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Fondo negro (#000000) con texto blanco en cuadro de Identificación"
+              >
+                Negro
+              </button>
+              <button
+                type="button"
+                id="btn-color-identificacion-rojo"
+                onClick={() => setIdentificacionColor('red')}
+                className={`px-2 py-0.5 rounded text-[10.5px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                  identificacionColor === 'red'
+                    ? 'bg-[#b82222] text-white shadow-sm ring-1 ring-red-400'
+                    : 'text-red-400 hover:text-red-300'
+                }`}
+                title="Fondo rojo oscuro (#b82222) con texto blanco en cuadro de Identificación"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#b82222] inline-block border border-white" />
+                Rojo
+              </button>
+            </div>
+
             {/* Navegación entre Páginas (en modo página individual) */}
             {viewMode === 'single' && totalPages > 1 && (
               <div className="flex items-center gap-1.5">
@@ -892,6 +913,7 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
                           bagNumber={tag.bagIndex}
                           totalBags={tag.totalBagsInLote}
                           className="w-full"
+                          identificacionColor={identificacionColor}
                         />
                       ))}
 

@@ -1486,6 +1486,15 @@ export default function App() {
     }
   };
 
+  const handleReordenarMovimientosSilo = (nuevosMovimientos: MovimientoSilo[]) => {
+    setMovimientosSilo(nuevosMovimientos);
+    try {
+      localStorage.setItem('agro_movimientos_silo_v2', JSON.stringify(nuevosMovimientos));
+    } catch (e) {
+      console.error('Error guardando reordenamiento de movimientos de silos', e);
+    }
+  };
+
   const handleUpdateSiloEstadoManual = async (siloId: SiloId, nuevoEstado: EstadoSiloManual) => {
     setSilosEstadoManual((prev) => {
       const next = { ...prev, [siloId]: nuevoEstado };
@@ -2679,6 +2688,7 @@ export default function App() {
             onPonerSiloEnCero={handlePonerSiloEnCero}
             onEditarMovimientoSilo={handleEditarMovimientoSilo}
             onEliminarMovimientoSilo={handleEliminarMovimientoSilo}
+            onReordenarMovimientosSilo={handleReordenarMovimientosSilo}
           />
         ) : activeView === 'lotes' ? (
           loteAEditar ? (

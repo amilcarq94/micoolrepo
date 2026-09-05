@@ -190,7 +190,7 @@ export const IngresoSiloBloqueCard: React.FC<IngresoSiloBloqueCardProps> = ({
               </span>
             </h4>
             <span className="text-[11px] text-slate-500 font-medium">
-              Stock actual: <strong className="font-mono text-slate-700">{stockSiloActual.toLocaleString('es-AR')} kg</strong> / 180 Tn ({porcentajeOcupado.toFixed(1)}% ocupado)
+              Stock actual: <strong className="font-mono text-slate-700">{stockSiloActual.toLocaleString('es-AR')} kg</strong> ({porcentajeOcupado.toFixed(1)}% ocupado)
             </span>
           </div>
         </div>

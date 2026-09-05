@@ -221,15 +221,17 @@ export async function exportElementAsPdf(
 
     const imgData = await renderElementToImageDataUrl(el, options);
 
+    const orientation = options?.orientation ?? 'portrait';
+    const isLandscape = orientation === 'landscape';
     const pdf = new jsPDF({
-      orientation: options?.orientation ?? 'portrait',
+      orientation,
       unit: 'mm',
       format: 'a4',
       compress: true,
     });
 
-    const pdfWidth = 210;
-    const pdfHeight = 297;
+    const pdfWidth = isLandscape ? 297 : 210;
+    const pdfHeight = isLandscape ? 210 : 297;
 
     const elemRect = el.getBoundingClientRect();
     const elemWidth = elemRect.width || el.offsetWidth || 1;

@@ -7,12 +7,13 @@ import React, { useState, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Lote, EstadoLoteType, TipoLoteType, OrdenProceso, MovimientoSilo, LoteLimitsConfig, PlantaConfig } from '../types';
 import { formatNumberArg, formatKg, formatDateStr } from '../utils/formatters';
-import { Search, Grid, List, Plus, Filter, Eye, Edit2, ArrowDownRight, Trash2, QrCode, Download, Lock, ShieldAlert, KeyRound, X, Flame, Warehouse, Layers, Info, SlidersHorizontal, Check, Pin, RotateCcw, ChevronDown, Package, Sprout, Clock, CheckCircle2, BarChart2, Building2, Tag, FlaskConical, PieChart, Wheat, Sliders, PackagePlus, RefreshCw, FileText, ListFilter, Copy, Scale } from 'lucide-react';
+import { Search, Grid, List, Plus, Filter, Eye, Edit2, ArrowDownRight, Trash2, QrCode, Download, Lock, ShieldAlert, KeyRound, X, Flame, Warehouse, Layers, Info, SlidersHorizontal, Check, Pin, RotateCcw, ChevronDown, Package, Sprout, Clock, CheckCircle2, BarChart2, Building2, Tag, FlaskConical, PieChart, Wheat, Sliders, PackagePlus, RefreshCw, FileText, ListFilter, Copy, Scale, FileSpreadsheet, Calendar } from 'lucide-react';
 import { BatchPrintIdBolsasModal } from './BatchPrintIdBolsasModal';
 import { ImprimirFichaTecnica } from './ImprimirFichaTecnica';
 import { QrCodeModal } from './QrCodeModal';
 import { LoteLimitsConfigModal } from './LoteLimitsConfigModal';
 import { ProcesarLoteModal } from './ProcesarLoteModal';
+import { MovRealizadoModal } from './MovRealizadoModal';
 import { BulkEditLotesModal } from './BulkEditLotesModal';
 import { TratarLoteModal } from './TratarLoteModal';
 import { PaginationControls } from './PaginationControls';
@@ -241,6 +242,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
   const [selectedFichaLote, setSelectedFichaLote] = useState<Lote | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshToast, setRefreshToast] = useState<string | null>(null);
+  const [loteToMovRealizado, setLoteToMovRealizado] = useState<Lote | null>(null);
+  const [lotesToMovRealizadoBatch, setLotesToMovRealizadoBatch] = useState<Lote[]>([]);
 
   const handleRefreshInfo = async () => {
     setIsRefreshing(true);
@@ -282,13 +285,13 @@ export const LotesView: React.FC<LotesViewProps> = ({
       const egresoMov = {
         id: `MOV-EGR-TRAT-${Date.now()}`,
         fecha: fechaTratamiento,
-        tipo: 'Salida' as const,
+        tipo: 'Salida por movimiento' as const,
         bolsas: bolsasACurar,
         cantidadBolsas: bolsasACurar,
         kgPorBolsa,
         kg: kgACurar,
         cantidadKg: kgACurar,
-        detalle: `Curado por OM ${numeroOrdenMovimiento} -> enviado a Lote ${loteExistenteT.loteNro}`
+        detalle: `Salida por movimiento: Curado por OM ${numeroOrdenMovimiento} -> enviado a Lote ${loteExistenteT.loteNro}`
       };
 
       const nuevasBolsasOriginal = Math.max(0, loteOriginal.stockBolsas - bolsasACurar);
@@ -307,7 +310,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
             fechaHora: new Date().toISOString(),
             tipo: 'Edición',
             usuario: currentUser.nombre,
-            descripcion: `Egreso por Curado de ${bolsasACurar} bolsas hacia Lote ${loteExistenteT.loteNro}. OM: ${numeroOrdenMovimiento}`
+            descripcion: `Salida por movimiento: Egreso por Curado de ${bolsasACurar} bolsas hacia Lote ${loteExistenteT.loteNro}. OM: ${numeroOrdenMovimiento}`
           },
           ...(loteOriginal.auditoria || [])
         ]
@@ -391,13 +394,13 @@ export const LotesView: React.FC<LotesViewProps> = ({
         const egresoParcialMov = {
           id: `MOV-EGR-PARCIAL-${Date.now()}`,
           fecha: fechaTratamiento,
-          tipo: 'Salida' as const,
+          tipo: 'Salida por movimiento' as const,
           bolsas: bolsasACurar,
           cantidadBolsas: bolsasACurar,
           kgPorBolsa,
           kg: kgACurar,
           cantidadKg: kgACurar,
-          detalle: `Desdoblamiento por Curado parcial (${bolsasACurar} b.) -> Lote ${loteOriginal.loteNro}T`
+          detalle: `Salida por movimiento: Desdoblamiento por Curado parcial (${bolsasACurar} b.) -> Lote ${loteOriginal.loteNro}T`
         };
 
         const loteOriginalRestante: Lote = {
@@ -412,7 +415,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
               fechaHora: new Date().toISOString(),
               tipo: 'Edición',
               usuario: currentUser.nombre,
-              descripcion: `Desdoblamiento por Curado de ${bolsasACurar} bolsas hacia Lote ${loteOriginal.loteNro}T. OM: ${numeroOrdenMovimiento}`
+              descripcion: `Salida por movimiento: Desdoblamiento por Curado de ${bolsasACurar} bolsas hacia Lote ${loteOriginal.loteNro}T. OM: ${numeroOrdenMovimiento}`
             },
             ...(loteOriginal.auditoria || [])
           ]
@@ -581,11 +584,13 @@ export const LotesView: React.FC<LotesViewProps> = ({
   const [viewType, setViewType] = useState<'grid' | 'table' | 'heatmap'>('table');
   const [selectedHeatmapCell, setSelectedHeatmapCell] = useState<{ ala: string; sector: string } | null>(null);
 
-  // Estado para las columnas visibles en la vista de tabla (N° de lote, Cliente, Variedad, Cantidad de bolsas, Estado)
+  // Estado para las columnas visibles en la vista de tabla (N° de lote, Cliente, Variedad, Tipo, Tratamiento, Cantidad de bolsas, Estado)
   const [visibleColumns, setVisibleColumns] = useState({
     loteId: true,
     cliente: true,
     variedad: true,
+    tipo: true,
+    tratamiento: true,
     bolsas: true,
     estado: true,
   });
@@ -859,8 +864,15 @@ export const LotesView: React.FC<LotesViewProps> = ({
       }
 
       // 7. Estado / Disponibilidad (Selección Múltiple)
-      if (filterEstados.length > 0 && !filterEstados.includes(l.estado)) {
-        return false;
+      // Por defecto no mostrar lotes "agotados" en las listas a menos que se seleccione el estado "agotado" en filtros
+      if (filterEstados.length > 0) {
+        if (!filterEstados.includes(l.estado)) {
+          return false;
+        }
+      } else {
+        if (l.estado === 'Agotado') {
+          return false;
+        }
       }
 
       return true;
@@ -873,9 +885,146 @@ export const LotesView: React.FC<LotesViewProps> = ({
     return filteredLotes.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredLotes, currentPage, itemsPerPage]);
 
+  // Lotes filtrados con todos los criterios excepto filterTipos (para los conteos dinámicos del filtro de tipo en tabla)
+  const lotesParaConteoTipos = useMemo(() => {
+    return lotes.filter((l) => {
+      if (filterEstadoRegistro !== 'TODOS' && (l.estadoRegistro || 'REALIZADO') !== filterEstadoRegistro) {
+        return false;
+      }
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const matchLote = (l.loteNro || l.id).toLowerCase().includes(q);
+        const matchCliente = (l.cliente || '').toLowerCase().includes(q);
+        const matchVariedad = (l.variedad || '').toLowerCase().includes(q);
+        const matchEspecie = (l.especie || '').toLowerCase().includes(q);
+        if (!matchLote && !matchCliente && !matchVariedad && !matchEspecie) {
+          return false;
+        }
+      }
+      if (filterClientes.length > 0) {
+        const normLoteCl = normalizeCliente(l.cliente);
+        const matchesAny = filterClientes.some(cl => {
+          return normalizeCliente(cl) === normLoteCl || (l.cliente || '').trim().toLowerCase() === cl.trim().toLowerCase();
+        });
+        if (!matchesAny) return false;
+      }
+      if (filterEspecies.length > 0) {
+        const esp = l.especie || 'Sin especificar';
+        if (!filterEspecies.includes(esp)) return false;
+      }
+      const varName = l.variedad || 'Sin especificar';
+      if (filterVariedades.length > 0 && !filterVariedades.includes(varName)) {
+        return false;
+      }
+      const cat = l.categoria || 'PRIMU';
+      if (filterCategorias.length > 0 && !filterCategorias.includes(cat)) {
+        return false;
+      }
+      if (filterTratamientos.length > 0) {
+        const trats = Array.isArray(l.tratamiento) ? l.tratamiento : [l.tratamiento];
+        const isTratado = trats.some(t => String(t).toLowerCase() === 'tratado' || (t && t !== 'Sin Tratar' && t !== 'Sin Tratamiento')) ||
+                          Boolean(l.producto && !['Ninguno', 'Sin Tratamiento', 'FINAL', 'INTERMEDIO', ''].includes(l.producto));
+        const isSinTratar = !isTratado;
+        const matchesTratado = filterTratamientos.includes('Tratado') && isTratado;
+        const matchesSinTratar = filterTratamientos.includes('Sin Tratar') && isSinTratar;
+        const matchesLegacy = l.tratamiento && l.tratamiento.some(t => filterTratamientos.includes(t));
+        if (!matchesTratado && !matchesSinTratar && !matchesLegacy) {
+          return false;
+        }
+      }
+      if (filterEstados.length > 0) {
+        if (!filterEstados.includes(l.estado)) return false;
+      } else {
+        if (l.estado === 'Agotado') return false;
+      }
+      return true;
+    });
+  }, [lotes, filterEstadoRegistro, search, filterClientes, filterEspecies, filterVariedades, filterCategorias, filterTratamientos, filterEstados]);
+
+  // Lotes para conteo de opciones de Tratamiento (excluye únicamente filterTratamientos)
+  const lotesParaConteoTratamientos = useMemo(() => {
+    return lotes.filter((l) => {
+      if (filterEstadoRegistro !== 'TODOS') {
+        const reg = l.estadoRegistro || 'REALIZADO';
+        if (reg !== filterEstadoRegistro) return false;
+      }
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const matchLote = (l.loteNro || l.id).toLowerCase().includes(q);
+        const matchCliente = (l.cliente || '').toLowerCase().includes(q);
+        const matchVariedad = (l.variedad || '').toLowerCase().includes(q);
+        const matchEspecie = (l.especie || '').toLowerCase().includes(q);
+        if (!matchLote && !matchCliente && !matchVariedad && !matchEspecie) {
+          return false;
+        }
+      }
+      if (filterClientes.length > 0) {
+        const normLoteCl = normalizeCliente(l.cliente);
+        const matchesAny = filterClientes.some(cl => {
+          return normalizeCliente(cl) === normLoteCl || (l.cliente || '').trim().toLowerCase() === cl.trim().toLowerCase();
+        });
+        if (!matchesAny) return false;
+      }
+      if (filterEspecies.length > 0) {
+        const esp = l.especie || 'Sin especificar';
+        if (!filterEspecies.includes(esp)) return false;
+      }
+      const varName = l.variedad || 'Sin especificar';
+      if (filterVariedades.length > 0 && !filterVariedades.includes(varName)) {
+        return false;
+      }
+      if (filterTipos.length > 0 && !filterTipos.includes(l.tipo)) {
+        return false;
+      }
+      const cat = l.categoria || 'PRIMU';
+      if (filterCategorias.length > 0 && !filterCategorias.includes(cat)) {
+        return false;
+      }
+      if (filterEstados.length > 0) {
+        if (!filterEstados.includes(l.estado)) return false;
+      } else {
+        if (l.estado === 'Agotado') return false;
+      }
+      return true;
+    });
+  }, [lotes, filterEstadoRegistro, search, filterClientes, filterEspecies, filterVariedades, filterTipos, filterCategorias, filterEstados]);
+
+  const isLoteMatchingTratamiento = (l: Lote, trat: string) => {
+    const trats = Array.isArray(l.tratamiento) ? l.tratamiento : [l.tratamiento];
+    const isTratado = trats.some(t => String(t).toLowerCase() === 'tratado' || (t && t !== 'Sin Tratar' && t !== 'Sin Tratamiento')) ||
+                      Boolean(l.producto && !['Ninguno', 'Sin Tratamiento', 'FINAL', 'INTERMEDIO', ''].includes(l.producto)) ||
+                      Boolean(l.productoAplicado && l.productoAplicado.trim() !== '');
+    if (trat.toLowerCase() === 'tratado') return isTratado;
+    if (trat.toLowerCase() === 'sin tratar' || trat.toLowerCase() === 'sin tratamiento') return !isTratado;
+    return trats.some(t => String(t).toLowerCase() === trat.toLowerCase());
+  };
+
   const formatBolsasLabel = (count: number) => {
     const formatted = formatNumberArg(count);
     return count === 1 ? `${formatted} bolsa` : `${formatted} bolsas`;
+  };
+
+  const getTipoBadgeStyle = (tipo?: string) => {
+    const t = (tipo || '').toLowerCase().trim();
+    if (t.includes('final') || t.includes('terminado')) {
+      return 'bg-emerald-100 text-emerald-950 border-emerald-400/80 ring-1 ring-emerald-400/30';
+    }
+    if (t.includes('intermedio')) {
+      return 'bg-sky-100 text-sky-950 border-sky-400/80 ring-1 ring-sky-400/30';
+    }
+    if (t.includes('semilla')) {
+      return 'bg-purple-100 text-purple-950 border-purple-400/80 ring-1 ring-purple-400/30';
+    }
+    if (t.includes('procesado')) {
+      return 'bg-indigo-100 text-indigo-950 border-indigo-400/80 ring-1 ring-indigo-400/30';
+    }
+    if (t.includes('descarte') || t.includes('rechazo')) {
+      return 'bg-rose-100 text-rose-950 border-rose-400/80 ring-1 ring-rose-400/30';
+    }
+    if (t.includes('bajo consumo') || t.includes('mezcla')) {
+      return 'bg-amber-100 text-amber-950 border-amber-400/80 ring-1 ring-amber-400/30';
+    }
+    return 'bg-slate-100 text-slate-800 border-slate-300';
   };
 
   const getEstadoBadgeStyle = (estado: EstadoLoteType) => {
@@ -1012,8 +1161,9 @@ export const LotesView: React.FC<LotesViewProps> = ({
       };
     });
 
-    // Generar Hoja Resumen Consolidada por Especie y Variedad para Cierre Mensual Gerencial
+    // Generar Hoja Resumen Consolidada por Cliente, Especie y Variedad para Cierre Mensual Gerencial
     interface ResumenGroup {
+      cliente: string;
       especie: string;
       variedad: string;
       cantidadLotes: number;
@@ -1026,9 +1176,10 @@ export const LotesView: React.FC<LotesViewProps> = ({
     let grandTotalKg = 0;
 
     lotesRealizados.forEach(l => {
+      const cli = normalizeCliente(l.cliente) || 'Sin cliente';
       const esp = l.especie || 'Sin especificar';
       const varN = l.variedad || 'Sin variedad';
-      const key = `${esp}___${varN}`;
+      const key = `${cli}___${esp}___${varN}`;
 
       const bolsas = Number(l.stockBolsas) || 0;
       const kg = Number(l.stockKg) || 0;
@@ -1043,6 +1194,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
         existing.totalKg += kg;
       } else {
         summaryMap.set(key, {
+          cliente: cli,
           especie: esp,
           variedad: varN,
           cantidadLotes: 1,
@@ -1053,12 +1205,15 @@ export const LotesView: React.FC<LotesViewProps> = ({
     });
 
     const summarySorted = Array.from(summaryMap.values()).sort((a, b) => {
+      const cmpCli = a.cliente.localeCompare(b.cliente);
+      if (cmpCli !== 0) return cmpCli;
       const cmpEsp = a.especie.localeCompare(b.especie);
       if (cmpEsp !== 0) return cmpEsp;
       return a.variedad.localeCompare(b.variedad);
     });
 
     const summaryRows = summarySorted.map(g => ({
+      'Cliente': g.cliente,
       'Especie': g.especie,
       'Variedad': g.variedad,
       'Cantidad de Lotes': g.cantidadLotes,
@@ -1070,7 +1225,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
 
     // Fila consolidada de Total General
     summaryRows.push({
-      'Especie': 'TOTAL GENERAL',
+      'Cliente': 'TOTAL GENERAL',
+      'Especie': '—',
       'Variedad': '—',
       'Cantidad de Lotes': lotesRealizados.length,
       'Total Bolsas': grandTotalBolsas,
@@ -1110,6 +1266,168 @@ export const LotesView: React.FC<LotesViewProps> = ({
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Lotes Realizados');
     
     XLSX.writeFile(workbook, `Reporte_de_Produccion_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // Exportar Reporte de Movimientos en formato Excel (2 Hojas: 1- Resumen Cierre, 2- Lotes Mov Realizados)
+  const handleExportMovimientosExcel = () => {
+    // Filtrar los movimientos realizados (aplicando los filtros de búsqueda si existen)
+    const candidateSource = (activeDimensionCount > 0 || search.trim() !== '') ? filteredLotes : lotes;
+    let targetMovRealizados = candidateSource.filter(l => {
+      const isMov = l.esMovimiento || l.tipoMovimiento || l.loteOrigen || 
+                    (l.loteNro && l.loteNro.toUpperCase().includes('MOV')) || 
+                    (l.id && l.id.toUpperCase().includes('MOV')) ||
+                    l.fechaRealizacionMovimiento ||
+                    l.estadoMovimiento;
+      const isRealizado = (l.estadoRegistro || 'REALIZADO') === 'REALIZADO' && l.estadoRegistro !== 'PRE-CARGA';
+      return isMov && isRealizado;
+    });
+
+    // Si los filtros redujeron a 0, intentar con todos los movimientos realizados
+    if (targetMovRealizados.length === 0) {
+      targetMovRealizados = lotes.filter(l => {
+        const isMov = l.esMovimiento || l.tipoMovimiento || l.loteOrigen || 
+                      (l.loteNro && l.loteNro.toUpperCase().includes('MOV')) || 
+                      (l.id && l.id.toUpperCase().includes('MOV')) ||
+                      l.fechaRealizacionMovimiento ||
+                      l.estadoMovimiento;
+        const isRealizado = (l.estadoRegistro || 'REALIZADO') === 'REALIZADO' && l.estadoRegistro !== 'PRE-CARGA';
+        return isMov && isRealizado;
+      });
+    }
+
+    if (targetMovRealizados.length === 0) {
+      alert('No se encontraron movimientos realizados a la fecha para exportar. Asegúrese de pasar los movimientos a REALIZADO con el botón MOV REALIZADO.');
+      return;
+    }
+
+    // 1. HOJA 1 = RESUMEN CIERRE
+    // Columnas: "CLIENTE" / "Especie" / "Variedad" / "Cantidad de Lotes" / "Total Bolsas" / "Total Kilogramos (Kg)" / "KG TRATADOS"
+    const resumenMap = new Map<string, {
+      cliente: string;
+      especie: string;
+      variedad: string;
+      cantidadLotes: number;
+      totalBolsas: number;
+      totalKg: number;
+      kgTratados: number;
+    }>();
+
+    targetMovRealizados.forEach(l => {
+      const cl = l.cliente || 'Sin cliente';
+      const esp = l.especie || 'Sin especie';
+      const varName = l.variedad || 'Sin variedad';
+      const key = `${cl}__${esp}__${varName}`;
+
+      const bolsas = Number(l.stockBolsas) || 0;
+      const kgBolsa = Number(l.kgPorBolsa) || 800;
+      const kgTot = Number(l.stockKg) > 0 ? Number(l.stockKg) : (bolsas * kgBolsa);
+
+      const trats = Array.isArray(l.tratamiento) ? l.tratamiento : [l.tratamiento];
+      const isTratado = trats.some(t => String(t).toLowerCase() === 'tratado' || (t && t !== 'Sin Tratar' && t !== 'Sin Tratamiento')) ||
+                        (l.tipoMovimiento || '').toLowerCase().includes('tratado') ||
+                        Boolean(l.productoAplicado && l.productoAplicado.trim() !== '' && l.productoAplicado !== 'Sin Tratamiento') ||
+                        Boolean(l.producto && !['Ninguno', 'Sin Tratamiento', 'FINAL', 'INTERMEDIO', ''].includes(l.producto));
+
+      const current = resumenMap.get(key) || {
+        cliente: cl,
+        especie: esp,
+        variedad: varName,
+        cantidadLotes: 0,
+        totalBolsas: 0,
+        totalKg: 0,
+        kgTratados: 0,
+      };
+
+      current.cantidadLotes += 1;
+      current.totalBolsas += bolsas;
+      current.totalKg += kgTot;
+      if (isTratado) {
+        current.kgTratados += kgTot;
+      }
+
+      resumenMap.set(key, current);
+    });
+
+    const resumenData = Array.from(resumenMap.values()).map(r => ({
+      'Cliente': r.cliente,
+      'Especie': r.especie,
+      'Variedad': r.variedad,
+      'Cantidad de Lotes': r.cantidadLotes,
+      'Total Bolsas': r.totalBolsas,
+      'Total Kilogramos (Kg)': r.totalKg,
+      'KG TRATADOS': r.kgTratados,
+    }));
+
+    // Fila de Total General al final de la Hoja 1
+    const totalGeneral = resumenData.reduce((acc, row) => ({
+      lotes: acc.lotes + row['Cantidad de Lotes'],
+      bolsas: acc.bolsas + row['Total Bolsas'],
+      kg: acc.kg + row['Total Kilogramos (Kg)'],
+      kgTratados: acc.kgTratados + row['KG TRATADOS'],
+    }), { lotes: 0, bolsas: 0, kg: 0, kgTratados: 0 });
+
+    resumenData.push({
+      'Cliente': 'TOTAL GENERAL',
+      'Especie': '—',
+      'Variedad': '—',
+      'Cantidad de Lotes': totalGeneral.lotes,
+      'Total Bolsas': totalGeneral.bolsas,
+      'Total Kilogramos (Kg)': totalGeneral.kg,
+      'KG TRATADOS': totalGeneral.kgTratados,
+    });
+
+    // 2. HOJA 2 = LOTES MOV REALIZADOS
+    // Columnas: "Fecha de MOV realizado" / "Cliente" / "Especie" / "Variedad" / "Número de lote" / "Bolsas realizadas" / "Kg por bolsa" / "Stock total" / "Tipo de lote" / "Categoría" / "Tratamiento" / "N° Orden DE MovimientO" / "Producto Aplicado / Principio Activo"
+    const lotesMovData = targetMovRealizados.map(l => {
+      const fechaRealizadaStr = l.fechaRealizacionMovimiento || l.fechaMovimiento || l.fechaIngreso || l.fechaHoraProduccion?.split('T')[0] || '—';
+      const bolsas = Number(l.stockBolsas) || 0;
+      const kgBolsa = Number(l.kgPorBolsa) || 800;
+      const stockTotal = Number(l.stockKg) > 0 ? Number(l.stockKg) : (bolsas * kgBolsa);
+
+      let tratamientoStr = Array.isArray(l.tratamiento) ? l.tratamiento.join(', ') : (l.tratamiento || 'Original');
+      if ((l.tipoMovimiento || '').toLowerCase().includes('tratado') && !tratamientoStr.toLowerCase().includes('tratado')) {
+        tratamientoStr = 'Tratado';
+      }
+
+      const numOrdenMov = l.numeroOrdenMovimiento || l.ordenMovimientoId || l.ordenProceso || l.numeroOrdenProceso || '—';
+      const productoAplicado = l.productoAplicado || l.producto || '—';
+
+      return {
+        'Fecha de MOV realizado': fechaRealizadaStr,
+        'Cliente': l.cliente || 'Sin cliente',
+        'Especie': l.especie || 'Sin especie',
+        'Variedad': l.variedad || 'Sin variedad',
+        'Número de lote': l.loteNro || l.id,
+        'Bolsas realizadas': bolsas,
+        'Kg por bolsa': kgBolsa,
+        'Stock total': stockTotal,
+        'Tipo de lote': l.tipo || 'Final',
+        'Categoría': l.categoria || 'PRIMU',
+        'Tratamiento': tratamientoStr,
+        'N° Orden DE MovimientO': numOrdenMov,
+        'Producto Aplicado / Principio Activo': productoAplicado,
+      };
+    });
+
+    const summaryWorksheet = XLSX.utils.json_to_sheet(resumenData);
+    const summaryCols = Object.keys(resumenData[0] || {}).map(key => {
+      const maxLen = Math.max(key.length, ...resumenData.map(r => String((r as any)[key] ?? '').length));
+      return { wch: Math.min(Math.max(maxLen + 3, 14), 40) };
+    });
+    summaryWorksheet['!cols'] = summaryCols;
+
+    const detailWorksheet = XLSX.utils.json_to_sheet(lotesMovData);
+    const detailCols = Object.keys(lotesMovData[0] || {}).map(key => {
+      const maxLen = Math.max(key.length, ...lotesMovData.map(r => String((r as any)[key] ?? '').length));
+      return { wch: Math.min(Math.max(maxLen + 3, 15), 45) };
+    });
+    detailWorksheet['!cols'] = detailCols;
+
+    const workbook = XLSX.utils.book_new();
+    // Hoja 1 = Resumen Cierre, Hoja 2 = Lotes Mov Realizados
+    XLSX.utils.book_append_sheet(workbook, summaryWorksheet, 'Resumen Cierre');
+    XLSX.utils.book_append_sheet(workbook, detailWorksheet, 'Lotes Mov Realizados');
+    XLSX.writeFile(workbook, `Reporte_de_Movimientos_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   // Exportar CSV delimitado por punto y coma (;) respetando las columnas
@@ -1344,15 +1662,24 @@ export const LotesView: React.FC<LotesViewProps> = ({
           </button>
 
           {/* Botones de Exportación */}
-          <div className="flex items-center gap-1.5 bg-[#E3EFE7]/40 p-1 rounded-xl border border-[#00603C]/20">
+          <div className="flex items-center gap-1.5 bg-[#E3EFE7]/40 p-1 rounded-xl border border-[#00603C]/20 flex-wrap">
             <button
               id="btn-exportar-lotes-excel"
               onClick={handleExportExcel}
               className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold font-sans uppercase tracking-wider bg-[#00603C] text-white hover:bg-[#254731] rounded-lg transition cursor-pointer shadow-2xs"
-              title="Descargar archivo de Excel (.xlsx) nativo con formato de columnas estricto"
+              title="Descargar archivo de Excel (.xlsx) con el Reporte de Producción oficial"
             >
-              <Download className="w-4 h-4 text-[#C9922E]" />
-              <span>Exportar Reporte Excel</span>
+              <FileSpreadsheet className="w-4 h-4 text-[#C9922E]" />
+              <span>Reporte de Producción</span>
+            </button>
+            <button
+              id="btn-reporte-movimientos-excel"
+              onClick={handleExportMovimientosExcel}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold font-sans uppercase tracking-wider bg-white text-sky-800 hover:bg-sky-50 border border-sky-300 rounded-lg transition cursor-pointer shadow-2xs"
+              title="Descargar archivo de Excel (.xlsx) con el Reporte de Movimientos"
+            >
+              <Download className="w-4 h-4 text-sky-600" />
+              <span>Reporte de Movimientos</span>
             </button>
             <button
               id="btn-exportar-lotes-csv"
@@ -2096,6 +2423,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
                             loteId: true,
                             cliente: true,
                             variedad: true,
+                            tipo: true,
+                            tratamiento: true,
                             bolsas: true,
                             estado: true,
                           })}
@@ -2109,6 +2438,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
                           { key: 'loteId', label: 'N° de lote' },
                           { key: 'cliente', label: 'Cliente' },
                           { key: 'variedad', label: 'Variedad' },
+                          { key: 'tipo', label: 'Tipo de lote' },
+                          { key: 'tratamiento', label: 'Tratamiento' },
                           { key: 'bolsas', label: 'Cantidad de bolsas' },
                           { key: 'estado', label: 'Estado' },
                         ].map(({ key, label }) => (
@@ -2608,14 +2939,27 @@ export const LotesView: React.FC<LotesViewProps> = ({
 
                 <div className="flex gap-1.5">
                   {l.estadoRegistro === 'PRE-CARGA' && (
-                    <button
-                      onClick={() => setLoteToProcess(l)}
-                      className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition text-xs flex items-center gap-1 font-bold cursor-pointer"
-                      title="Pasar a Realizado (Ingresar silos y bolsones de origen)"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
-                      <span>Realizar</span>
-                    </button>
+                    (l.esMovimiento || l.tipoMovimiento || l.loteOrigen || (l.loteNro && l.loteNro.toUpperCase().includes('MOV'))) ? (
+                      <button
+                        type="button"
+                        onClick={() => setLoteToMovRealizado(l)}
+                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-xs flex items-center gap-1 font-bold cursor-pointer border border-blue-500"
+                        title="MOV REALIZADO (Fijar manualmente el día en el que se realizó efectivamente el movimiento)"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                        <span>MOV REALIZADO</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setLoteToProcess(l)}
+                        className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition text-xs flex items-center gap-1 font-bold cursor-pointer"
+                        title="Pasar a Realizado (Ingresar silos y bolsones de origen)"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Realizar</span>
+                      </button>
+                    )
                   )}
 
                   {!l.tratamiento.includes('Tratado') && l.stockBolsas > 0 && (
@@ -2689,6 +3033,167 @@ export const LotesView: React.FC<LotesViewProps> = ({
         
         /* VISTA TABLA (ESTILO DE TABLA INSTITUCIONAL) */
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden space-y-0">
+          {/* Barras de Filtros Rápidos (Específicos y Visibles para Vista Tabla) */}
+          <div className="p-3 sm:p-4 bg-gradient-to-r from-slate-900 via-slate-800 to-[#004D30] text-white border-b border-gray-200/80 space-y-3 shadow-inner">
+            {/* 1. Filtro Rápido Tipo */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-400 text-slate-950 font-black text-xs rounded-lg uppercase tracking-wider font-mono shadow-xs">
+                  <Filter className="w-3.5 h-3.5 text-slate-950 stroke-[2.5]" />
+                  <span>FILTRO TIPO:</span>
+                </div>
+
+                {/* Botón 'TODOS' Tipo */}
+                <button
+                  type="button"
+                  id="btn-filtro-tipo-tabla-todos"
+                  onClick={() => setFilterTipos([])}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 border shadow-2xs ${
+                    filterTipos.length === 0
+                      ? 'bg-amber-400 text-slate-950 border-amber-300 ring-2 ring-amber-300/60'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                  }`}
+                  title="Mostrar todos los tipos de lotes"
+                >
+                  <span>TODOS</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono font-bold ${
+                    filterTipos.length === 0 ? 'bg-slate-950 text-amber-300' : 'bg-slate-900 text-slate-400'
+                  }`}>
+                    {lotesParaConteoTipos.length}
+                  </span>
+                </button>
+
+                {/* Chips individuales por cada Tipo disponible */}
+                {tiposDisponibles.map((tp) => {
+                  const isSelected = filterTipos.includes(tp);
+                  const count = lotesParaConteoTipos.filter((l) => (l.tipo || '').trim().toLowerCase() === tp.trim().toLowerCase()).length;
+
+                  return (
+                    <button
+                      key={tp}
+                      type="button"
+                      id={`btn-filtro-tipo-tabla-${tp.toLowerCase().replace(/\s+/g, '-')}`}
+                      onClick={() => {
+                        if (isSelected) {
+                          setFilterTipos(filterTipos.filter((t) => t !== tp));
+                        } else {
+                          setFilterTipos([...filterTipos, tp]);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 border shadow-2xs ${
+                        isSelected
+                          ? 'bg-emerald-500 text-white border-emerald-400 ring-2 ring-emerald-300/80'
+                          : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-700'
+                      }`}
+                      title={`Filtrar por Tipo: ${tp} (${count} lotes)`}
+                    >
+                      <Tag className={`w-3 h-3 ${isSelected ? 'text-amber-300' : 'text-slate-400'}`} />
+                      <span className="uppercase">{tp}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono font-bold ${
+                          isSelected ? 'bg-emerald-950 text-emerald-200' : 'bg-slate-900 text-slate-400'
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {filterTipos.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFilterTipos([])}
+                  className="text-xs font-bold text-amber-300 hover:text-amber-200 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition cursor-pointer"
+                  title="Quitar filtro de tipo y ver todos"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Restablecer Tipo</span>
+                </button>
+              )}
+            </div>
+
+            {/* 2. Filtro Rápido Tratamiento (Solicitado para la Tabla de Lotes) */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-700/60">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-cyan-400 text-slate-950 font-black text-xs rounded-lg uppercase tracking-wider font-mono shadow-xs">
+                  <FlaskConical className="w-3.5 h-3.5 text-slate-950 stroke-[2.5]" />
+                  <span>FILTRO TRATAMIENTO:</span>
+                </div>
+
+                {/* Botón 'TODOS' Tratamiento */}
+                <button
+                  type="button"
+                  id="btn-filtro-tratamiento-tabla-todos"
+                  onClick={() => setFilterTratamientos([])}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 border shadow-2xs ${
+                    filterTratamientos.length === 0
+                      ? 'bg-cyan-400 text-slate-950 border-cyan-300 ring-2 ring-cyan-300/60'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                  }`}
+                  title="Mostrar todos los tratamientos"
+                >
+                  <span>TODOS</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono font-bold ${
+                    filterTratamientos.length === 0 ? 'bg-slate-950 text-cyan-200' : 'bg-slate-900 text-slate-400'
+                  }`}>
+                    {lotesParaConteoTratamientos.length}
+                  </span>
+                </button>
+
+                {/* Chips individuales por cada Tratamiento disponible */}
+                {tratamientosDisponibles.map((trat) => {
+                  const isSelected = filterTratamientos.includes(trat);
+                  const count = lotesParaConteoTratamientos.filter((l) => isLoteMatchingTratamiento(l, trat)).length;
+
+                  return (
+                    <button
+                      key={trat}
+                      type="button"
+                      id={`btn-filtro-tratamiento-tabla-${trat.toLowerCase().replace(/\s+/g, '-')}`}
+                      onClick={() => {
+                        if (isSelected) {
+                          setFilterTratamientos(filterTratamientos.filter((t) => t !== trat));
+                        } else {
+                          setFilterTratamientos([...filterTratamientos, trat]);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 border shadow-2xs ${
+                        isSelected
+                          ? 'bg-cyan-500 text-white border-cyan-400 ring-2 ring-cyan-300/80'
+                          : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-700'
+                      }`}
+                      title={`Filtrar por Tratamiento: ${trat} (${count} lotes)`}
+                    >
+                      <FlaskConical className={`w-3 h-3 ${isSelected ? 'text-amber-300' : 'text-cyan-400'}`} />
+                      <span className="uppercase">{trat}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono font-bold ${
+                          isSelected ? 'bg-cyan-950 text-cyan-200' : 'bg-slate-900 text-slate-400'
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {filterTratamientos.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFilterTratamientos([])}
+                  className="text-xs font-bold text-cyan-300 hover:text-cyan-200 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition cursor-pointer"
+                  title="Quitar filtro de tratamiento y ver todos"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Restablecer Tratamiento</span>
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -2714,6 +3219,32 @@ export const LotesView: React.FC<LotesViewProps> = ({
                   {visibleColumns.loteId && <th className="py-3.5 px-3.5 font-extrabold uppercase text-xs tracking-wider text-amber-300 whitespace-nowrap">N° de lote</th>}
                   {visibleColumns.cliente && <th className="py-3.5 px-3.5 font-bold uppercase text-xs tracking-wider text-white whitespace-nowrap">Cliente</th>}
                   {visibleColumns.variedad && <th className="py-3.5 px-3.5 font-bold uppercase text-xs tracking-wider text-white whitespace-nowrap">Variedad</th>}
+                  {visibleColumns.tipo && (
+                    <th className="py-3.5 px-3.5 font-extrabold uppercase text-xs tracking-wider text-amber-300 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        <span>Tipo</span>
+                        {filterTipos.length > 0 && (
+                          <span className="px-1.5 py-0.2 bg-amber-400 text-slate-950 text-[9px] font-black rounded font-mono">
+                            {filterTipos.length}
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                  )}
+                  {visibleColumns.tratamiento && (
+                    <th className="py-3.5 px-3.5 font-extrabold uppercase text-xs tracking-wider text-cyan-300 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <FlaskConical className="w-3.5 h-3.5 text-cyan-300 stroke-[2.5]" />
+                        <span>Tratamiento</span>
+                        {filterTratamientos.length > 0 && (
+                          <span className="px-1.5 py-0.2 bg-cyan-400 text-slate-950 text-[9px] font-black rounded font-mono">
+                            {filterTratamientos.length}
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                  )}
                   {visibleColumns.bolsas && <th className="py-3.5 px-3.5 font-bold uppercase text-xs tracking-wider text-white text-right whitespace-nowrap">Cantidad de bolsas</th>}
                   {visibleColumns.estado && <th className="py-3.5 px-3.5 font-bold uppercase text-xs tracking-wider text-white text-center whitespace-nowrap">Estado</th>}
                   <th className="py-3.5 px-3.5 font-bold uppercase text-xs tracking-wider text-white text-center whitespace-nowrap">Acción</th>
@@ -2773,7 +3304,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                             </button>
                           </div>
 
-                          {/* Badge de Estado de Registro e ID */}
+                          {/* Badge de Estado de Registro, ID y TIPO */}
                           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                             {l.estadoRegistro === 'PRE-CARGA' ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[9px] rounded-md shadow-2xs" title="Pre-Carga: Lote planificado. NO descuenta stock de silos.">
@@ -2788,6 +3319,13 @@ export const LotesView: React.FC<LotesViewProps> = ({
                             )}
                             <span className="font-mono text-[9px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                               ID: {l.id}
+                            </span>
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border shadow-2xs ${getTipoBadgeStyle(l.tipo)}`}
+                              title={`Tipo de lote: ${l.tipo || 'Sin tipo'}`}
+                            >
+                              <Tag className="w-2.5 h-2.5 shrink-0" />
+                              <span>TIPO: {l.tipo || 'Sin tipo'}</span>
                             </span>
                           </div>
                         </div>
@@ -2815,7 +3353,67 @@ export const LotesView: React.FC<LotesViewProps> = ({
                       </td>
                     )}
 
-                    {/* 4. Cantidad de bolsas */}
+                    {/* 4. Tipo de Lote (Dato Visible de la información del lote) */}
+                    {visibleColumns.tipo && (
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        <div className="flex flex-col gap-1 items-start">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border shadow-2xs ${getTipoBadgeStyle(l.tipo)}`}
+                          >
+                            <Tag className="w-3.5 h-3.5 shrink-0" />
+                            <span>{l.tipo || 'Final'}</span>
+                          </span>
+                          {!filterTipos.includes(l.tipo) && l.tipo && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFilterTipos([l.tipo]);
+                              }}
+                              className="text-[9.5px] font-bold text-slate-400 hover:text-[#00603C] hover:underline cursor-pointer flex items-center gap-0.5 transition"
+                              title={`Filtrar exclusivamente lotes tipo "${l.tipo}"`}
+                            >
+                              <Filter className="w-2.5 h-2.5" />
+                              <span>Filtrar sólo {l.tipo}</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+
+                    {/* Tratamiento */}
+                    {visibleColumns.tratamiento && (
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        <div className="flex flex-col gap-1 items-start">
+                          {(() => {
+                            const trats = Array.isArray(l.tratamiento) ? l.tratamiento : [l.tratamiento];
+                            const isTratado = trats.some(t => String(t).toLowerCase() === 'tratado' || (t && t !== 'Sin Tratar' && t !== 'Sin Tratamiento')) ||
+                                              (l.tipoMovimiento || '').toLowerCase().includes('tratado') ||
+                                              Boolean(l.productoAplicado && l.productoAplicado.trim() !== '') ||
+                                              Boolean(l.producto && !['Ninguno', 'Sin Tratamiento', 'FINAL', 'INTERMEDIO', ''].includes(l.producto));
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border shadow-2xs ${
+                                  isTratado
+                                    ? 'bg-cyan-100 text-cyan-950 border-cyan-400/80 ring-1 ring-cyan-400/30'
+                                    : 'bg-slate-100 text-slate-800 border-slate-300'
+                                }`}
+                              >
+                                <FlaskConical className={`w-3.5 h-3.5 shrink-0 ${isTratado ? 'text-cyan-700' : 'text-slate-500'}`} />
+                                <span>{isTratado ? 'Tratado' : 'Sin Tratar'}</span>
+                              </span>
+                            );
+                          })()}
+                          {l.productoAplicado && (
+                            <span className="text-[10px] font-semibold text-slate-500 truncate max-w-[140px]" title={l.productoAplicado}>
+                              {l.productoAplicado}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    )}
+
+                    {/* 5. Cantidad de bolsas */}
                     {visibleColumns.bolsas && (
                       <td className="py-3 px-3.5 text-right">
                         <div className="font-black text-slate-900 font-mono text-xs sm:text-sm whitespace-nowrap">
@@ -2829,7 +3427,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                       </td>
                     )}
 
-                    {/* 5. Estado */}
+                    {/* 6. Estado */}
                     {visibleColumns.estado && (
                       <td className="py-3 px-3.5 text-center whitespace-nowrap">
                         <span className={`inline-block px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider rounded-full border ${getEstadoBadgeStyle(l.estado)}`}>
@@ -2838,18 +3436,31 @@ export const LotesView: React.FC<LotesViewProps> = ({
                       </td>
                     )}
 
-                    {/* 6. Acción */}
+                    {/* 7. Acción */}
                     <td className="py-3 px-3.5 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1 sm:gap-1.5">
                         {l.estadoRegistro === 'PRE-CARGA' && (
-                          <button
-                            onClick={() => setLoteToProcess(l)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs transition cursor-pointer"
-                            title="Pasar a Realizado (Ingresar silos, bolsones y sectores de origen)"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
-                            <span>Pasar a Realizado</span>
-                          </button>
+                          (l.esMovimiento || l.tipoMovimiento || l.loteOrigen || (l.loteNro && l.loteNro.toUpperCase().includes('MOV'))) ? (
+                            <button
+                              type="button"
+                              onClick={() => setLoteToMovRealizado(l)}
+                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-black flex items-center gap-1 shadow-xs transition cursor-pointer border border-blue-500 uppercase tracking-wider"
+                              title="MOV REALIZADO: Fijar manualmente el día en el que se realizó efectivamente el movimiento"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                              <span>MOV REALIZADO</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setLoteToProcess(l)}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs transition cursor-pointer"
+                              title="Pasar a Realizado (Ingresar silos, bolsones y sectores de origen)"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+                              <span>Pasar a Realizado</span>
+                            </button>
+                          )
                         )}
                         {!l.tratamiento.includes('Tratado') && l.stockBolsas > 0 && (
                           <button
@@ -3370,6 +3981,32 @@ export const LotesView: React.FC<LotesViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal MOV REALIZADO: Fijar manualmente el día en el que se realizó efectivamente el movimiento precargado */}
+      {(loteToMovRealizado || lotesToMovRealizadoBatch.length > 0) && (
+        <MovRealizadoModal
+          isOpen={Boolean(loteToMovRealizado || lotesToMovRealizadoBatch.length > 0)}
+          lote={loteToMovRealizado}
+          lotesToProcess={lotesToMovRealizadoBatch}
+          onConfirm={(resultado) => {
+            const updatedList = Array.isArray(resultado) ? resultado : [resultado];
+            if (onBatchUpdateLotes) {
+              onBatchUpdateLotes(updatedList);
+            } else if (onSaveLote) {
+              updatedList.forEach(l => onSaveLote(l));
+            }
+            setLoteToMovRealizado(null);
+            setLotesToMovRealizadoBatch([]);
+            setSelectedLoteIds([]);
+            setRefreshToast('Movimiento registrado y stock actualizado con fecha efectiva.');
+            setTimeout(() => setRefreshToast(null), 3500);
+          }}
+          onClose={() => {
+            setLoteToMovRealizado(null);
+            setLotesToMovRealizadoBatch([]);
+          }}
+        />
       )}
     </div>
   );

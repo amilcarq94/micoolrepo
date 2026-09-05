@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { OrdenProceso, TipoOrdenProceso, EstadoOrdenProceso, CategoriaType, EspecieType, ProductoTratamiento, SiloId, SiloExtraccion, Lote, LoteOrigenItem } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { OrdenProceso, TipoOrdenProceso, EstadoOrdenProceso, CategoriaType, EspecieType, ProductoTratamiento, SiloId, SiloExtraccion, Lote, LoteOrigenItem, PlantaConfig, VARIEDADES_DB_DEFAULT } from '../types';
 import { getCampaniaIdFromDate } from '../utils/campanias';
 import { SilosSelector } from './SilosSelector';
 import { LotesOrigenSelector } from './LotesOrigenSelector';
 import { ClienteSelect } from './ClienteSelect';
 import { ModalVentanaOperacion } from './ModalVentanaOperacion';
-import { X, Factory, Truck, CheckCircle, AlertCircle, Save, Package, Plus, Trash2, Scale } from 'lucide-react';
+import { X, Factory, Truck, CheckCircle, AlertCircle, Save, Package, Plus, Trash2, Scale, Database } from 'lucide-react';
 
 export function getKgPorEnvase(envaseStr: string): number {
   if (!envaseStr) return 800;
@@ -37,6 +37,7 @@ interface OrdenProcesoModalProps {
   activeCampaniaId?: string;
   siloStocks?: Record<SiloId, number>;
   lotes?: Lote[];
+  plantaConfig?: PlantaConfig;
   onSave: (orden: OrdenProceso) => void;
   onClose: () => void;
 }
@@ -48,6 +49,7 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
   activeCampaniaId,
   siloStocks,
   lotes = [],
+  plantaConfig,
   onSave,
   onClose,
 }) => {
@@ -61,6 +63,7 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
   // Form Fields
   const [numeroOrden, setNumeroOrden] = useState('');
   const [cliente, setCliente] = useState('San Diego Semilla');
+  const [semillero, setSemillero] = useState(ordenAEditar?.semillero || '');
   const [especie, setEspecie] = useState<EspecieType | string>('Soja');
   const [tipoMovimiento, setTipoMovimiento] = useState('Intermedio a Final');
   const [numeroOrdenMovimiento, setNumeroOrdenMovimiento] = useState('');
@@ -68,6 +71,7 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
   const [envaseManual, setEnvaseManual] = useState('');
   const [tratamiento, setTratamiento] = useState('Sin Tratamiento');
   const [variedad, setVariedad] = useState('P46A03');
+  const [variedadManual, setVariedadManual] = useState('');
   const [producto, setProducto] = useState('FINAL');
   const [productosList, setProductosList] = useState<ProductoTratamiento[]>([]);
   const [categoriaSelect, setCategoriaSelect] = useState('Fundadora');
@@ -83,6 +87,62 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
   const [lotesOrigen, setLotesOrigen] = useState<LoteOrigenItem[]>([]);
 
   const [error, setError] = useState('');
+
+  // Base de datos de variedades de plantaConfig o dataset oficial
+  const variedadesDbList = useMemo(() => {
+    if (plantaConfig?.variedadesDb && plantaConfig.variedadesDb.length > 0) {
+      return plantaConfig.variedadesDb;
+    }
+    return VARIEDADES_DB_DEFAULT;
+  }, [plantaConfig?.variedadesDb]);
+
+  // Lista única de semilleros desde la base de datos
+  const semillerosDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    variedadesDbList.forEach(v => {
+      if (v.semillero && v.semillero.trim()) {
+        set.add(v.semillero.trim());
+      }
+    });
+    if (set.size === 0) {
+      set.add('Don Mario');
+      set.add('Pioneer');
+      set.add('Stine');
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [variedadesDbList]);
+
+  // Si no hay semillero seleccionado, intentar derivarlo del cliente o asignar uno por defecto
+  useEffect(() => {
+    if (ordenAEditar?.semillero) {
+      setSemillero(ordenAEditar.semillero);
+      return;
+    }
+    if (!semillero && cliente) {
+      const match = variedadesDbList.find(
+        v => (v.cliente || '').trim().toLowerCase() === cliente.trim().toLowerCase() && v.semillero
+      );
+      if (match && match.semillero) {
+        setSemillero(match.semillero.trim());
+      } else if (semillerosDisponibles.length > 0 && !semillero) {
+        // Asignar primer semillero si está disponible
+        setSemillero(semillerosDisponibles[0]);
+      }
+    }
+  }, [cliente, ordenAEditar?.semillero, variedadesDbList, semillerosDisponibles]);
+
+  // Variedades vinculadas al semillero seleccionado
+  const variedadesFiltradas = useMemo(() => {
+    if (!semillero) return variedadesDbList;
+    return variedadesDbList.filter(
+      v => (v.semillero || '').trim().toLowerCase() === semillero.trim().toLowerCase()
+    );
+  }, [semillero, variedadesDbList]);
+
+  const nombresVariedades = useMemo(() => {
+    const set = new Set<string>(variedadesFiltradas.map(v => v.nombre.trim()).filter(Boolean));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [variedadesFiltradas]);
 
   // Initial values setup
   useEffect(() => {
@@ -159,8 +219,17 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
     setError('');
 
     // Validations
-    if (!numeroOrden.trim()) {
+    const finalNumeroOrden = tipoOrden === 'MOVIMIENTO'
+      ? (numeroOrdenMovimiento.trim() || numeroOrden.trim())
+      : numeroOrden.trim();
+
+    if (tipoOrden === 'PRODUCCION' && !numeroOrden.trim()) {
       setError('El N° de Orden de Proceso es obligatorio.');
+      return;
+    }
+
+    if (tipoOrden === 'MOVIMIENTO' && !numeroOrdenMovimiento.trim()) {
+      setError('El N° de Orden de Movimiento es obligatorio.');
       return;
     }
 
@@ -171,14 +240,15 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
 
     // Uniqueness check for numeroOrden
     const duplicate = existingOrdenes.find(
-      o => o.numeroOrden.trim().toLowerCase() === numeroOrden.trim().toLowerCase() && o.id !== ordenAEditar?.id
+      o => o.numeroOrden.trim().toLowerCase() === finalNumeroOrden.toLowerCase() && o.id !== ordenAEditar?.id
     );
     if (duplicate) {
-      setError(`Ya existe una Orden de Proceso con el N° ${numeroOrden}.`);
+      setError(`Ya existe una Orden con el N° ${finalNumeroOrden}.`);
       return;
     }
 
-    if (!variedad.trim()) {
+    const finalVariedad = variedad === '__MANUAL__' ? variedadManual.trim() : variedad.trim();
+    if (!finalVariedad) {
       setError('La Variedad es obligatoria.');
       return;
     }
@@ -261,13 +331,14 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
 
     const ordenGuardar: OrdenProceso = {
       id: ordenAEditar ? ordenAEditar.id : `OP-${Date.now()}`,
-      numeroOrden: numeroOrden.trim(),
+      numeroOrden: finalNumeroOrden,
       tipoOrden,
       cliente: cliente.trim(),
+      semillero: semillero.trim() || undefined,
       especie: especie.trim(),
       envaseDestino: finalEnvaseDestino,
       tratamiento: tipoOrden === 'MOVIMIENTO' ? tratamiento.trim() : 'Sin Tratamiento',
-      variedad: variedad.trim(),
+      variedad: finalVariedad,
       producto: producto.trim(),
       productos: isTratadoMov ? productosList : [],
       categoria: finalCategoria,
@@ -281,10 +352,16 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
       fechaCreacion,
       campaniaId,
       silosOrigen: silosOrigenSanitized,
-      lotesOrigen: tipoOrden === 'MOVIMIENTO' ? lotesOrigen : [],
+      lotesOrigen: tipoOrden === 'MOVIMIENTO'
+        ? lotesOrigen.map(lo => ({
+            ...lo,
+            estadoMovimiento: lo.estadoMovimiento || 'PRE-MOVIMIENTO',
+          }))
+        : [],
       ...(tipoOrden === 'MOVIMIENTO' ? {
         tipoMovimiento: tipoMovimiento.trim(),
         numeroOrdenMovimiento: numeroOrdenMovimiento.trim(),
+        estadoMovimiento: ordenAEditar?.estadoMovimiento || 'PRE-MOVIMIENTO',
       } : {}),
     };
 
@@ -293,7 +370,7 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
 
   const modalTitle = tipoOrden === 'PRODUCCION'
     ? (isEditing ? `Editar Orden de Proceso N° ${ordenAEditar?.numeroOrden}` : 'Nueva Orden de Proceso')
-    : (isEditing ? `Editar Orden de Movimiento N° ${ordenAEditar?.numeroOrden}` : 'Nueva Orden de Movimiento');
+    : (isEditing ? `Editar Orden de Movimiento N° ${ordenAEditar?.numeroOrdenMovimiento || ordenAEditar?.numeroOrden}` : 'Nueva Orden de Movimiento');
 
   const modalSubtitle = tipoOrden === 'PRODUCCION'
     ? 'Complete los parámetros de la orden de proceso para control de producción y trazabilidad.'
@@ -353,20 +430,39 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             
-            {/* N° Orden de Proceso */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                N° Orden de Proceso *
-              </label>
-              <input
-                type="text"
-                value={numeroOrden}
-                onChange={(e) => setNumeroOrden(e.target.value)}
-                placeholder="Ej. 1001"
-                required
-                className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-mono font-semibold"
-              />
-            </div>
+            {/* N° Orden de Proceso (Solo para PRODUCCION) */}
+            {tipoOrden === 'PRODUCCION' && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  N° Orden de Proceso *
+                </label>
+                <input
+                  type="text"
+                  value={numeroOrden}
+                  onChange={(e) => setNumeroOrden(e.target.value)}
+                  placeholder="Ej. 1001"
+                  required
+                  className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-mono font-semibold"
+                />
+              </div>
+            )}
+
+            {/* N° Orden de Movimiento (Solo para MOVIMIENTO, reemplaza al N° de Orden de Proceso) */}
+            {tipoOrden === 'MOVIMIENTO' && (
+              <div>
+                <label className="block text-xs font-semibold text-blue-900 uppercase tracking-wider mb-1">
+                  N° Orden de Movimiento *
+                </label>
+                <input
+                  type="text"
+                  value={numeroOrdenMovimiento}
+                  onChange={(e) => setNumeroOrdenMovimiento(e.target.value)}
+                  placeholder="Ej. OM-402"
+                  required
+                  className="w-full px-3.5 py-2 text-sm border border-blue-200 bg-blue-50/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono font-bold text-blue-900"
+                />
+              </div>
+            )}
 
             {/* Fecha */}
             <div>
@@ -380,6 +476,29 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
                 className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
+
+            {/* Tipo de Movimiento (Solo para MOVIMIENTO) */}
+            {tipoOrden === 'MOVIMIENTO' && (
+              <div>
+                <label className="block text-xs font-semibold text-blue-900 uppercase tracking-wider mb-1">
+                  Tipo de Movimiento *
+                </label>
+                <select
+                  value={tipoMovimiento}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTipoMovimiento(val);
+                    if (val === 'Final a Final Tratado' && (tratamiento === 'Sin Tratamiento' || !tratamiento)) {
+                      setTratamiento('Curasemilla Fungicida + Inoculante');
+                    }
+                  }}
+                  className="w-full px-3.5 py-2 text-sm border border-blue-200 bg-blue-50/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-bold text-blue-900"
+                >
+                  <option value="Intermedio a Final">Intermedio a Final</option>
+                  <option value="Final a Final Tratado">Final a Final Tratado</option>
+                </select>
+              </div>
+            )}
 
             {/* Cliente */}
             <ClienteSelect
@@ -407,91 +526,99 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
               </select>
             </div>
 
-            {/* Fields specific to MOVIMIENTO */}
-            {tipoOrden === 'MOVIMIENTO' && (
-              <>
-                <div>
-                  <label className="block text-xs font-semibold text-blue-900 uppercase tracking-wider mb-1">
-                    Tipo de Movimiento *
-                  </label>
-                  <select
-                    value={tipoMovimiento}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setTipoMovimiento(val);
-                      if (val === 'Final a Final Tratado' && (tratamiento === 'Sin Tratamiento' || !tratamiento)) {
-                        setTratamiento('Curasemilla Fungicida + Inoculante');
-                      }
-                    }}
-                    className="w-full px-3.5 py-2 text-sm border border-blue-200 bg-blue-50/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-bold text-blue-900"
-                  >
-                    <option value="Intermedio a Final">Intermedio a Final</option>
-                    <option value="Final a Final Tratado">Final a Final Tratado</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-blue-900 uppercase tracking-wider mb-1">
-                    N° Orden de Movimiento *
-                  </label>
-                  <input
-                    type="text"
-                    value={numeroOrdenMovimiento}
-                    onChange={(e) => setNumeroOrdenMovimiento(e.target.value)}
-                    placeholder="Ej. OM-402"
-                    required
-                    className="w-full px-3.5 py-2 text-sm border border-blue-200 bg-blue-50/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono font-semibold"
-                  />
-                </div>
-              </>
-            )}
-
-            {/* Tipo de Envase a Destino */}
+            {/* Semillero (Base de Datos) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Tipo de Envase a Destino *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Semillero *
+                </label>
+                {semillerosDisponibles.length > 0 && (
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <Database className="w-2.5 h-2.5" />
+                    {semillerosDisponibles.length} Semilleros
+                  </span>
+                )}
+              </div>
               <select
-                value={envaseSelect}
+                value={semillero}
                 onChange={(e) => {
-                  setEnvaseSelect(e.target.value);
-                  if (e.target.value !== 'Otra') {
-                    setEnvaseManual('');
+                  const s = e.target.value;
+                  setSemillero(s);
+                  // Filtrar variedades y preseleccionar si no coincide
+                  const vars = variedadesDbList.filter(
+                    v => (v.semillero || '').trim().toLowerCase() === s.trim().toLowerCase()
+                  );
+                  if (vars.length > 0) {
+                    setVariedad(vars[0].nombre);
+                    if (vars[0].especie) setEspecie(vars[0].especie);
                   }
                 }}
-                className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium"
+                className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-semibold"
+                required
               >
-                <option value="Bolsa x 25 Kg">Bolsa x 25 Kg</option>
-                <option value="Bolsa x 40 Kg">Bolsa x 40 Kg</option>
-                <option value="Big Bag x 800 Kg">Big Bag x 800 Kg</option>
-                <option value="Otra">Otra</option>
+                <option value="">-- Seleccionar Semillero --</option>
+                {semillerosDisponibles.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
               </select>
-
-              {envaseSelect === 'Otra' && (
-                <input
-                  type="text"
-                  value={envaseManual}
-                  onChange={(e) => setEnvaseManual(e.target.value)}
-                  placeholder="Cargar tipo de envase manualmente..."
-                  required
-                  className="mt-2 w-full px-3.5 py-2 text-sm border border-emerald-300 bg-emerald-50/30 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium"
-                />
-              )}
             </div>
 
-            {/* Variedad */}
+            {/* Variedad (Base de Datos vinculada al Semillero) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Variedad *
-              </label>
-              <input
-                type="text"
-                value={variedad}
-                onChange={(e) => setVariedad(e.target.value)}
-                placeholder="Ej. P46A03, DM TIPA"
-                required
-                className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Variedad *
+                </label>
+                {semillero && (
+                  <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">
+                    {nombresVariedades.length} vincl. a {semillero}
+                  </span>
+                )}
+              </div>
+              {semillero && nombresVariedades.length > 0 ? (
+                <select
+                  value={nombresVariedades.includes(variedad) ? variedad : (variedad ? '__MANUAL__' : '')}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '__MANUAL__') {
+                      setVariedad('__MANUAL__');
+                    } else {
+                      setVariedad(val);
+                      const matched = variedadesFiltradas.find(v => v.nombre.toLowerCase() === val.toLowerCase());
+                      if (matched && matched.especie) {
+                        setEspecie(matched.especie);
+                      }
+                    }
+                  }}
+                  className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-semibold"
+                  required
+                >
+                  <option value="">-- Seleccionar Variedad vinculada --</option>
+                  {nombresVariedades.map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                  <option value="__MANUAL__">+ Ingresar otra variedad manual...</option>
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={variedad === '__MANUAL__' ? variedadManual : variedad}
+                  onChange={(e) => setVariedad(e.target.value)}
+                  placeholder={semillero ? "Escriba variedad..." : "Seleccione primero un semillero..."}
+                  required
+                  className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium"
+                />
+              )}
+              {variedad === '__MANUAL__' && (
+                <input
+                  type="text"
+                  value={variedadManual}
+                  onChange={(e) => setVariedadManual(e.target.value)}
+                  placeholder="Nombre de variedad personalizada..."
+                  required
+                  className="mt-2 w-full px-3.5 py-2 text-sm border border-purple-300 bg-purple-50/40 rounded-xl focus:ring-2 focus:ring-purple-500 font-medium"
+                />
+              )}
             </div>
 
             {/* Tipo de Lote */}
@@ -762,49 +889,6 @@ export const OrdenProcesoModal: React.FC<OrdenProcesoModalProps> = ({
               <p className="text-[11px] text-slate-500 mt-1 font-medium">
                 * El estado solo se modifica manualmente. Cumplir el objetivo deseado no cierra la orden de forma automática (el objetivo es aproximado y no vinculante).
               </p>
-            </div>
-
-            {/* Datos de Eficiencia Operativa (Horas Hombre) */}
-            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <Factory className="w-3.5 h-3.5 text-emerald-700" />
-                  Métricas Operativas (Horas Hombre)
-                </span>
-                <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
-                  Total: {(operarios * horasTrabajadas).toFixed(1)} hs-hombre
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Operarios Asignados
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    value={operarios}
-                    onChange={(e) => setOperarios(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                    className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Horas Efectivas de Operación
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={horasTrabajadas}
-                    onChange={(e) => setHorasTrabajadas(Math.max(0, parseFloat(e.target.value) || 0))}
-                    className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 font-bold"
-                  />
-                </div>
-              </div>
             </div>
 
           </div>
