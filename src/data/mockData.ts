@@ -106,24 +106,20 @@ function parseInitialLots(): Lote[] {
     // Asignar datos de vencimiento de tratamiento a lotes Tratados
     let fechaTrat: string | undefined;
     let fechaVencTrat: string | undefined;
-    let linkedOpId: string | undefined;
     let prodTrat = "Ninguno";
 
     if (tratamiento === "Tratado") {
       prodTrat = "Rizoderma + Fungicida";
-      // Asignar fechas y OPs vinculadas variadas para demostración
+      // Asignar fechas variadas para demostración
       if (loteNro.includes("03TRA") || loteNro.includes("04TRA") || loteNro.includes("01TRA")) {
         fechaTrat = "2026-06-10";
         fechaVencTrat = "2026-08-01"; // Próximo vencimiento (en ~9 días)
-        linkedOpId = "OP-2026-1001";
       } else if (loteNro.includes("05TRA") || loteNro.includes("06TRA") || loteNro.includes("02TRA")) {
         fechaTrat = "2026-05-20";
         fechaVencTrat = "2026-07-20"; // Vencido hace 3 días
-        linkedOpId = "OP-2026-1002";
       } else {
         fechaTrat = "2026-07-01";
         fechaVencTrat = "2026-08-20"; // En fecha (en 28 días)
-        linkedOpId = "OP-2026-1003";
       }
     }
 
@@ -143,7 +139,6 @@ function parseInitialLots(): Lote[] {
       fechaIngreso: fechaIng,
       fechaTratamiento: fechaTrat,
       fechaVencimientoTratamiento: fechaVencTrat,
-      ordenProcesoId: linkedOpId,
       campaniaId: getCampaniaIdFromDate(fechaIng),
       estado: (stockBolsas > 0 ? "Disponible" : "Agotado") as any,
       estadoRegistro: (lots.length % 5 === 0 ? "PRE-CARGA" : "REALIZADO"),
@@ -210,7 +205,6 @@ function parseInitialLots(): Lote[] {
     fechaIngreso: "2026-07-13",
     fechaTratamiento: "2026-06-25",
     fechaVencimientoTratamiento: "2026-08-10",
-    ordenProcesoId: "OP-2026-1001",
     campaniaId: getCampaniaIdFromDate("2026-07-13"),
     estado: "Disponible",
     historial: [
@@ -470,10 +464,10 @@ export const MOVIMIENTOS_SILO_INICIALES: MovimientoSilo[] = [
     siloId: "Silo 2",
     fecha: "2026-07-05",
     tipo: "INGRESO",
-    kg: 18500,
-    cliente: "Eco Rural",
-    especie: "Trigo",
-    variedad: "CASUARINA",
+    kg: 15480,
+    cliente: "Stine",
+    especie: "Soja",
+    variedad: "50EE59",
     categoria: "Original",
     campoOrigen: "La Barrancosa",
     bolsonOrigenNro: "Bolsón 44C",

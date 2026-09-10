@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type CicloGerminacionType = 'Grupo Corto' | 'Grupo Intermedio' | 'Grupo Largo';
-export const CICLOS_GERMINACION: CicloGerminacionType[] = ['Grupo Corto', 'Grupo Intermedio', 'Grupo Largo'];
-
 export type EspecieType = 'Soja' | 'Trigo' | 'Arveja' | 'Sin especificar';
 
 export type TipoLoteType = 'Intermedio' | 'Final' | 'Procesado' | 'Semilla' | 'Descarte' | 'Bajo Consumo' | 'Mezcla' | 'Rechazo' | string;
@@ -266,11 +263,16 @@ export interface OfflinePendingIngreso {
 export interface MovimientoStock {
   id: string;
   fecha: string; // Formato YYYY-MM-DD
-  tipo: 'Entrada' | 'Salida' | 'Salida por movimiento' | 'Entrada por Excel' | 'Entrada manual' | 'Ajuste';
+  tipo: 'Entrada' | 'Salida' | 'Salida por movimiento' | 'Salida por movimientos' | 'Salida por despacho' | 'Salida manual' | 'Entrada por Excel' | 'Entrada manual' | 'Ajuste' | 'Pasado a Consumo' | string;
   cantidadBolsas: number;
   kgPorBolsa: number;
   cantidadKg: number;
   detalle: string;
+  remitoCliente?: string; // N° de remito (cliente)
+  destino?: string; // Destino de la mercadería o lote destino
+  chofer?: string; // Chofer asignado
+  tipoSalida?: 'manual' | 'movimiento' | 'despacho' | string;
+  ordenId?: string; // ID de orden de carga o movimiento vinculada
 }
 
 export interface OrigenBolsonItem {
@@ -302,8 +304,6 @@ export interface Lote {
   auditoria?: AuditLogEntry[];
   ala?: string; // ej: 'A' | 'B' | 'C' | 'D'
   sector?: string; // ej: '1' | '2' | '3'
-  ordenProcesoId?: string; // ID de la Orden de Proceso vinculada
-  numeroOrdenMovimiento?: string; // N° de Orden de Movimiento vinculada si aplica
   fechaTratamiento?: string; // YYYY-MM-DD
   fechaVencimientoTratamiento?: string; // YYYY-MM-DD
   silosOrigen?: SiloExtraccion[]; // Silos de origen y kg extraídos de cada uno
@@ -315,7 +315,8 @@ export interface Lote {
   origenesBolson?: OrigenBolsonItem[]; // Detalle dinámico de orígenes de bolsón con su sector
   ubicacionAcopio?: string; // Ubicación acopio (e.g., 'Ala A - Sector 1' o texto personalizado)
   humedad?: number; // Porcentaje de humedad del lote (% ej: 13.5). Dato informativo, no modifica los kg.
-  cicloGerminacion?: CicloGerminacionType | string; // 'Grupo Corto' | 'Grupo Intermedio' | 'Grupo Largo'
+  inaseInicio?: string; // Numeración inicial Código INASE
+  inaseFinal?: string; // Numeración final Código INASE
   preMovimientos?: PreMovimientoLote[]; // Movimientos pendientes de confirmación vinculados a Órdenes de Movimiento
   loteOrigen?: string; // N° de Lote de origen del movimiento (ej: L-1001)
   tipoMovimiento?: string; // 'Intermedio a Final' | 'Intermedio a Final Tratado' | 'Final a Final Tratado'
@@ -360,7 +361,6 @@ export interface BolsonCampo {
   cultivo: string; // Cultivo / Especie (ej: "Soja", "Trigo", "Arveja")
   ordenSiembra?: string; // Orden de Siembra (ej: "Vacío", "Soja de Primera", "Soja de Segunda")
   cicloCultivo?: string; // Ciclo del Cultivo (ej: "Soja Primera", "Soja Segunda", "Trigo Ciclo Largo")
-  cicloGerminacion?: CicloGerminacionType | string; // 'Grupo Corto' | 'Grupo Intermedio' | 'Grupo Largo'
   variedad: string; // Variedad (ej: "DM 46i20", "P46A03")
   categoria: CategoriaType | string; // Categoría ("Fundadora", "Preba", "Original", "Prima", "Primu", etc.)
   deposito?: string; // Depósito Origen / Depósito (ej: "Lote 20", "Lote 10AB", "Depósito Central")
@@ -441,6 +441,7 @@ export interface MovimientoSilo {
   bolsonOrigenNro?: string;
   bolsonOrigenSector?: string;
   depositoOrigen?: string;
+  origenes?: Array<{ id?: string; bolsonOrigenNro: string; bolsonOrigenSector: string; depositoOrigen: string }>;
   humedad?: number; // Porcentaje de humedad manual (% ej: 13.5)
   comprobanteCartaPorte?: string; // N° de comprobante / Carta de Porte / Remito
   remito?: string;
@@ -498,6 +499,8 @@ export interface SalidaRegistrada {
   brutoCamion?: number; // Peso bruto del camión (Tara + Kilos, kg)
   choferFirma?: string; // Firma digital en formato base64 png
   remitoClienteAdjunto?: { nombre: string; data: string; type: string }; // Remito adjunto por el cliente
+  remitoCliente?: string; // N° de remito (cliente)
+  destino?: string; // Destino de la mercadería
 }
 
 export interface LoteOrigenItem {
@@ -524,11 +527,17 @@ export interface OrdenCarga {
   categoria: CategoriaType; // Heredado del lote
   tratamiento: TratamientoType; // Heredado del lote
   despachante: string;
-  autor: 'Malcon Baez' | 'Amilcar Quiroz'; // Autor de la orden
+  autor?: 'Malcon Baez' | 'Amilcar Quiroz' | string; // Autor de la orden (opcional)
   estado: 'Disponible' | 'Aceptada' | 'Despachada';
   fotoRemito?: string; // Data URL de la imagen cargada
   firmaChofer?: string; // Data URL de la firma del chofer
   lotesOrigen?: LoteOrigenItem[];
+  // Datos de carga manual / despacho (modificables en cualquier momento)
+  remitoCliente?: string; // Nro de remito (cliente)
+  destino?: string; // Destino
+  chofer?: string; // Chofer
+  stockDescontado?: boolean; // Indica si se dio de baja la salida de bolsas en el lote
+  fechaBajaStock?: string; // Fecha en que se dio de baja
 }
 
 export type TipoOrdenProceso = 'PRODUCCION' | 'MOVIMIENTO';

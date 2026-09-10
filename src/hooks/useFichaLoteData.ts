@@ -19,7 +19,6 @@ export interface FichaLoteDataResult {
   categoriaDisplay: string;
   tipoLoteDisplay: string;
   tratamientoDisplay: string;
-  ordenProcesoMovimientoDisplay: string;
   bolsonOrigenDisplay: string;
   sectorBolsonOrigenDisplay: string;
   cantidadBolsasDisplay: string;
@@ -77,16 +76,7 @@ export const computeFichaLoteData = (lote: Lote): FichaLoteDataResult => {
     return t;
   })();
 
-  // 7. N° Orden de Proceso/Movimiento
-  const ordenProcesoMovimientoDisplay =
-    lote.ordenProcesoId ||
-    (lote as any).ordenProceso ||
-    (lote as any).numeroOrden ||
-    lote.numeroOrdenMovimiento ||
-    (lote as any).ordenProcesoMovimiento ||
-    'Sin N°';
-
-  // 8. N° Bolsón de origen (trazabilidad)
+  // 7. N° Bolsón de origen (trazabilidad)
   const bolsonOrigenDisplay =
     (lote as any).numeroBolsonOrigen ||
     (lote as any).bolsonOrigenNro ||
@@ -139,7 +129,6 @@ export const computeFichaLoteData = (lote: Lote): FichaLoteDataResult => {
     { label: 'Categoría', valor: categoriaDisplay },
     { label: 'Tipo de lote', valor: tipoLoteDisplay },
     { label: 'Tratamiento', valor: tratamientoDisplay },
-    { label: 'N° Orden de Proceso/Movimiento', valor: String(ordenProcesoMovimientoDisplay) },
     { label: 'N° Bolsón de origen (trazabilidad)', valor: String(bolsonOrigenDisplay) },
     { label: 'Sector de bolsón de origen', valor: String(sectorBolsonOrigenDisplay) },
     { label: 'Cantidad de bolsas', valor: cantidadBolsasDisplay },
@@ -162,7 +151,6 @@ export const computeFichaLoteData = (lote: Lote): FichaLoteDataResult => {
     categoriaDisplay,
     tipoLoteDisplay,
     tratamientoDisplay,
-    ordenProcesoMovimientoDisplay,
     bolsonOrigenDisplay,
     sectorBolsonOrigenDisplay,
     cantidadBolsasDisplay,
@@ -189,8 +177,6 @@ export const useFichaLoteData = (lote: Lote): FichaLoteDataResult => {
     lote.tipo,
     lote.tratamiento,
     lote.producto,
-    lote.ordenProcesoId,
-    (lote as any).numeroOrdenMovimiento,
     lote.stockBolsas,
     lote.kgPorBolsa,
     lote.stockKg,

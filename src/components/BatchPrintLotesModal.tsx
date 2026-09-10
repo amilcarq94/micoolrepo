@@ -157,7 +157,7 @@ export const BatchPrintLotesModal: React.FC<BatchPrintLotesModalProps> = ({
           </div>
           <div>
             <h3 className="font-serif font-bold text-sm tracking-wide uppercase text-white flex items-center gap-2">
-              <span>Fichas Técnicas de Lote — Hoja Completa A4</span>
+              <span>Fichas Técnicas — Hoja Completa A4</span>
               <span className="bg-emerald-800 text-emerald-200 text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold">
                 {lotes.length} {lotes.length === 1 ? 'lote seleccionado' : 'lotes seleccionados'}
               </span>

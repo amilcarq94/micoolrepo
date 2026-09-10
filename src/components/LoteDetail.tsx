@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { Lote, MovimientoStock, EstadoLoteType, AuditLogEntry, OrdenProceso, MovimientoSilo } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Lote, MovimientoStock, EstadoLoteType, AuditLogEntry, MovimientoSilo, OrdenCarga, SalidaRegistrada } from '../types';
 import { getLoteAuditoria } from '../utils/audit';
 import { formatNumberArg, formatKg, formatBolsas, formatDateStr } from '../utils/formatters';
 import { LogoSiloLoose } from './Logo';
-import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, SlidersHorizontal, ChevronDown, ChevronUp, Tag } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer } from 'lucide-react';
 import { QrCodeModal } from './QrCodeModal';
 import { BarcodeLabelModal } from './BarcodeLabelModal';
 import { FichaTecnicaOficialCard } from './FichaTecnicaOficialCard';
@@ -17,72 +17,72 @@ import { BatchPrintIdBolsasModal } from './BatchPrintIdBolsasModal';
 import { QrTrazabilidadLote } from './QrTrazabilidadLote';
 import { exportWithHtml2Pdf } from '../utils/exportPdf';
 import { printWithActiveClass } from '../utils/printHelper';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-
-const CustomLineTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    return (
-      <div className="bg-[#1A1A1A] text-white p-3 rounded-xl border border-gray-800 text-xs shadow-xl font-sans text-left">
-        <p className="font-bold text-[#C9922E] uppercase tracking-wider mb-1.5">{formatDateStr(data.date)}</p>
-        <p className="flex justify-between gap-6 my-0.5">
-          <span className="text-gray-400 font-medium">Stock en Bolsas:</span>
-          <span className="font-mono font-bold text-white">{formatNumberArg(data.bolsas, 0)} b.</span>
-        </p>
-        <p className="flex justify-between gap-6">
-          <span className="text-gray-400 font-medium">Equivalente Kg:</span>
-          <span className="font-mono font-bold text-white">{formatNumberArg(data.kg, 0)} kg</span>
-        </p>
-        {data.detalle && (
-          <p className="text-[10px] text-gray-400 italic border-t border-gray-800 mt-1.5 pt-1 max-w-[200px] truncate">
-            {data.detalle}
-          </p>
-        )}
-      </div>
-    );
-  }
-  return null;
-};
+import { BitacoraMovimientosTable } from './BitacoraMovimientosTable';
 
 interface LoteDetailProps {
   lote: Lote;
-  ordenesProceso?: OrdenProceso[];
   movimientosSilo?: MovimientoSilo[];
+  ordenesCarga?: OrdenCarga[];
+  salidas?: SalidaRegistrada[];
   readOnly?: boolean;
   onBack: () => void;
   onUpdateLoteStock: (loteId: string, nuevosMovimientos: MovimientoStock[], nuevoStockBolsas: number, nuevoStockKg: number, nuevoEstado: EstadoLoteType) => void;
   onRegistrarSalida?: (loteId: string) => void;
   onUpdateLoteLocation?: (loteId: string, ala: string, sector: string) => Promise<void>;
-  onNavigateToOrdenesProceso?: (ordenId?: string) => void;
+  onUpdateLoteInase?: (loteId: string, inaseInicio: string, inaseFinal: string) => Promise<void> | void;
   onNavigateToSilos?: (siloId?: string) => void;
 }
 
 export const LoteDetail: React.FC<LoteDetailProps> = ({
   lote,
-  ordenesProceso,
   movimientosSilo,
+  ordenesCarga = [],
+  salidas = [],
   readOnly = false,
   onBack,
   onUpdateLoteStock,
   onRegistrarSalida,
   onUpdateLoteLocation,
-  onNavigateToOrdenesProceso,
+  onUpdateLoteInase,
   onNavigateToSilos,
 }) => {
   const [showAddMovModal, setShowAddMovModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showInaseModal, setShowInaseModal] = useState(false);
+  const [inaseInicioVal, setInaseInicioVal] = useState(lote.inaseInicio || '');
+  const [inaseFinalVal, setInaseFinalVal] = useState(lote.inaseFinal || '');
+  const [isSavingInase, setIsSavingInase] = useState(false);
   const [selectedAla, setSelectedAla] = useState(lote.ala || '');
   const [selectedSector, setSelectedSector] = useState(lote.sector || '');
   const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0]);
-  const [tipoMov, setTipoMov] = useState<'Entrada manual' | 'Salida' | 'Ajuste'>('Entrada manual');
+  const [tipoMov, setTipoMov] = useState<'Entrada manual' | 'Salida manual' | 'Salida' | 'Pasado a Consumo' | 'Ajuste de Auditoría' | 'Ajuste'>('Entrada manual');
   const [bolsas, setBolsas] = useState<number>(50);
   const [kgBolsa, setKgBolsa] = useState<number>(lote.kgPorBolsa || 40);
   const [detalle, setDetalle] = useState('');
+  const [remitoClienteModal, setRemitoClienteModal] = useState('');
+  const [destinoModal, setDestinoModal] = useState('');
+  const [choferModal, setChoferModal] = useState('');
   const [error, setError] = useState('');
   const [isPrintingMode, setIsPrintingMode] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
+  // Subpestaña dentro de Existencias y Stock: 'salidas' o 'todos'
+  const [subTabStock, setSubTabStock] = useState<'salidas' | 'todos'>('salidas');
+  const [filtroTipoSalida, setFiltroTipoSalida] = useState<'todos' | 'despacho' | 'movimiento' | 'manual'>('todos');
+  const [busquedaSalidas, setBusquedaSalidas] = useState('');
+
+  // Modal para registrar Salida Manual de Stock
+  const [showSalidaManualModal, setShowSalidaManualModal] = useState(false);
+  const [fechaSalidaManual, setFechaSalidaManual] = useState(() => new Date().toISOString().split('T')[0]);
+  const [bolsasSalidaManual, setBolsasSalidaManual] = useState<number>(1);
+  const [kgBolsaSalidaManual, setKgBolsaSalidaManual] = useState<number>(lote.kgPorBolsa || 40);
+  const [remitoClienteSalidaManual, setRemitoClienteSalidaManual] = useState('');
+  const [destinoSalidaManual, setDestinoSalidaManual] = useState('');
+  const [choferSalidaManual, setChoferSalidaManual] = useState('');
+  const [motivoSalidaManual, setMotivoSalidaManual] = useState('');
+  const [errorSalidaManual, setErrorSalidaManual] = useState('');
 
   // Estado borrador para la Ficha Técnica (permite previsualización y edición antes de imprimir o descargar)
   const [draftFichaLote, setDraftFichaLote] = useState<Lote>(lote);
@@ -94,10 +94,12 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   const [initialFichaEditMode, setInitialFichaEditMode] = useState(false);
   const [fichaModificada, setFichaModificada] = useState(false);
 
-  // Sincronizar draft si cambia el lote original de props
+  // Sincronizar draft e INASE si cambia el lote original de props
   useEffect(() => {
     setDraftFichaLote(lote);
     setFichaModificada(false);
+    setInaseInicioVal(lote.inaseInicio || '');
+    setInaseFinalVal(lote.inaseFinal || '');
   }, [lote]);
 
   const handleUpdateDraftField = (field: string, value: any) => {
@@ -124,25 +126,9 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
     setIsPrintingMode(true);
   };
 
-  // Resolver vincular Orden de Proceso, Silo de Origen y Bolsón de Origen
-  const linkedOp = ordenesProceso?.find(
-    (o) => o.id === lote.ordenProcesoId || o.numeroOrden === lote.ordenProcesoId
-  );
-
-  const ordenProcesoMovimientoDisplay = linkedOp
-    ? linkedOp.tipoOrden === 'MOVIMIENTO'
-      ? linkedOp.numeroOrdenMovimiento || `OM-${linkedOp.numeroOrden}`
-      : `OP-${linkedOp.numeroOrden}`
-    : lote.numeroOrdenMovimiento
-    ? lote.numeroOrdenMovimiento
-    : lote.ordenProcesoId
-    ? `OP-${lote.ordenProcesoId}`
-    : 'Sin dato';
-
-  // Buscar registro previo en movimientosSilo si la OP proviene de silos de ingreso
+  // Buscar registro previo en movimientosSilo si proviene de silos de ingreso
   const targetSilos = new Set<string>();
   if (lote.silosOrigen) lote.silosOrigen.forEach((s) => targetSilos.add(s.siloId));
-  if (linkedOp?.silosOrigen) linkedOp.silosOrigen.forEach((s) => targetSilos.add(s.siloId));
 
   const ingresoPrevioSilo = movimientosSilo
     ?.filter((m) => m.tipo === 'INGRESO' && targetSilos.has(m.siloId) && m.bolsonOrigenNro)
@@ -151,52 +137,10 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   const bolsonOrigenDisplay =
     lote.numeroBolsonOrigen ||
     lote.bolsonOrigenNro ||
-    (linkedOp as any)?.numeroBolsonOrigen ||
-    (linkedOp as any)?.bolsonOrigenNro ||
     ingresoPrevioSilo?.bolsonOrigenNro ||
     'Sin dato';
 
   const [activeTab, setActiveTab] = useState<'stock' | 'audit'>('stock');
-
-  // Calcular evolución del stock a lo largo del tiempo
-  const sortedMovs = [...lote.historial].sort((a, b) => a.fecha.localeCompare(b.fecha));
-  const timeline: { date: string; bolsas: number; kg: number; detalle: string }[] = [];
-
-  if (sortedMovs.length > 0) {
-    try {
-      const firstMovDate = new Date(sortedMovs[0].fecha);
-      const prevDate = new Date(firstMovDate);
-      prevDate.setDate(prevDate.getDate() - 1);
-      const prevDateStr = prevDate.toISOString().split('T')[0];
-      timeline.push({
-        date: prevDateStr,
-        bolsas: 0,
-        kg: 0,
-        detalle: 'Lote inicializado'
-      });
-    } catch (e) {
-      // Fallback
-    }
-  }
-
-  let runningBolsas = 0;
-  let runningKg = 0;
-
-  sortedMovs.forEach((mov) => {
-    const isAddition = mov.tipo.includes('Entrada') || mov.tipo === 'Reingreso';
-    const bolsasChange = isAddition ? mov.cantidadBolsas : -mov.cantidadBolsas;
-    const kgChange = isAddition ? mov.cantidadKg : -mov.cantidadKg;
-    
-    runningBolsas += bolsasChange;
-    runningKg += kgChange;
-    
-    timeline.push({
-      date: mov.fecha,
-      bolsas: runningBolsas,
-      kg: runningKg,
-      detalle: mov.detalle || mov.tipo
-    });
-  });
 
   const getEstadoBadgeStyle = (estado: EstadoLoteType) => {
     switch (estado) {
@@ -224,8 +168,15 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
       return;
     }
 
-    if (tipoMov === 'Salida' && cantBolsas > lote.stockBolsas) {
-      setError(`No hay suficiente stock. Intenta extraer ${cantBolsas} b. de un lote con sólo ${lote.stockBolsas} b. disponibles.`);
+    const esRestaStock =
+      tipoMov === 'Salida manual' ||
+      tipoMov === 'Salida' ||
+      tipoMov === 'Pasado a Consumo' ||
+      tipoMov === 'Ajuste de Auditoría' ||
+      tipoMov === 'Ajuste';
+
+    if (esRestaStock && cantBolsas > lote.stockBolsas) {
+      setError(`Stock insuficiente. Intenta restar ${cantBolsas} b. de un lote con sólo ${lote.stockBolsas} b. disponibles.`);
       return;
     }
 
@@ -236,21 +187,23 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
     let nuevoStockKg = lote.stockKg;
 
     if (tipoMov === 'Entrada manual') {
+      // Entrada manual (+ suma stock)= estos registros aumentan el número de bolsas ingresadas al stock del lote
       nuevoStockBolsas += cantBolsas;
       nuevoStockKg += totalKgMov;
-    } else if (tipoMov === 'Salida' || tipoMov === 'Pasado a Consumo') {
-      nuevoStockBolsas -= cantBolsas;
-      nuevoStockKg -= totalKgMov;
-    } else { // Ajuste
-      // Si es ajuste, resta stock
-      nuevoStockBolsas -= cantBolsas;
-      nuevoStockKg -= totalKgMov;
+    } else {
+      // Salida manual, Pasado a consumo, Ajuste de auditoría (- resta stock)= estos registros disminuyen el stock del lote
+      nuevoStockBolsas = Math.max(0, nuevoStockBolsas - cantBolsas);
+      nuevoStockKg = Math.max(0, nuevoStockKg - totalKgMov);
     }
 
     // Determinar nuevo estado del lote
     let nuevoEstado: EstadoLoteType = lote.estado;
     if (nuevoStockBolsas === 0) {
-      nuevoEstado = 'Agotado';
+      if (tipoMov === 'Pasado a Consumo') {
+        nuevoEstado = 'A Consumo';
+      } else {
+        nuevoEstado = 'Agotado';
+      }
     } else if (lote.estado === 'Agotado' && nuevoStockBolsas > 0) {
       nuevoEstado = 'Disponible';
     }
@@ -263,7 +216,11 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
       cantidadBolsas: cantBolsas,
       kgPorBolsa: pesoBolsa,
       cantidadKg: totalKgMov,
-      detalle: detalle.trim() || `${tipoMov} - Ajuste de inventario manual`
+      detalle: detalle.trim() || `${tipoMov} - Ajuste general de inventario`,
+      remitoCliente: remitoClienteModal.trim() || undefined,
+      destino: (tipoMov === 'Pasado a Consumo' && !destinoModal.trim()) ? 'Consumo' : (destinoModal.trim() || undefined),
+      chofer: choferModal.trim() || undefined,
+      tipoSalida: esRestaStock ? 'manual' : undefined
     };
 
     const nuevoHistorial = [nuevoMovimiento, ...lote.historial];
@@ -274,7 +231,226 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
     setShowAddMovModal(false);
     setBolsas(50);
     setDetalle('');
+    setRemitoClienteModal('');
+    setDestinoModal('');
+    setChoferModal('');
   };
+
+  // Registrar salida manual de stock con campos completos de trazabilidad
+  const handleGuardarSalidaManual = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorSalidaManual('');
+
+    if (bolsasSalidaManual <= 0) {
+      setErrorSalidaManual('La cantidad de bolsas debe ser mayor a 0.');
+      return;
+    }
+
+    if (bolsasSalidaManual > lote.stockBolsas) {
+      setErrorSalidaManual(`Stock insuficiente. El lote solo dispone de ${lote.stockBolsas} bolsas.`);
+      return;
+    }
+
+    const factorKg = kgBolsaSalidaManual || lote.kgPorBolsa || 40;
+    const totalKg = bolsasSalidaManual * factorKg;
+    const nuevoStockBolsas = Math.max(0, lote.stockBolsas - bolsasSalidaManual);
+    const nuevoStockKg = Math.max(0, lote.stockKg - totalKg);
+    const nuevoEstado: EstadoLoteType = nuevoStockBolsas === 0 ? 'Agotado' : lote.estado;
+
+    const nuevoMovimientoSalida: MovimientoStock = {
+      id: `MOV-SAL-${Date.now()}`,
+      fecha: fechaSalidaManual,
+      tipo: 'Salida manual',
+      cantidadBolsas: bolsasSalidaManual,
+      kgPorBolsa: factorKg,
+      cantidadKg: totalKg,
+      detalle: motivoSalidaManual.trim() || `Salida manual registrada (${bolsasSalidaManual} bolsas)`,
+      remitoCliente: remitoClienteSalidaManual.trim() || '-',
+      destino: destinoSalidaManual.trim() || '-',
+      chofer: choferSalidaManual.trim() || undefined,
+      tipoSalida: 'manual'
+    };
+
+    const nuevoHistorial = [nuevoMovimientoSalida, ...(lote.historial || [])];
+    onUpdateLoteStock(lote.id, nuevoHistorial, nuevoStockBolsas, nuevoStockKg, nuevoEstado);
+
+    // Resetear y cerrar modal
+    setShowSalidaManualModal(false);
+    setBolsasSalidaManual(1);
+    setRemitoClienteSalidaManual('');
+    setDestinoSalidaManual('');
+    setChoferSalidaManual('');
+    setMotivoSalidaManual('');
+  };
+
+  // Lista unificada de todas las salidas del lote (Despachos, Órdenes de Movimiento y Salidas Manuales)
+  const salidasList = useMemo(() => {
+    const list: Array<{
+      id: string;
+      fecha: string;
+      tipoSalidaCategoria: 'movimiento' | 'despacho' | 'manual';
+      tipoSalidaLabel: string;
+      cantidadBolsas: number;
+      cantidadKg: number;
+      remitoCliente: string;
+      destino: string;
+      chofer?: string;
+      detalle: string;
+      ordenId?: string;
+    }> = [];
+
+    // 1. Desde el historial de movimientos del lote
+    (lote.historial || []).forEach((mov) => {
+      const tipoLower = (mov.tipo || '').toLowerCase();
+      const detLower = (mov.detalle || '').toLowerCase();
+
+      const isSalida =
+        tipoLower.includes('salida') ||
+        tipoLower.includes('consumo') ||
+        tipoLower.includes('ajuste') ||
+        mov.tipoSalida !== undefined ||
+        tipoLower.includes('despacho') ||
+        (mov.cantidadBolsas < 0 && !tipoLower.includes('alta') && !tipoLower.includes('entrada') && !tipoLower.includes('ingreso'));
+
+      if (!isSalida) return;
+
+      let cat: 'movimiento' | 'despacho' | 'manual' = 'manual';
+      let label = 'Salida Manual';
+
+      if (
+        mov.tipoSalida === 'movimiento' ||
+        tipoLower.includes('movimiento') ||
+        detLower.includes('transferencia') ||
+        detLower.includes('orden de movimiento') ||
+        detLower.includes('precarga de movimiento')
+      ) {
+        cat = 'movimiento';
+        label = 'Salida por Movimiento';
+      } else if (
+        mov.tipoSalida === 'despacho' ||
+        tipoLower.includes('despacho') ||
+        detLower.includes('despacho') ||
+        detLower.includes('orden n°') ||
+        detLower.includes('remito') ||
+        mov.ordenId?.startsWith('OC-')
+      ) {
+        cat = 'despacho';
+        label = 'Salida por Despacho';
+      } else if (tipoLower.includes('consumo')) {
+        cat = 'manual';
+        label = 'Pasado a Consumo';
+      } else if (tipoLower.includes('ajuste')) {
+        cat = 'manual';
+        label = 'Ajuste de Auditoría';
+      } else {
+        cat = 'manual';
+        label = 'Salida Manual';
+      }
+
+      let remito = mov.remitoCliente || '-';
+      let dest = mov.destino || '-';
+      let chof = mov.chofer;
+
+      // Buscar si coincide con alguna Orden de Carga para enriquecer
+      if (ordenesCarga && (remito === '-' || dest === '-')) {
+        const oc = ordenesCarga.find(
+          (o) =>
+            (mov.ordenId && o.id === mov.ordenId) ||
+            (mov.detalle && mov.detalle.includes(o.id)) ||
+            o.loteId === lote.id ||
+            o.loteId === lote.loteNro ||
+            o.lotesOrigen?.some((lo) => lo.loteId === lote.id || lo.loteNro === lote.loteNro)
+        );
+        if (oc) {
+          if (remito === '-' && oc.remitoCliente) remito = oc.remitoCliente;
+          if (dest === '-' && oc.destino) dest = oc.destino;
+          if (!chof && oc.chofer) chof = oc.chofer;
+        }
+      }
+
+      // Buscar si coincide con alguna SalidaRegistrada legacy
+      if (salidas && (remito === '-' || dest === '-')) {
+        const sal = salidas.find((s) => s.loteId === lote.id && s.fecha === mov.fecha);
+        if (sal) {
+          if (remito === '-') remito = sal.id;
+          if (dest === '-') dest = `Cliente ${sal.cliente}`;
+          if (!chof) chof = sal.choferNombre;
+        }
+      }
+
+      list.push({
+        id: mov.id,
+        fecha: mov.fecha,
+        tipoSalidaCategoria: cat,
+        tipoSalidaLabel: label,
+        cantidadBolsas: Math.abs(mov.cantidadBolsas),
+        cantidadKg: Math.abs(mov.cantidadKg),
+        remitoCliente: remito,
+        destino: dest,
+        chofer: chof,
+        detalle: mov.detalle,
+        ordenId: mov.ordenId,
+      });
+    });
+
+    // 2. Incorporar Órdenes de Carga despachadas que apliquen a este lote
+    if (ordenesCarga) {
+      ordenesCarga
+        .filter((o) => o.estado === 'Despachada')
+        .forEach((o) => {
+          const itemOrigen = o.lotesOrigen?.find(
+            (lo) => lo.loteId === lote.id || lo.loteNro === lote.loteNro
+          );
+          const matchesSingle = o.loteId === lote.id || o.loteId === lote.loteNro;
+
+          if (itemOrigen || matchesSingle) {
+            const yaEnLista = list.some(
+              (item) => item.ordenId === o.id || (item.detalle && item.detalle.includes(o.id))
+            );
+            if (!yaEnLista) {
+              const b = itemOrigen ? itemOrigen.cantidadBolsas : o.cantidadBolsas;
+              const k = itemOrigen ? itemOrigen.kgTotales : o.kgTotales;
+              list.push({
+                id: `OC-SAL-${o.id}`,
+                fecha: o.fecha,
+                tipoSalidaCategoria: 'despacho',
+                tipoSalidaLabel: `Salida por Despacho (${o.id})`,
+                cantidadBolsas: b,
+                cantidadKg: k,
+                remitoCliente: o.remitoCliente || '-',
+                destino: o.destino || '-',
+                chofer: o.chofer,
+                detalle: `Despachado bajo Orden de Carga ${o.id}`,
+                ordenId: o.id,
+              });
+            }
+          }
+        });
+    }
+
+    return list.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+  }, [lote, ordenesCarga, salidas]);
+
+  // Salidas filtradas por búsqueda y categoría
+  const salidasFiltradas = useMemo(() => {
+    return salidasList.filter((item) => {
+      if (filtroTipoSalida !== 'todos' && item.tipoSalidaCategoria !== filtroTipoSalida) {
+        return false;
+      }
+      if (busquedaSalidas.trim()) {
+        const q = busquedaSalidas.toLowerCase();
+        const matchesRemito = item.remitoCliente.toLowerCase().includes(q);
+        const matchesDestino = item.destino.toLowerCase().includes(q);
+        const matchesDetalle = item.detalle.toLowerCase().includes(q);
+        const matchesChofer = item.chofer ? item.chofer.toLowerCase().includes(q) : false;
+        const matchesLabel = item.tipoSalidaLabel.toLowerCase().includes(q);
+        if (!matchesRemito && !matchesDestino && !matchesDetalle && !matchesChofer && !matchesLabel) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [salidasList, filtroTipoSalida, busquedaSalidas]);
 
   // Descargar PDF de alta calidad utilizando html2pdf.js sobre el contenedor .ficha-a4
   const handleDownloadPdf = async () => {
@@ -337,7 +513,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                   )}
                 </h3>
                 <p className="text-[11px] text-gray-500 font-medium">
-                  Lote: <strong className="font-mono text-[#00603C]">{draftFichaLote.loteNro || draftFichaLote.id}</strong> · {draftFichaLote.cliente || 'Agro Abacus'}
+                  <strong className="font-mono text-[#00603C]">{draftFichaLote.loteNro || draftFichaLote.id}</strong> · {draftFichaLote.cliente || 'Agro Abacus'}
                 </p>
               </div>
             </div>
@@ -525,16 +701,6 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">N° Orden Proceso/Mov.</label>
-                  <input
-                    type="text"
-                    value={draftFichaLote.ordenProcesoId || (draftFichaLote as any).numeroOrdenMovimiento || (draftFichaLote as any).ordenProceso || ''}
-                    onChange={(e) => handleUpdateDraftField('ordenProcesoId', e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg font-semibold text-gray-800 font-mono"
-                  />
-                </div>
-
-                <div>
                   <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">N° Bolsón Origen</label>
                   <input
                     type="text"
@@ -691,11 +857,11 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
             </button>
             <span className="text-gray-300 hidden sm:inline">|</span>
             <h1 className="text-sm sm:text-base font-serif font-black text-slate-800 tracking-wide uppercase">
-              FICHA TECNICA DE LOTE
+              FICHA TÉCNICA
             </h1>
           </div>
 
-          {/* Barra de Acciones Superior: IMPRIMIR ETIQUETAS y IMPRIMIR FICHA TECNICA */}
+          {/* Barra de Acciones Superior: IMPRIMIR ETIQUETAS, CODIGO INASE y IMPRIMIR FICHA TECNICA */}
           <div className="flex flex-wrap items-center gap-2.5" id="lote-detail-actions-bar">
             {/* Botón IMPRIMIR ETIQUETAS */}
             <button
@@ -708,18 +874,29 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               <span>IMPRIMIR ETIQUETAS</span>
             </button>
 
-            {/* Botón VER/IMPRIMIR FICHA TECNICA */}
+            {/* Botón Codigo INASE (inicio/final) */}
             <button
-              id="btn-ver-ficha-lotedetail"
+              id="btn-codigo-inase-lotedetail"
+              onClick={() => setShowInaseModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl transition text-xs font-black uppercase tracking-wider shadow-sm cursor-pointer active:scale-95 border border-emerald-700"
+              title="Cargar o editar manualmente la numeración inicial y final del Código INASE para este lote"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-amber-300 stroke-[2.5]" />
+              <span>Codigo INASE (inicio/final)</span>
+            </button>
+
+            {/* Botón IMPRIMIR FICHA */}
+            <button
+              id="btn-imprimir-ficha-lotedetail"
               onClick={() => {
                 setInitialFichaEditMode(false);
                 setShowImprimirFichaModal(true);
               }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[#00603C] text-white border border-[#00603C] hover:bg-[#004D30] rounded-xl transition text-xs font-black uppercase tracking-wider shadow-sm cursor-pointer active:scale-95"
-              title="Previsualizar Ficha Técnica Oficial del Lote en pantalla e imprimir"
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#00603C] hover:bg-[#254731] text-white border border-[#00603C] rounded-xl transition text-xs font-black uppercase tracking-wider shadow-sm cursor-pointer active:scale-95"
+              title="Abrir e imprimir Ficha Técnica Oficial optimizada para A4"
             >
-              <FileText className="w-4 h-4 text-[#C9922E]" />
-              <span>IMPRIMIR FICHA TECNICA</span>
+              <Printer className="w-4 h-4 text-[#C9922E]" />
+              <span>Imprimir Ficha</span>
             </button>
           </div>
         </div>
@@ -823,31 +1000,42 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               </span>
 
               <div className="space-y-2 text-xs">
-                {/* N° Orden de Proceso / Movimiento */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-gray-500 font-medium shrink-0">N° Orden / Mov:</span>
-                  {onNavigateToOrdenesProceso && ordenProcesoMovimientoDisplay !== 'Sin dato' ? (
-                    <button
-                      type="button"
-                      onClick={() => onNavigateToOrdenesProceso(lote.ordenProcesoId || linkedOp?.id)}
-                      className="font-bold text-[#00603C] hover:underline bg-white px-2 py-0.5 rounded border border-[#00603C]/20 flex items-center gap-1 cursor-pointer truncate max-w-[170px]"
-                      title="Navegar al detalle de la Orden de Proceso / Movimiento"
-                    >
-                      <span className="truncate">{ordenProcesoMovimientoDisplay}</span>
-                      <ArrowUpRight className="w-3 h-3 text-[#C9922E] shrink-0" />
-                    </button>
-                  ) : (
-                    <span className="font-semibold text-gray-800 font-mono text-[11px] truncate max-w-[170px]">
-                      {ordenProcesoMovimientoDisplay}
-                    </span>
-                  )}
-                </div>
-
                 {/* N° de Bolsón de origen */}
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-gray-500 font-medium shrink-0">N° Bolsón Origen:</span>
                   <span className="font-mono font-bold text-gray-800 bg-white px-2 py-0.5 rounded border border-gray-200 text-[11px] truncate max-w-[170px]">
                     {bolsonOrigenDisplay}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Sección: Código INASE (Inicio / Final) */}
+            <div className="border-t border-gray-100 pt-3 mt-3 bg-amber-50/50 p-3.5 rounded-xl border border-amber-200/60">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[9.5px] uppercase tracking-wider text-amber-900 block font-bold flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-amber-700" />
+                  Código INASE (Inicio / Final)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowInaseModal(true)}
+                  className="text-[10.5px] font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer"
+                >
+                  Editar
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-white p-2 rounded-lg border border-amber-200/50 shadow-2xs">
+                  <span className="text-[9px] uppercase font-bold text-gray-500 block">INASE Inicio</span>
+                  <span className="font-mono font-bold text-slate-900 text-sm">
+                    {lote.inaseInicio || '—'}
+                  </span>
+                </div>
+                <div className="bg-white p-2 rounded-lg border border-amber-200/50 shadow-2xs">
+                  <span className="text-[9px] uppercase font-bold text-gray-500 block">INASE Final</span>
+                  <span className="font-mono font-bold text-slate-900 text-sm">
+                    {lote.inaseFinal || '—'}
                   </span>
                 </div>
               </div>
@@ -891,6 +1079,22 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               >
                 <QrCode className="w-4 h-4 text-[#C9922E] group-hover:scale-110 transition-transform" />
                 <span>Generar QR Ficha Técnica Pública</span>
+              </button>
+            </div>
+
+            {/* Botón Imprimir Ficha Técnica A4 */}
+            <div className="pt-2">
+              <button
+                id="btn-imprimir-ficha-panel-izquierdo"
+                onClick={() => {
+                  setInitialFichaEditMode(false);
+                  setShowImprimirFichaModal(true);
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-[#00603C] hover:bg-[#254731] text-white rounded-xl transition font-black text-xs uppercase tracking-wider cursor-pointer shadow-sm active:scale-95 border border-[#00603C]"
+                title="Abrir e imprimir Ficha Técnica Oficial optimizada para formato A4"
+              >
+                <Printer className="w-4 h-4 text-[#C9922E]" />
+                <span>Imprimir Ficha</span>
               </button>
             </div>
 
@@ -965,184 +1169,422 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
 
             {activeTab === 'stock' ? (
               <div className="space-y-6">
-                {/* Gráfico de Evolución del Stock */}
-                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4">
-                    <div>
-                      <span className="text-[10px] font-sans font-semibold tracking-wider text-[#00603C] uppercase block">
-                        CURVA DE EXISTENCIAS
+                {/* Sub-navegador de Existencias y Stock: Salidas vs Todos los Movimientos */}
+                <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-xs flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                  <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-lg self-start">
+                    <button
+                      type="button"
+                      onClick={() => setSubTabStock('salidas')}
+                      className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                        subTabStock === 'salidas'
+                          ? 'bg-[#00603C] text-white shadow-xs'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      <ArrowDownRight className="w-3.5 h-3.5" />
+                      <span>Salidas de Stock</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
+                        subTabStock === 'salidas' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}>
+                        {salidasList.length}
                       </span>
-                      <h5 className="font-serif text-sm font-bold text-[#1A1A1A] mt-0.5">
-                        Evolución Temporal de Stock (Bolsas)
-                      </h5>
-                    </div>
-                    <div className="text-[10px] text-gray-500 font-sans bg-[#F6EFDC]/60 px-2.5 py-1 rounded-md border border-[#C9922E]/10 self-start">
-                      Factor: <span className="font-mono font-bold">{lote.kgPorBolsa || 40} kg</span> por bolsa
-                    </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSubTabStock('todos')}
+                      className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                        subTabStock === 'todos'
+                          ? 'bg-[#00603C] text-white shadow-xs'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Todos los Movimientos</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
+                        subTabStock === 'todos' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}>
+                        {(lote.historial || []).length}
+                      </span>
+                    </button>
                   </div>
 
-                  <div className="h-[220px] w-full">
-                    {timeline.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={timeline} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
-                          <XAxis 
-                            dataKey="date" 
-                            tickLine={false}
-                            axisLine={false}
-                            tickFormatter={(val) => formatDateStr(val)}
-                            tick={{ fill: '#6B7280', fontSize: 9, fontWeight: 500 }}
-                          />
-                          <YAxis 
-                            tickLine={false}
-                            axisLine={false}
-                            tick={{ fill: '#6B7280', fontSize: 9, fontWeight: 500 }}
-                            tickFormatter={(val) => `${formatNumberArg(val, 0)} b.`}
-                          />
-                          <Tooltip content={<CustomLineTooltip />} />
-                          <Line 
-                            type="monotone" 
-                            dataKey="bolsas" 
-                            stroke="#00603C" 
-                            strokeWidth={2.5}
-                            activeDot={{ r: 6 }}
-                            dot={{ r: 4, strokeWidth: 1.5, fill: '#white', stroke: '#00603C' }}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
+                  {!readOnly && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowSalidaManualModal(true)}
+                        className="px-3.5 py-1.5 bg-gradient-to-r from-[#A0522D] to-[#804020] hover:from-[#8C4625] hover:to-[#6E351A] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+                        title="Registrar una salida manual directa de este lote con Nro de remito y destino"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Registrar Salida Manual</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddMovModal(true)}
+                        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition cursor-pointer"
+                        title="Ajuste general o ingreso manual"
+                      >
+                        Ajuste General
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* VISTA: SALIDAS DE STOCK (POR MOVIMIENTO, DESPACHO O MANUALES) */}
+                {subTabStock === 'salidas' && (
+                  <div className="space-y-4">
+                    {/* Tarjetas de Resumen de Salidas */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                            Salidas Registradas
+                          </span>
+                          <p className="text-xl font-bold font-serif text-amber-950 mt-0.5">
+                            {salidasList.length} <span className="text-xs font-sans font-normal text-amber-800">operaciones</span>
+                          </p>
+                        </div>
+                        <div className="p-2 bg-amber-100 rounded-lg text-amber-800">
+                          <ArrowDownRight className="w-5 h-5" />
+                        </div>
+                      </div>
+
+                      <div className="bg-rose-50/70 border border-rose-200/80 rounded-xl p-3 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800">
+                            Bolsas Egresadas
+                          </span>
+                          <p className="text-xl font-bold font-mono text-rose-950 mt-0.5">
+                            -{salidasList.reduce((acc, s) => acc + s.cantidadBolsas, 0)} <span className="text-xs font-sans font-normal text-rose-800">bolsas</span>
+                          </p>
+                        </div>
+                        <div className="p-2 bg-rose-100 rounded-lg text-rose-800">
+                          <Package className="w-5 h-5" />
+                        </div>
+                      </div>
+
+                      <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#00603C]">
+                            Kg Totales Egresados
+                          </span>
+                          <p className="text-xl font-bold font-mono text-emerald-950 mt-0.5">
+                            -{formatNumberArg(salidasList.reduce((acc, s) => acc + s.cantidadKg, 0), 0)} <span className="text-xs font-sans font-normal text-emerald-800">kg</span>
+                          </p>
+                        </div>
+                        <div className="p-2 bg-emerald-100 rounded-lg text-[#00603C]">
+                          <Truck className="w-5 h-5" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Barra de Filtros y Búsqueda de Salidas */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-gray-100 shadow-2xs">
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        <span className="text-[10px] font-bold uppercase text-gray-500 mr-1">Filtrar por:</span>
+                        <button
+                          type="button"
+                          onClick={() => setFiltroTipoSalida('todos')}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                            filtroTipoSalida === 'todos'
+                              ? 'bg-gray-800 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          Todas ({salidasList.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFiltroTipoSalida('despacho')}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                            filtroTipoSalida === 'despacho'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                          }`}
+                        >
+                          🚚 Despachos ({salidasList.filter(s => s.tipoSalidaCategoria === 'despacho').length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFiltroTipoSalida('movimiento')}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                            filtroTipoSalida === 'movimiento'
+                              ? 'bg-emerald-700 text-white'
+                              : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                          }`}
+                        >
+                          🔄 Movimientos ({salidasList.filter(s => s.tipoSalidaCategoria === 'movimiento').length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFiltroTipoSalida('manual')}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                            filtroTipoSalida === 'manual'
+                              ? 'bg-[#A0522D] text-white'
+                              : 'bg-amber-50 text-amber-900 hover:bg-amber-100'
+                          }`}
+                        >
+                          ✍️ Manuales ({salidasList.filter(s => s.tipoSalidaCategoria === 'manual').length})
+                        </button>
+                      </div>
+
+                      <div className="relative w-full sm:w-64">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          value={busquedaSalidas}
+                          onChange={(e) => setBusquedaSalidas(e.target.value)}
+                          placeholder="Buscar por remito, destino..."
+                          className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:bg-white focus:outline-none focus:border-[#00603C]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Tabla de Salidas */}
+                    {salidasFiltradas.length === 0 ? (
+                      <div className="bg-white p-8 rounded-xl border border-gray-100 text-center text-gray-500 space-y-2">
+                        <ArrowDownRight className="w-8 h-8 mx-auto text-gray-300" />
+                        <p className="font-semibold text-xs text-gray-700">No se encontraron salidas para este lote.</p>
+                        <p className="text-[11px] text-gray-400 max-w-md mx-auto">
+                          Las salidas se registran automáticamente por Despachos (Órdenes de Carga), transferencias por Orden de Movimiento (Precarga de Movimientos de Lotes) o mediante el registro de una Salida Manual.
+                        </p>
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => setShowSalidaManualModal(true)}
+                            className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 bg-[#A0522D] text-white rounded-lg text-xs font-bold hover:bg-[#8C4625] cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            Registrar Salida Manual
+                          </button>
+                        )}
+                      </div>
                     ) : (
-                      <div className="h-full flex items-center justify-center text-gray-400 text-xs">
-                        Sin movimientos históricos suficientes para graficar.
+                      <div className="bg-white rounded-xl border border-gray-100 shadow-xs overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
+                                <th className="py-2.5 px-3">Fecha</th>
+                                <th className="py-2.5 px-3">Salida (por movimiento o despacho)</th>
+                                <th className="py-2.5 px-3 text-right">Bolsas</th>
+                                <th className="py-2.5 px-3 text-right">Kilogramos</th>
+                                <th className="py-2.5 px-3">Nro Remito de Cliente</th>
+                                <th className="py-2.5 px-3">Destino</th>
+                                <th className="py-2.5 px-3">Detalle / Chofer</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {salidasFiltradas.map((sal) => {
+                                const isDespacho = sal.tipoSalidaCategoria === 'despacho';
+                                const isMovimiento = sal.tipoSalidaCategoria === 'movimiento';
+
+                                return (
+                                  <tr key={sal.id} className="hover:bg-amber-50/40 transition">
+                                    {/* Fecha */}
+                                    <td className="py-2.5 px-3 font-semibold text-gray-700 whitespace-nowrap">
+                                      {formatDateStr(sal.fecha)}
+                                    </td>
+
+                                    {/* Salida (por movimiento o despacho) */}
+                                    <td className="py-2.5 px-3">
+                                      <div className="flex items-center gap-1.5">
+                                        {isDespacho ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                                            <Truck className="w-3 h-3 text-blue-600" />
+                                            Salida por Despacho
+                                          </span>
+                                        ) : isMovimiento ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                            <ArrowRight className="w-3 h-3 text-[#00603C]" />
+                                            Salida por Movimiento
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200">
+                                            <ArrowDownRight className="w-3 h-3 text-[#A0522D]" />
+                                            Salida Manual
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+
+                                    {/* Bolsas */}
+                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-700 whitespace-nowrap">
+                                      -{sal.cantidadBolsas} b.
+                                    </td>
+
+                                    {/* Kilogramos */}
+                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-gray-800 whitespace-nowrap">
+                                      -{formatNumberArg(sal.cantidadKg, 0)} kg
+                                    </td>
+
+                                    {/* Nro Remito de Cliente */}
+                                    <td className="py-2.5 px-3 font-mono text-gray-800 font-semibold whitespace-nowrap">
+                                      {sal.remitoCliente && sal.remitoCliente !== '-' ? (
+                                        <span className="bg-gray-100 text-gray-800 px-2 py-0.5 rounded border border-gray-200 font-bold">
+                                          {sal.remitoCliente}
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-400 italic font-normal">-</span>
+                                      )}
+                                    </td>
+
+                                    {/* Destino */}
+                                    <td className="py-2.5 px-3 text-gray-800 font-medium">
+                                      {sal.destino && sal.destino !== '-' ? (
+                                        <span className="text-[#00603C] font-semibold">{sal.destino}</span>
+                                      ) : (
+                                        <span className="text-gray-400 italic">-</span>
+                                      )}
+                                    </td>
+
+                                    {/* Detalle / Chofer */}
+                                    <td className="py-2.5 px-3 text-gray-600 max-w-xs">
+                                      <div className="truncate" title={sal.detalle}>
+                                        {sal.detalle}
+                                      </div>
+                                      {sal.chofer && (
+                                        <div className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
+                                          <User className="w-3 h-3" />
+                                          <span>Chofer: {sal.chofer}</span>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     )}
                   </div>
-                </div>
+                )}
 
-                {/* Tabla de Movimientos */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider">
-                        <th className="py-2">Fecha</th>
-                        <th className="py-2">Operación</th>
-                        <th className="py-2 text-right">Bolsas</th>
-                        <th className="py-2 text-right">Kilogramos</th>
-                        <th className="py-2 pl-4">Detalle / Justificación</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {lote.historial.map((mov) => {
-                        const isEntrada = mov.tipo.includes('Entrada');
-                        return (
-                          <tr key={mov.id} className="hover:bg-gray-50">
-                            <td className="py-3 font-medium text-gray-600">{formatDateStr(mov.fecha)}</td>
-                            <td className="py-3">
-                              <span className={`inline-flex items-center gap-1 font-bold ${isEntrada ? 'text-[#00603C]' : 'text-[#A0522D]'}`}>
-                                {isEntrada ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                                {mov.tipo}
-                              </span>
-                            </td>
-                            <td className="py-3 text-right font-bold text-gray-700">
-                              {isEntrada ? '+' : '-'}{mov.cantidadBolsas}
-                            </td>
-                            <td className="py-3 text-right font-mono font-semibold text-gray-800">
-                              {formatNumberArg(mov.cantidadKg, 0)} kg
-                            </td>
-                            <td className="py-3 pl-4 text-gray-500 italic max-w-xs truncate" title={mov.detalle}>
-                              {mov.detalle}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                {/* VISTA: TODOS LOS MOVIMIENTOS (Entradas, Salidas, Ajustes) con Bitácora */}
+                {subTabStock === 'todos' && (
+                  <BitacoraMovimientosTable
+                    lote={lote}
+                    ordenesCarga={ordenesCarga}
+                    onUpdateLoteStock={onUpdateLoteStock}
+                    readOnly={readOnly}
+                  />
+                )}
               </div>
             ) : (
-              <div className="flow-root max-h-[400px] overflow-y-auto pr-2">
-                <ul className="-mb-8">
-                  {getLoteAuditoria(lote).map((event, eventIdx, arr) => {
-                    let iconBg = 'bg-gray-100';
-                    let iconColor = 'text-gray-600';
-                    
-                    if (event.tipo === 'Creación') {
-                      iconBg = 'bg-[#E3EFE7]';
-                      iconColor = 'text-[#00603C]';
-                    } else if (event.tipo === 'Edición') {
-                      iconBg = 'bg-[#F6EFDC]';
-                      iconColor = 'text-[#C9922E]';
-                    } else if (event.tipo === 'Stock') {
-                      iconBg = 'bg-[#F5E5DC]';
-                      iconColor = 'text-[#A0522D]';
-                    }
+              <div className="space-y-6">
+                {/* TABLA OFICIAL DE BITÁCORA COMPLETA */}
+                <BitacoraMovimientosTable
+                  lote={lote}
+                  ordenesCarga={ordenesCarga}
+                  onUpdateLoteStock={onUpdateLoteStock}
+                  readOnly={readOnly}
+                />
 
-                    // Formatear fecha y hora
-                    let displayTime = '';
-                    let displayDate = '';
-                    try {
-                      const dt = new Date(event.fechaHora);
-                      if (!isNaN(dt.getTime())) {
-                        displayDate = dt.toLocaleDateString('es-AR');
-                        displayTime = dt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' hs';
-                      } else {
-                        displayDate = event.fechaHora;
-                      }
-                    } catch (e) {
-                      displayDate = event.fechaHora;
-                    }
+                {/* AUDITORÍA DE SISTEMA Y EVENTOS DE USUARIO */}
+                <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-200 mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h5 className="font-serif text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-[#00603C]" />
+                        Auditoría de Seguridad y Eventos de Usuario
+                      </h5>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        Registro cronológico de creación, ediciones y modificaciones de usuario en el sistema.
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-600">
+                      {getLoteAuditoria(lote).length} registros
+                    </span>
+                  </div>
 
-                    return (
-                      <li key={event.id}>
-                        <div className="relative pb-8">
-                          {eventIdx !== arr.length - 1 ? (
-                            <span className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-100" aria-hidden="true" />
-                          ) : null}
-                          <div className="relative flex space-x-3">
-                            <div>
-                              <span className={`h-8 w-8 rounded-full flex items-center justify-center ring-4 ring-white ${iconBg} ${iconColor}`}>
-                                {event.tipo === 'Creación' && <ShieldCheck className="w-4 h-4" />}
-                                {event.tipo === 'Edición' && <Edit2 className="w-4 h-4" />}
-                                {event.tipo === 'Stock' && <Clock className="w-4 h-4" />}
-                              </span>
-                            </div>
-                            <div className="flex-1 min-w-0 pt-1.5">
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
-                                <div className="text-xs font-semibold text-gray-900">
-                                  {event.descripcion}
+                  <div className="flow-root max-h-[320px] overflow-y-auto pr-2">
+                    <ul className="-mb-8">
+                      {getLoteAuditoria(lote).map((event, eventIdx, arr) => {
+                        let iconBg = 'bg-gray-100';
+                        let iconColor = 'text-gray-600';
+                        
+                        if (event.tipo === 'Creación') {
+                          iconBg = 'bg-[#E3EFE7]';
+                          iconColor = 'text-[#00603C]';
+                        } else if (event.tipo === 'Edición') {
+                          iconBg = 'bg-[#F6EFDC]';
+                          iconColor = 'text-[#C9922E]';
+                        } else if (event.tipo === 'Stock') {
+                          iconBg = 'bg-[#F5E5DC]';
+                          iconColor = 'text-[#A0522D]';
+                        }
+
+                        // Formatear fecha y hora
+                        let displayTime = '';
+                        let displayDate = '';
+                        try {
+                          const dt = new Date(event.fechaHora);
+                          if (!isNaN(dt.getTime())) {
+                            displayDate = dt.toLocaleDateString('es-AR');
+                            displayTime = dt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' hs';
+                          } else {
+                            displayDate = event.fechaHora;
+                          }
+                        } catch (e) {
+                          displayDate = event.fechaHora;
+                        }
+
+                        return (
+                          <li key={event.id}>
+                            <div className="relative pb-8">
+                              {eventIdx !== arr.length - 1 ? (
+                                <span className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true" />
+                              ) : null}
+                              <div className="relative flex space-x-3">
+                                <div>
+                                  <span className={`h-8 w-8 rounded-full flex items-center justify-center ring-4 ring-white ${iconBg} ${iconColor}`}>
+                                    {event.tipo === 'Creación' && <ShieldCheck className="w-4 h-4" />}
+                                    {event.tipo === 'Edición' && <Edit2 className="w-4 h-4" />}
+                                    {event.tipo === 'Stock' && <Clock className="w-4 h-4" />}
+                                  </span>
                                 </div>
-                                <div className="text-[10px] text-gray-500 font-mono flex items-center gap-1.5">
-                                  <span>{displayDate}</span>
-                                  <span className="text-gray-300">|</span>
-                                  <span>{displayTime}</span>
+                                <div className="flex-1 min-w-0 pt-1.5">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
+                                    <div className="text-xs font-semibold text-gray-900">
+                                      {event.descripcion}
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 font-mono flex items-center gap-1.5">
+                                      <span>{displayDate}</span>
+                                      <span className="text-gray-300">|</span>
+                                      <span>{displayTime}</span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className={`inline-flex items-center px-1.5 py-0.25 text-[9px] font-bold rounded-md border uppercase tracking-wider ${
+                                      event.tipo === 'Creación'
+                                        ? 'bg-[#E3EFE7] text-[#00603C] border-[#00603C]/10'
+                                        : event.tipo === 'Edición'
+                                        ? 'bg-[#F6EFDC] text-[#C9922E] border-[#C9922E]/10'
+                                        : 'bg-[#F5E5DC] text-[#A0522D] border-[#A0522D]/10'
+                                    }`}>
+                                      {event.tipo}
+                                    </span>
+                                    <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
+                                      <User className="w-3 h-3 text-gray-400" />
+                                      {event.usuario}
+                                    </span>
+                                  </div>
+                                  {event.detalles && (
+                                    <p className="mt-2 text-[11px] text-gray-600 bg-white p-2.5 rounded-lg border border-gray-200 font-sans leading-relaxed whitespace-pre-wrap">
+                                      {event.detalles}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className={`inline-flex items-center px-1.5 py-0.25 text-[9px] font-bold rounded-md border uppercase tracking-wider ${
-                                  event.tipo === 'Creación'
-                                    ? 'bg-[#E3EFE7] text-[#00603C] border-[#00603C]/10'
-                                    : event.tipo === 'Edición'
-                                    ? 'bg-[#F6EFDC] text-[#C9922E] border-[#C9922E]/10'
-                                    : 'bg-[#F5E5DC] text-[#A0522D] border-[#A0522D]/10'
-                                }`}>
-                                  {event.tipo}
-                                </span>
-                                <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
-                                  <User className="w-3 h-3 text-gray-400" />
-                                  {event.usuario}
-                                </span>
-                              </div>
-                              {event.detalles && (
-                                <p className="mt-2 text-[11px] text-gray-600 bg-gray-50 p-2.5 rounded-lg border border-gray-100 font-sans leading-relaxed whitespace-pre-wrap">
-                                  {event.detalles}
-                                </p>
-                              )}
                             </div>
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1191,14 +1633,51 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                 <select
                   value={tipoMov}
                   onChange={(e) => setTipoMov(e.target.value as any)}
-                  className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200"
+                  className="w-full px-3 py-2 bg-white rounded-lg border border-gray-300 font-bold text-xs"
                 >
                   <option value="Entrada manual">Entrada manual (+ suma stock)</option>
-                  <option value="Salida">Salida manual (- resta stock)</option>
+                  <option value="Salida manual">Salida manual (- resta stock)</option>
                   <option value="Pasado a Consumo">Pasado a Consumo (- resta stock)</option>
-                  <option value="Ajuste">Ajuste de Auditoría (- resta stock)</option>
+                  <option value="Ajuste de Auditoría">Ajuste de auditoría (- resta stock)</option>
                 </select>
               </div>
+
+              {/* Vista previa dinámica del stock resultante */}
+              {(() => {
+                const esResta = tipoMov !== 'Entrada manual';
+                const cantBolsas = Number(bolsas) || 0;
+                const totalKg = cantBolsas * (Number(kgBolsa) || 40);
+                const nuevoStockBolsas = esResta ? Math.max(0, lote.stockBolsas - cantBolsas) : lote.stockBolsas + cantBolsas;
+                const nuevoStockKg = esResta ? Math.max(0, lote.stockKg - totalKg) : lote.stockKg + totalKg;
+                const stockInsuficiente = esResta && cantBolsas > lote.stockBolsas;
+
+                return (
+                  <div className={`p-3 rounded-xl border text-xs ${
+                    stockInsuficiente ? 'bg-red-50 border-red-300 text-red-900' : 'bg-slate-50 border-slate-200 text-slate-800'
+                  }`}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-semibold text-slate-500 uppercase text-[10px]">Impacto en el Lote:</span>
+                      <span className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
+                        esResta ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                      }`}>
+                        {esResta ? `-${formatNumberArg(cantBolsas)} b. (-${formatNumberArg(totalKg)} kg)` : `+${formatNumberArg(cantBolsas)} b. (+${formatNumberArg(totalKg)} kg)`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center font-mono">
+                      <span>Stock actual: <strong>{formatNumberArg(lote.stockBolsas)} b.</strong> ({formatNumberArg(lote.stockKg)} kg)</span>
+                      <span>➔</span>
+                      <span className={stockInsuficiente ? 'text-red-700 font-extrabold' : 'text-emerald-800 font-extrabold'}>
+                        Nuevo: {formatNumberArg(nuevoStockBolsas)} b. ({formatNumberArg(nuevoStockKg)} kg)
+                      </span>
+                    </div>
+                    {stockInsuficiente && (
+                      <p className="mt-1.5 text-[11px] font-bold text-red-700">
+                        ⚠️ Cantidad superior al stock disponible ({lote.stockBolsas} bolsas).
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1225,6 +1704,48 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                 </div>
               </div>
 
+              {/* Si es salida, solicitar Remito y Destino */}
+              {(tipoMov === 'Salida' || tipoMov === 'Salida manual' || tipoMov === 'Pasado a Consumo') && (
+                <div className="grid grid-cols-2 gap-3 p-3 bg-amber-50/60 rounded-xl border border-amber-200/70">
+                  <div>
+                    <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                      N° Remito de Cliente
+                    </label>
+                    <input
+                      type="text"
+                      value={remitoClienteModal}
+                      onChange={(e) => setRemitoClienteModal(e.target.value)}
+                      placeholder="Ej: R-0001-00045"
+                      className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                      Destino
+                    </label>
+                    <input
+                      type="text"
+                      value={destinoModal}
+                      onChange={(e) => setDestinoModal(e.target.value)}
+                      placeholder="Ej: Acopio San Diego"
+                      className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                      Chofer (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={choferModal}
+                      onChange={(e) => setChoferModal(e.target.value)}
+                      placeholder="Ej: Juan Pérez (Transp. Norte)"
+                      className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">Concepto / Detalle *</label>
                 <input
@@ -1250,6 +1771,171 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                   className="px-4 py-2 bg-[#00603C] hover:bg-[#254731] text-white rounded-lg font-semibold uppercase tracking-wider text-[10px]"
                 >
                   Confirmar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Dedicado: REGISTRAR SALIDA MANUAL DE STOCK */}
+      {showSalidaManualModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 border border-gray-100 animate-in fade-in zoom-in duration-200">
+            <div className="border-b border-gray-100 pb-3 mb-4 flex justify-between items-center">
+              <div>
+                <span className="text-[10px] font-bold text-[#A0522D] uppercase tracking-wider block">
+                  Existencias y Stock • Salidas
+                </span>
+                <h5 className="font-serif text-lg font-bold text-[#1A1A1A]">
+                  Registrar Salida Manual: {lote.loteNro || lote.id}
+                </h5>
+              </div>
+              <button
+                onClick={() => setShowSalidaManualModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-lg font-bold p-1"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Alerta de Stock Disponible */}
+            <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3 text-xs text-amber-900 flex items-center justify-between gap-3 mb-4">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 block">Stock Disponible en Lote</span>
+                <span className="font-mono font-bold text-base">{lote.stockBolsas} bolsas</span>
+                <span className="text-gray-500 font-sans ml-1.5">({formatNumberArg(lote.stockKg, 0)} kg)</span>
+              </div>
+              <div className="text-right text-[11px] text-gray-600">
+                Factor: <span className="font-bold">{lote.kgPorBolsa || 40} kg/b</span>
+              </div>
+            </div>
+
+            {errorSalidaManual && (
+              <div className="bg-[#F5E5DC] text-[#A0522D] p-3 rounded-lg flex items-start gap-2 text-xs border border-red-100 mb-4">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{errorSalidaManual}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleGuardarSalidaManual} className="space-y-4 text-xs text-left">
+              {/* Fecha */}
+              <div>
+                <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                  Fecha de la Salida *
+                </label>
+                <input
+                  type="date"
+                  value={fechaSalidaManual}
+                  onChange={(e) => setFechaSalidaManual(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 font-medium"
+                  required
+                />
+              </div>
+
+              {/* Cantidades */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                    Bolsas a dar de baja *
+                  </label>
+                  <input
+                    type="number"
+                    value={bolsasSalidaManual}
+                    onChange={(e) => setBolsasSalidaManual(Math.max(1, parseInt(e.target.value, 10) || 0))}
+                    className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 font-bold text-gray-900"
+                    min="1"
+                    max={lote.stockBolsas}
+                    required
+                  />
+                  <span className="text-[10px] text-gray-400 mt-0.5 block">Máximo: {lote.stockBolsas} b.</span>
+                </div>
+                <div>
+                  <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                    Kg por Bolsa
+                  </label>
+                  <input
+                    type="number"
+                    value={kgBolsaSalidaManual}
+                    onChange={(e) => setKgBolsaSalidaManual(Math.max(1, parseInt(e.target.value, 10) || 0))}
+                    className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 font-medium"
+                    min="1"
+                    required
+                  />
+                  <span className="text-[10px] text-gray-500 font-mono mt-0.5 block">
+                    Total: {formatNumberArg(bolsasSalidaManual * kgBolsaSalidaManual, 0)} kg
+                  </span>
+                </div>
+              </div>
+
+              {/* Columnas específicas requeridas por usuario: Nro remito cliente y destino */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                <div>
+                  <label className="block text-gray-800 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                    Nro Remito de Cliente
+                  </label>
+                  <input
+                    type="text"
+                    value={remitoClienteSalidaManual}
+                    onChange={(e) => setRemitoClienteSalidaManual(e.target.value)}
+                    placeholder="Ej: R-0001-00045892"
+                    className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-800 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                    Destino
+                  </label>
+                  <input
+                    type="text"
+                    value={destinoSalidaManual}
+                    onChange={(e) => setDestinoSalidaManual(e.target.value)}
+                    placeholder="Ej: Acopio Pergamino / Molino"
+                    className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs font-medium"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                    Chofer / Transporte (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={choferSalidaManual}
+                    onChange={(e) => setChoferSalidaManual(e.target.value)}
+                    placeholder="Ej: Transporte Gómez / Chofer Carlos Silva"
+                    className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Motivo / Detalle */}
+              <div>
+                <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                  Concepto / Detalle de la Salida *
+                </label>
+                <input
+                  type="text"
+                  value={motivoSalidaManual}
+                  onChange={(e) => setMotivoSalidaManual(e.target.value)}
+                  placeholder="Ej: Entrega directa a cliente, retiro comercial, consumo..."
+                  className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200"
+                  required
+                />
+              </div>
+
+              <div className="pt-4 border-t border-gray-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSalidaManualModal(false)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 font-semibold uppercase tracking-wider text-[10px] cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#A0522D] hover:bg-[#8C4625] text-white rounded-lg font-bold uppercase tracking-wider text-[10px] shadow-xs cursor-pointer"
+                >
+                  Confirmar Salida Manual
                 </button>
               </div>
             </form>
@@ -1526,15 +2212,6 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold uppercase text-gray-600 mb-1">N° Orden Proceso / Mov.</label>
-                    <input
-                      type="text"
-                      value={draftFichaLote.ordenProcesoId || (draftFichaLote as any).numeroOrdenMovimiento || (draftFichaLote as any).ordenProceso || ''}
-                      onChange={(e) => handleUpdateDraftField('ordenProcesoId', e.target.value)}
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg font-semibold text-gray-800 font-mono focus:bg-white focus:border-[#00603C] focus:outline-none"
-                    />
-                  </div>
-                  <div>
                     <label className="block text-[10px] font-bold uppercase text-gray-600 mb-1">N° Bolsón de Origen</label>
                     <input
                       type="text"
@@ -1642,10 +2319,117 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
         </div>
       )}
 
+      {/* Modal: Carga Manual de Código INASE (Inicio / Final) */}
+      {showInaseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto print:hidden animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-gray-100 my-8">
+            <div className="bg-[#00603C] p-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl">
+                  <Tag className="w-5 h-5 text-[#C9922E]" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-base uppercase tracking-wider">
+                    Código INASE (Inicio / Final)
+                  </h3>
+                  <p className="text-xs text-emerald-100/90 font-mono">
+                    Lote {lote.loteNro || lote.id} · {lote.cliente}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowInaseModal(false)}
+                className="p-1.5 rounded-lg text-emerald-100 hover:bg-white/10 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setIsSavingInase(true);
+                try {
+                  if (onUpdateLoteInase) {
+                    await onUpdateLoteInase(lote.id, inaseInicioVal.trim(), inaseFinalVal.trim());
+                  }
+                  setShowInaseModal(false);
+                } catch (err) {
+                  console.error('Error guardando Código INASE:', err);
+                } finally {
+                  setIsSavingInase(false);
+                }
+              }}
+              className="p-6 space-y-4"
+            >
+              <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 text-xs text-emerald-950 leading-relaxed">
+                Ingrese la numeración manual de inicio y final correspondiente al <strong>Código INASE</strong>. Estos datos quedan registrados y se exportarán en las columnas correspondientes de Excel.
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-700 mb-1 tracking-wider">
+                  INASE Inicio
+                </label>
+                <input
+                  type="text"
+                  value={inaseInicioVal}
+                  onChange={(e) => setInaseInicioVal(e.target.value)}
+                  placeholder="Ej: 0048101"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#00603C] focus:border-[#00603C] focus:outline-none text-sm transition"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-700 mb-1 tracking-wider">
+                  INASE Final
+                </label>
+                <input
+                  type="text"
+                  value={inaseFinalVal}
+                  onChange={(e) => setInaseFinalVal(e.target.value)}
+                  placeholder="Ej: 0048350"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#00603C] focus:border-[#00603C] focus:outline-none text-sm transition"
+                />
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs flex items-center justify-between">
+                <span className="text-slate-500 font-medium">Bolsas en Lote:</span>
+                <span className="font-mono font-bold text-slate-800">
+                  {lote.stockBolsas} bolsas ({lote.kgPorBolsa || 40} kg)
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowInaseModal(false)}
+                  className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingInase}
+                  className="px-5 py-2.5 bg-[#00603C] hover:bg-[#004D30] text-white rounded-lg text-xs font-bold uppercase tracking-wider transition shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingInase ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
+                  ) : (
+                    <Check className="w-4 h-4 text-amber-300 stroke-[3]" />
+                  )}
+                  <span>{isSavingInase ? 'Guardando...' : 'Guardar Códigos INASE'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Componente Independiente de Impresión y Edición de Ficha Técnica (A4 / JPG) */}
       <ImprimirFichaTecnica
         lote={draftFichaLote}
-        ordenesProceso={ordenesProceso}
         isOpen={showImprimirFichaModal}
         onClose={() => setShowImprimirFichaModal(false)}
         initialEditMode={initialFichaEditMode}

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 export const FIXED_CLIENTES = [
   'Pampa',
@@ -24,6 +24,7 @@ interface ClienteSelectProps {
   selectClassName?: string;
   inputClassName?: string;
   disabled?: boolean;
+  clientesDisponibles?: string[];
 }
 
 export const ClienteSelect: React.FC<ClienteSelectProps> = ({
@@ -35,20 +36,34 @@ export const ClienteSelect: React.FC<ClienteSelectProps> = ({
   selectClassName = '',
   inputClassName = '',
   disabled = false,
+  clientesDisponibles,
 }) => {
   // Normalización para legacy "San Diego Semilla" -> "San Diego Semillas"
   const normalizedValue = (value === 'San Diego Semilla' || value === 'San Diego') ? 'San Diego Semillas' : value;
 
-  const isFixed = (FIXED_CLIENTES as readonly string[]).includes(normalizedValue);
+  const clientOptions = useMemo(() => {
+    const set = new Set<string>(FIXED_CLIENTES);
+    if (clientesDisponibles && clientesDisponibles.length > 0) {
+      clientesDisponibles.forEach((c) => {
+        if (c && c.trim()) {
+          const norm = (c === 'San Diego Semilla' || c === 'San Diego') ? 'San Diego Semillas' : c.trim();
+          set.add(norm);
+        }
+      });
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [clientesDisponibles]);
+
+  const isFixed = clientOptions.includes(normalizedValue);
 
   const [selectedOption, setSelectedOption] = useState<string>(
-    isFixed ? normalizedValue : normalizedValue ? 'Otro Cliente' : 'Pampa'
+    isFixed ? normalizedValue : normalizedValue ? 'Otro Cliente' : (clientOptions[0] || 'Pampa')
   );
   const [customName, setCustomName] = useState<string>(isFixed ? '' : normalizedValue);
 
   useEffect(() => {
     const norm = (value === 'San Diego Semilla' || value === 'San Diego') ? 'San Diego Semillas' : value;
-    const isValFixed = (FIXED_CLIENTES as readonly string[]).includes(norm);
+    const isValFixed = clientOptions.includes(norm);
     if (isValFixed) {
       setSelectedOption(norm);
       setCustomName('');
@@ -56,7 +71,7 @@ export const ClienteSelect: React.FC<ClienteSelectProps> = ({
       setSelectedOption('Otro Cliente');
       setCustomName(norm);
     }
-  }, [value]);
+  }, [value, clientOptions]);
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const opt = e.target.value;
@@ -88,7 +103,7 @@ export const ClienteSelect: React.FC<ClienteSelectProps> = ({
         required={required && selectedOption !== 'Otro Cliente'}
         className={selectClassName || "w-full px-3 py-2 bg-white text-slate-900 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold"}
       >
-        {FIXED_CLIENTES.map((c) => (
+        {clientOptions.map((c) => (
           <option key={c} value={c}>
             {c}
           </option>

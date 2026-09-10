@@ -143,7 +143,7 @@ export const FichaLoteA4: React.FC<FichaLoteA4Props> = ({
               </div>
             </div>
             <div className="meta-header">
-              <p className="font-bold text-gray-800">FICHA TÉCNICA DE LOTE</p>
+              <p className="font-bold text-gray-800">FICHA TÉCNICA</p>
               <p>Fecha Emisión: {currentData.fechaEmision}</p>
               <p>Sistema: Agro Abacus v2.6</p>
             </div>
@@ -151,7 +151,7 @@ export const FichaLoteA4: React.FC<FichaLoteA4Props> = ({
 
           {/* SECCIÓN 1: DATOS GENERALES */}
           <section className="ficha-section">
-            <div className="section-title">1. Datos Generales del Lote</div>
+            <div className="section-title">1. Datos Generales</div>
             <div className="grid-3">
               <div className="data-group">
                 <label>Establecimiento</label>

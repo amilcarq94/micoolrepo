@@ -75,7 +75,7 @@ export const SAMPLE_FICHAS_LOTES_JSON: FichaLoteJSON[] = [
     existencias_kg: '70.600 kg',
     humedad: '13,1 %',
     calidad: 'GRADO 1 ESPECIAL',
-    observaciones: 'Lote clasificado en zaranda 6.5mm. Poder germinativo certificado superior al 95%.',
+    observaciones: 'Lote clasificado en zaranda 6.5mm. Confección con hermeticidad certificada y óptima conservación.',
   },
   {
     nombre_lote: 'LOTE 04 - ESTE',
@@ -189,10 +189,10 @@ export const FichaTecnicaLoteCard: React.FC<FichaTecnicaLoteCardProps> = ({
               opacity: 0.95,
             }}
           >
-            FICHA TÉCNICA DE LOTE
+            FICHA TÉCNICA
           </div>
 
-          {/* Nombre del Lote en 26pt negrita pesada */}
+          {/* Nombre/Identificación en 26pt negrita pesada */}
           <h1
             style={{
               margin: '6px 0 14px 0',
@@ -204,7 +204,7 @@ export const FichaTecnicaLoteCard: React.FC<FichaTecnicaLoteCardProps> = ({
               color: '#ffffff',
             }}
           >
-            {data.nombre_lote || 'LOTE SIN DENOMINACIÓN'}
+            {data.nombre_lote ? data.nombre_lote.replace(/^LOTE\s*[:-]?\s*/i, '').trim() || data.nombre_lote : 'SIN DENOMINACIÓN'}
           </h1>
 
           {/* Barra inferior de Cliente y Variedad en 17pt negrita */}
@@ -338,7 +338,7 @@ export const FichaTecnicaLoteCard: React.FC<FichaTecnicaLoteCardProps> = ({
             </div>
           </div>
 
-          {/* Card 3: Tipo de Lote / Ciclo del Cultivo */}
+          {/* Card 3: Tipo de Lote */}
           <div
             style={{
               backgroundColor: 'var(--app-secondary-bg)',
@@ -361,7 +361,7 @@ export const FichaTecnicaLoteCard: React.FC<FichaTecnicaLoteCardProps> = ({
                 marginBottom: '4px',
               }}
             >
-              Tipo de Lote / Ciclo
+              Tipo de Lote
             </span>
             <div
               style={{
@@ -371,7 +371,7 @@ export const FichaTecnicaLoteCard: React.FC<FichaTecnicaLoteCardProps> = ({
                 lineHeight: 1.2,
               }}
             >
-              {data.tipo_lote || data.ciclo_cultivo || '—'}
+              {data.tipo_lote || '—'}
             </div>
           </div>
         </section>
@@ -469,7 +469,7 @@ export const FichaTecnicaLoteCard: React.FC<FichaTecnicaLoteCardProps> = ({
                     color: 'var(--app-text)',
                   }}
                 >
-                  Ciclo del Cultivo
+                  Tipo de Lote
                 </th>
                 <td
                   style={{
@@ -479,7 +479,7 @@ export const FichaTecnicaLoteCard: React.FC<FichaTecnicaLoteCardProps> = ({
                     color: 'var(--app-text)',
                   }}
                 >
-                  {data.ciclo_cultivo || '—'}
+                  {data.tipo_lote || '—'}
                 </td>
                 <th
                   style={{
@@ -788,7 +788,7 @@ export const FichaTecnicaLoteCard: React.FC<FichaTecnicaLoteCardProps> = ({
         <div>
           <span style={{ fontWeight: 700, color: 'var(--app-primary)' }}>SISTEMA DE GESTIÓN AGRÍCOLA</span> · Planta Clasificadora
           <br />
-          Emisión Oficial de Ficha Técnica de Lote · Documento válido para auditoría interna y trazabilidad.
+          Emisión Oficial de Ficha Técnica · Documento válido para auditoría interna y trazabilidad.
         </div>
 
         <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
@@ -909,7 +909,7 @@ export const FichaTecnicaLoteViewerModal: React.FC<FichaTecnicaLoteViewerModalPr
           </div>
           <div>
             <h3 className="font-bold text-sm tracking-wide uppercase text-white flex items-center gap-2">
-              <span>Fichas Técnicas de Lotes — Vista Previa e Impresión A4</span>
+              <span>Fichas Técnicas — Vista Previa e Impresión A4</span>
               <span className="bg-emerald-500 text-slate-950 text-[10px] font-black font-mono px-2 py-0.5 rounded-full">
                 {fichas.length} {fichas.length === 1 ? 'Lote' : 'Lotes'}
               </span>

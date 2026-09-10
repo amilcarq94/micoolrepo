@@ -161,7 +161,7 @@ export const FichaTecnicaConBotonA4: React.FC<FichaTecnicaConBotonA4Props> = ({
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="font-serif font-black text-sm uppercase tracking-wider text-white">
-                    Ficha Técnica de Lote (A4)
+                    Ficha Técnica (A4)
                   </h3>
                   {isModified && (
                     <span className="bg-amber-500/20 text-amber-300 text-[10px] px-2 py-0.5 rounded-full font-mono font-bold border border-amber-400/30">
@@ -170,7 +170,7 @@ export const FichaTecnicaConBotonA4: React.FC<FichaTecnicaConBotonA4Props> = ({
                   )}
                 </div>
                 <p className="text-xs text-slate-300">
-                  Lote: <strong className="text-emerald-300 font-mono">{draftLote.loteNro}</strong> · {draftLote.cliente}
+                  <strong className="text-emerald-300 font-mono">{draftLote.loteNro}</strong> · {draftLote.cliente}
                 </p>
               </div>
             </div>

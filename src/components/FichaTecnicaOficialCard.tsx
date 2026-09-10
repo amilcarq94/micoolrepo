@@ -55,7 +55,6 @@ export const FichaTecnicaOficialCard: React.FC<FichaTecnicaOficialCardProps> = (
     fechaRealizadoDisplay,
     especieDisplay,
     variedadDisplay,
-    ordenProcesoMovimientoDisplay,
     bolsonOrigenDisplay,
     sectorBolsonOrigenDisplay,
     ubicacionAcopioDisplay,
@@ -64,12 +63,9 @@ export const FichaTecnicaOficialCard: React.FC<FichaTecnicaOficialCardProps> = (
   const cardDomId = id || `ficha-card-${lote.id || index || '0'}`;
   const qrUrl = getPublicLoteTraceUrl(lote.id || lote.loteNro || 'LOTE');
 
-  // Formato del Lote para el recuadro negro
-  const displayLoteNro = lote.loteNro
-    ? lote.loteNro.toUpperCase().startsWith('LOTE')
-      ? lote.loteNro.toUpperCase()
-      : `LOTE ${lote.loteNro}`
-    : `LOTE ${lote.id || '—'}`;
+  // Formato de Identificación para el recuadro negro/rojo (sin prefijo forzado LOTE)
+  const rawLoteVal = lote.loteNro || lote.id || '—';
+  const displayLoteNro = rawLoteVal.replace(/^LOTE\s*[:-]?\s*/i, '').trim() || rawLoteVal;
 
   // Cliente en mayúsculas sin comillas
   const displayCliente = (lote.cliente || 'AGRO ABACUS S.A.').toUpperCase();
@@ -183,13 +179,13 @@ export const FichaTecnicaOficialCard: React.FC<FichaTecnicaOficialCardProps> = (
           color: '#FFFFFF',
         }}
       >
-        {/* Etiqueta Superior: NÚMERO DE LOTE */}
+        {/* Etiqueta Superior: IDENTIFICACIÓN OFICIAL */}
         <div className="text-center mb-2.5">
           <span
             className="font-sans font-black uppercase tracking-widest text-[#E5A823] text-xs sm:text-sm inline-block"
             style={{ letterSpacing: '0.14em' }}
           >
-            IDENTIFICACIÓN OFICIAL DE LOTE
+            IDENTIFICACIÓN OFICIAL
           </span>
         </div>
 
@@ -307,15 +303,6 @@ export const FichaTecnicaOficialCard: React.FC<FichaTecnicaOficialCardProps> = (
             </div>
 
             <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between bg-white/80 p-2 rounded-lg border border-[#C5E5CC]/60">
-                <span className="text-gray-600 font-bold uppercase text-[10px]">
-                  N° Orden Proceso / Movimiento:
-                </span>
-                <span className="font-mono font-black text-[#005A36] text-xs sm:text-sm">
-                  {ordenProcesoMovimientoDisplay || 'Sin dato'}
-                </span>
-              </div>
-
               <div className="flex items-center justify-between bg-white/80 p-2 rounded-lg border border-[#C5E5CC]/60">
                 <span className="text-gray-600 font-bold uppercase text-[10px]">
                   N° Bolsón / Silo Origen:

@@ -35,6 +35,9 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
   });
 
   const [bolsasProducidas, setBolsasProducidas] = useState<number>(primaryLote.stockBolsas || 0);
+  const [siloOrigen, setSiloOrigen] = useState<string>(() => {
+    return primaryLote.siloOrigen || (primaryLote.silosOrigen && primaryLote.silosOrigen[0]?.siloId) || '';
+  });
   const [ala, setAla] = useState(primaryLote.ala || 'A');
   const [sector, setSector] = useState(primaryLote.sector || '1');
   const [observaciones, setObservaciones] = useState(primaryLote.observaciones || '');
@@ -52,10 +55,16 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
       return;
     }
 
+    const finalSilo = siloOrigen && siloOrigen !== 'Sin Silo' ? siloOrigen.trim() : '';
+
     const updatedLotesList: Lote[] = targetLotes.map(currLote => {
       const currentBolsas = targetLotes.length === 1 ? bolsasProducidas : (currLote.stockBolsas || 0);
       const currentKgB = currLote.kgPorBolsa || 800;
       const currentKgTot = currentBolsas * currentKgB;
+
+      const detalleOrigen = currLote.loteOrigen
+        ? `Origen: ${currLote.loteOrigen}`
+        : (finalSilo ? `Silo: ${finalSilo}` : 'S/D');
 
       const movimientoStock: MovimientoStock = {
         id: `MOV-REAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -64,7 +73,7 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
         cantidadBolsas: currentBolsas,
         kgPorBolsa: currentKgB,
         cantidadKg: currentKgTot,
-        detalle: `MOV REALIZADO (Efectivizado el ${fechaRealizacion}) - Origen: ${currLote.loteOrigen || 'S/D'}`
+        detalle: `MOV REALIZADO (Efectivizado el ${fechaRealizacion}) - ${detalleOrigen}`
       };
 
       const ubicacionStr = ala && sector ? `Ala ${ala} - Sector ${sector}` : (currLote.ubicacionAcopio || 'Sin asignar');
@@ -81,6 +90,8 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
         kgPorBolsa: currentKgB,
         stockKg: currentKgTot,
         estado: currentBolsas > 0 ? 'Disponible' : 'Agotado',
+        siloOrigen: finalSilo || currLote.siloOrigen || '',
+        silosOrigen: finalSilo ? [{ siloId: finalSilo as any, kgExtraidos: 0, kg: 0 }] : (currLote.silosOrigen || []),
         ala: ala || currLote.ala,
         sector: sector || currLote.sector,
         ubicacionAcopio: ubicacionStr,
@@ -262,6 +273,31 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* Silo de Origen (Informativo, sin afectar stock) */}
+        <div className="bg-amber-50/60 border border-amber-200/80 p-3.5 rounded-xl space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <label className="font-bold text-slate-800 flex items-center gap-1.5 font-sans">
+              <Building2 className="w-4 h-4 text-[#C9922E]" /> Silo de Origen (Opcional):
+            </label>
+            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200 uppercase font-sans">
+              Sin Afectar Stock
+            </span>
+          </div>
+          <select
+            value={siloOrigen}
+            onChange={(e) => setSiloOrigen(e.target.value)}
+            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 focus:ring-2 focus:ring-[#00603C] outline-none"
+          >
+            <option value="">Sin especificar / Procedencia de Lote de Origen</option>
+            <option value="Silo 1">Silo 1</option>
+            <option value="Silo 2">Silo 2</option>
+            <option value="Silo 3">Silo 3</option>
+            <option value="Silo 4">Silo 4</option>
+            <option value="Silo 5">Silo 5</option>
+            <option value="Silo 6">Silo 6</option>
+          </select>
+        </div>
 
         {/* 3. UBICACIÓN FÍSICA (OPCIONAL) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-white p-3.5 rounded-xl border border-slate-200 text-xs">

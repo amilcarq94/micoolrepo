@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Lote, OrdenProceso } from '../types';
+import { Lote } from '../types';
 import { exportWithHtml2Pdf } from '../utils/exportPdf';
 import { printWithActiveClass } from '../utils/printHelper';
 import { useFichaLoteData } from '../hooks/useFichaLoteData';
@@ -16,11 +16,11 @@ import {
   RotateCcw,
   X,
   FileText,
+  Printer,
 } from 'lucide-react';
 
 export interface ImprimirFichaTecnicaProps {
   lote: Lote;
-  ordenesProceso?: OrdenProceso[];
   isOpen?: boolean;
   onClose?: () => void;
   onSaveLote?: (updatedLote: Lote) => void;
@@ -169,7 +169,7 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-serif font-black text-sm uppercase tracking-wider text-white">
-                Ficha Técnica de Lote (A4)
+                Ficha Técnica (A4)
               </h3>
               {isModified && (
                 <span className="bg-amber-500/20 text-amber-300 text-[10px] px-2 py-0.5 rounded-full font-mono font-bold border border-amber-400/30">
@@ -178,7 +178,7 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-300">
-              Lote: <strong className="text-emerald-300 font-mono">{draftLote.loteNro}</strong> · {draftLote.cliente}
+              <strong className="text-emerald-300 font-mono">{draftLote.loteNro}</strong> · {draftLote.cliente}
             </p>
           </div>
         </div>
@@ -231,11 +231,23 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
             </button>
           </div>
 
+          {/* Botón Imprimir Ficha */}
+          <button
+            type="button"
+            id="btn-imprimir-dialogo-ficha"
+            onClick={handlePrint}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-md transition cursor-pointer border border-emerald-400/40 active:scale-95"
+            title="Imprimir Ficha Técnica Oficial en papel A4 con estilos optimizados"
+          >
+            <Printer className="w-4 h-4 text-amber-300" />
+            <span>Imprimir Ficha</span>
+          </button>
+
           <button
             type="button"
             onClick={handleDownloadPdf}
             disabled={isDownloadingPdf}
-            className="flex items-center gap-2 px-5 py-2 bg-[#006837] hover:bg-[#254731] text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-md transition cursor-pointer disabled:opacity-50 border border-emerald-400/40 active:scale-95"
+            className="flex items-center gap-2 px-4 py-2 bg-[#006837] hover:bg-[#254731] text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-md transition cursor-pointer disabled:opacity-50 border border-emerald-400/40 active:scale-95"
             title="Descargar la Ficha Técnica completa como archivo PDF A4"
           >
             <Download className="w-4 h-4 text-amber-300" />
@@ -370,15 +382,6 @@ export const ImprimirFichaTecnica: React.FC<ImprimirFichaTecnicaProps> = ({
               />
             </div>
 
-            <div>
-              <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">N° Orden Proceso/Mov.</label>
-              <input
-                type="text"
-                value={draftLote.ordenProcesoId || (draftLote as any).numeroOrdenMovimiento || (draftLote as any).ordenProceso || ''}
-                onChange={(e) => handleUpdateField('ordenProcesoId', e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-lg font-semibold text-gray-800 font-mono focus:bg-white focus:border-[#006837] focus:outline-none"
-              />
-            </div>
             <div>
               <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">N° Bolsón de Origen</label>
               <input

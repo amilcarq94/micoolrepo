@@ -6,24 +6,26 @@
 import React, { useMemo } from 'react';
 import { SiloId, Chofer, BolsonCampo, MovimientoSilo, CATEGORIAS_OFICIALES, SECTORES_BOLSON_OPCIONES, CAPACIDAD_MAX_SILO, PlantaConfig, getVariedadesVisibles, getVariedadesPorEspecie } from '../types';
 import { SILOS_DISPONIBLES } from './SilosSelector';
-import { ChoferSearchSelector } from './ChoferSearchSelector';
 import { ClienteSelect } from './ClienteSelect';
+import { getSiloActiveData } from '../utils/siloValidation';
 import {
   Warehouse,
   Plus,
   Trash2,
-  Truck,
   Droplets,
   Scale,
-  CreditCard,
-  FileText,
-  Percent,
   MapPin,
   AlertTriangle,
-  Upload,
   Layers,
   ChevronDown
 } from 'lucide-react';
+
+export interface OrigenIngresoItem {
+  id: string;
+  bolsonOrigenNro: string;
+  bolsonOrigenSector: string;
+  depositoOrigen: string;
+}
 
 export interface IngresoBloqueItem {
   id: string;
@@ -40,18 +42,19 @@ export interface IngresoBloqueItem {
   bolsonOrigenNro: string;
   bolsonOrigenSector: string;
   depositoOrigen: string;
+  origenes?: OrigenIngresoItem[];
   totalKgIngresados: number | '';
   humedad: number | '';
-  modalidadTransporte: 'FLETE_TERCEROS' | 'FLETE_PROPIO';
-  subTipoTerceros: 'CHOFER' | 'FLETE_MONTANER';
-  tipoTransporte: 'CHOFER' | 'FLETE';
-  fleteOpcion: 'Flete Montaner' | 'Flete Agro Abacus';
-  choferNombre: string;
-  choferCuit: string;
-  choferPatentes: string;
-  choferTransporte: string;
-  choferTara: number | '';
-  comprobanteCartaPorte: string;
+  modalidadTransporte?: 'FLETE_TERCEROS' | 'FLETE_PROPIO';
+  subTipoTerceros?: 'CHOFER' | 'FLETE_MONTANER';
+  tipoTransporte?: 'CHOFER' | 'FLETE';
+  fleteOpcion?: 'Flete Montaner' | 'Flete Agro Abacus';
+  choferNombre?: string;
+  choferCuit?: string;
+  choferPatentes?: string;
+  choferTransporte?: string;
+  choferTara?: number | '';
+  comprobanteCartaPorte?: string;
   observaciones?: string;
   error?: string;
   siloContaminado?: boolean;
@@ -80,6 +83,14 @@ export const createDefaultIngresoBloque = (
     bolsonOrigenNro: '',
     bolsonOrigenSector: '',
     depositoOrigen: 'Depósito Central',
+    origenes: [
+      {
+        id: `orig-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        bolsonOrigenNro: '',
+        bolsonOrigenSector: '',
+        depositoOrigen: 'Depósito Central',
+      },
+    ],
     totalKgIngresados: '',
     humedad: 13.5,
     modalidadTransporte: 'FLETE_TERCEROS',
@@ -103,9 +114,9 @@ interface IngresoSiloBloqueCardProps {
   clientes: string[];
   especies: string[];
   plantaConfig?: PlantaConfig;
-  choferes: Chofer[];
-  bolsones: BolsonCampo[];
-  movimientosSilo: MovimientoSilo[];
+  choferes?: Chofer[];
+  bolsones?: BolsonCampo[];
+  movimientosSilo?: MovimientoSilo[];
   currentStockPorSilo: Record<SiloId, number>;
   onUpdate: (updated: IngresoBloqueItem) => void;
   onRemove: () => void;
@@ -124,6 +135,7 @@ export const IngresoSiloBloqueCard: React.FC<IngresoSiloBloqueCardProps> = ({
   plantaConfig,
   choferes,
   bolsones,
+  movimientosSilo = [],
   currentStockPorSilo,
   onUpdate,
   onRemove,
@@ -135,6 +147,22 @@ export const IngresoSiloBloqueCard: React.FC<IngresoSiloBloqueCardProps> = ({
   const stockSiloActual = currentStockPorSilo[bloque.siloId] || 0;
   const espacioDisponible = Math.max(0, CAPACIDAD_MAX_SILO - stockSiloActual);
   const porcentajeOcupado = Math.min(100, (stockSiloActual / CAPACIDAD_MAX_SILO) * 100);
+
+  // Cambio de silo de destino con autocompletado inteligente de cereal asignado al silo (ej. Silo 2 con Stine Soja 50EE59)
+  const handleSiloChange = (newSiloId: SiloId) => {
+    const siloData = getSiloActiveData(newSiloId, movimientosSilo);
+    const isOcupado = !siloData.isEmpty && siloData.stockKg > 0;
+    onUpdate({
+      ...bloque,
+      siloId: newSiloId,
+      cliente: isOcupado && siloData.cliente && siloData.cliente !== '-' ? siloData.cliente : bloque.cliente,
+      especie: isOcupado && siloData.especie && siloData.especie !== '-' ? siloData.especie : bloque.especie,
+      variedad: isOcupado && siloData.variedad && siloData.variedad !== '-' ? siloData.variedad : bloque.variedad,
+      categoria: isOcupado && siloData.categoria && siloData.categoria !== '-' ? siloData.categoria : bloque.categoria,
+      error: undefined,
+      siloContaminado: undefined,
+    });
+  };
 
   // Lista de variedades filtradas estrictamente desde la Base de Datos para este cliente y especie
   const variedadesDisponibles = useMemo(() => {
@@ -166,10 +194,68 @@ export const IngresoSiloBloqueCard: React.FC<IngresoSiloBloqueCardProps> = ({
     });
   };
 
-  // Cálculo de peso bruto (Tara + Neto)
-  const pesoNeto = typeof bloque.totalKgIngresados === 'number' ? bloque.totalKgIngresados : 0;
-  const pesoTara = typeof bloque.choferTara === 'number' ? bloque.choferTara : 0;
-  const pesoBrutoCalculado = pesoTara > 0 && pesoNeto > 0 ? pesoTara + pesoNeto : pesoNeto > 0 ? pesoNeto : null;
+  // Gestión dinámica de múltiples Orígenes (Bolsa de Origen, Sector de Origen, Depósito / Ubicación Origen)
+  const origenesList: OrigenIngresoItem[] = useMemo(() => {
+    if (bloque.origenes && bloque.origenes.length > 0) {
+      return bloque.origenes;
+    }
+    return [
+      {
+        id: 'orig-default-1',
+        bolsonOrigenNro: bloque.bolsonOrigenNro || '',
+        bolsonOrigenSector: bloque.bolsonOrigenSector || '',
+        depositoOrigen: bloque.depositoOrigen || 'Depósito Central',
+      },
+    ];
+  }, [bloque.origenes, bloque.bolsonOrigenNro, bloque.bolsonOrigenSector, bloque.depositoOrigen]);
+
+  const handleUpdateOrigen = (idx: number, field: keyof OrigenIngresoItem, val: string) => {
+    const updated = origenesList.map((orig, i) => (i === idx ? { ...orig, [field]: val } : orig));
+    const combinedBolsa = updated.map((o) => o.bolsonOrigenNro.trim()).filter(Boolean).join(', ');
+    const combinedSector = updated.map((o) => o.bolsonOrigenSector.trim()).filter(Boolean).join(', ');
+    const combinedDeposito = updated.map((o) => o.depositoOrigen.trim()).filter(Boolean).join(', ');
+
+    onUpdate({
+      ...bloque,
+      origenes: updated,
+      bolsonOrigenNro: combinedBolsa || updated[0]?.bolsonOrigenNro || '',
+      bolsonOrigenSector: combinedSector || updated[0]?.bolsonOrigenSector || '',
+      depositoOrigen: combinedDeposito || updated[0]?.depositoOrigen || '',
+    });
+  };
+
+  const handleAddOrigen = () => {
+    const defaultDep = origenesList[origenesList.length - 1]?.depositoOrigen || 'Depósito Central';
+    const updated: OrigenIngresoItem[] = [
+      ...origenesList,
+      {
+        id: `orig-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        bolsonOrigenNro: '',
+        bolsonOrigenSector: '',
+        depositoOrigen: defaultDep,
+      },
+    ];
+    onUpdate({
+      ...bloque,
+      origenes: updated,
+    });
+  };
+
+  const handleRemoveOrigen = (idx: number) => {
+    if (origenesList.length <= 1) return;
+    const updated = origenesList.filter((_, i) => i !== idx);
+    const combinedBolsa = updated.map((o) => o.bolsonOrigenNro.trim()).filter(Boolean).join(', ');
+    const combinedSector = updated.map((o) => o.bolsonOrigenSector.trim()).filter(Boolean).join(', ');
+    const combinedDeposito = updated.map((o) => o.depositoOrigen.trim()).filter(Boolean).join(', ');
+
+    onUpdate({
+      ...bloque,
+      origenes: updated,
+      bolsonOrigenNro: combinedBolsa || updated[0]?.bolsonOrigenNro || '',
+      bolsonOrigenSector: combinedSector || updated[0]?.bolsonOrigenSector || '',
+      depositoOrigen: combinedDeposito || updated[0]?.depositoOrigen || '',
+    });
+  };
 
   return (
     <div
@@ -245,7 +331,7 @@ export const IngresoSiloBloqueCard: React.FC<IngresoSiloBloqueCardProps> = ({
             <div className="relative">
               <select
                 value={bloque.siloId}
-                onChange={(e) => handleChange('siloId', e.target.value as SiloId)}
+                onChange={(e) => handleSiloChange(e.target.value as SiloId)}
                 className="w-full px-3 py-2 bg-slate-50 hover:bg-white border-2 border-emerald-600/60 rounded-xl font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-700 outline-none transition shadow-2xs"
                 required
               >
@@ -402,45 +488,100 @@ export const IngresoSiloBloqueCard: React.FC<IngresoSiloBloqueCardProps> = ({
           </div>
         </div>
 
-        {/* Datos de Origen: Bolsa y Sector cargados a mano */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
-          <div>
-            <label className="block text-[10px] font-bold uppercase text-slate-700 mb-1 flex items-center gap-1">
-              <Layers className="w-3 h-3 text-emerald-700" /> Bolsa de Origen
-            </label>
-            <input
-              type="text"
-              placeholder="ej: Bolsa 124, S29.2, B-101..."
-              value={bloque.bolsonOrigenNro}
-              onChange={(e) => handleChange('bolsonOrigenNro', e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium text-slate-900 shadow-2xs text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
-            />
+        {/* Ubicaciones de Origen Dinámicas: Bolsa, Sector, Depósito con botón [+] */}
+        <div className="pt-2 border-t border-slate-100 space-y-2.5">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-1.5 text-slate-700 text-xs font-bold uppercase tracking-wider">
+              <Layers className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Bolsa de Origen, Sector y Depósito</span>
+              {origenesList.length > 1 && (
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">
+                  {origenesList.length} orígenes
+                </span>
+              )}
+            </div>
+
+            {/* BOTÓN "+" PARA AGREGAR BOLSA DE ORIGEN, SECTOR DE ORIGEN, DEPÓSITO / UBICACIÓN ORIGEN */}
+            <button
+              type="button"
+              id={`btn-add-origen-${bloque.id}`}
+              onClick={handleAddOrigen}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 hover:text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer shadow-2xs"
+              title="Agregar otra Bolsa de Origen, Sector de Origen y Depósito"
+            >
+              <Plus className="w-3.5 h-3.5 text-emerald-700" />
+              <span>+ Agregar Bolsa / Sector / Depósito</span>
+            </button>
           </div>
 
-          <div>
-            <label className="block text-[10px] font-bold uppercase text-slate-700 mb-1 flex items-center gap-1">
-              <span>Sector de Origen</span>
-            </label>
-            <input
-              type="text"
-              placeholder="ej: Sector Norte, Lote 4, A..."
-              value={bloque.bolsonOrigenSector}
-              onChange={(e) => handleChange('bolsonOrigenSector', e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium text-slate-900 shadow-2xs text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
-            />
-          </div>
+          <div className="space-y-2">
+            {origenesList.map((orig, oIdx) => (
+              <div
+                key={orig.id || oIdx}
+                className="p-3 bg-slate-50/90 rounded-xl border border-slate-200/90 hover:border-emerald-300 transition"
+              >
+                {origenesList.length > 1 && (
+                  <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-200">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 flex items-center gap-1">
+                      <span className="w-4 h-4 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[9px]">
+                        {oIdx + 1}
+                      </span>
+                      <span>Origen #{oIdx + 1}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveOrigen(oIdx)}
+                      className="text-red-500 hover:text-red-700 p-1 rounded-md hover:bg-red-50 transition cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                      title="Quitar este origen"
+                    >
+                      <Trash2 className="w-3 h-3 text-red-500" />
+                      <span>Quitar</span>
+                    </button>
+                  </div>
+                )}
 
-          <div>
-            <label className="block text-[10px] font-bold uppercase text-slate-700 mb-1">
-              Depósito / Ubicación Origen
-            </label>
-            <input
-              type="text"
-              placeholder="ej: Depósito Central, Acopio 1..."
-              value={bloque.depositoOrigen}
-              onChange={(e) => handleChange('depositoOrigen', e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium text-slate-900 shadow-2xs text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
-            />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-700 mb-1 flex items-center gap-1">
+                      <Layers className="w-3 h-3 text-emerald-700" /> Bolsa de Origen
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="ej: Bolsa 124, S29.2, B-101..."
+                      value={orig.bolsonOrigenNro}
+                      onChange={(e) => handleUpdateOrigen(oIdx, 'bolsonOrigenNro', e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium text-slate-900 shadow-2xs text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-700 mb-1 flex items-center gap-1">
+                      <span>Sector de Origen</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="ej: Sector Norte, Lote 4, A..."
+                      value={orig.bolsonOrigenSector}
+                      onChange={(e) => handleUpdateOrigen(oIdx, 'bolsonOrigenSector', e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium text-slate-900 shadow-2xs text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-700 mb-1">
+                      Depósito / Ubicación Origen
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="ej: Depósito Central, Acopio 1..."
+                      value={orig.depositoOrigen}
+                      onChange={(e) => handleUpdateOrigen(oIdx, 'depositoOrigen', e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium text-slate-900 shadow-2xs text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -506,213 +647,18 @@ export const IngresoSiloBloqueCard: React.FC<IngresoSiloBloqueCardProps> = ({
         </div>
       </div>
 
-      {/* SECCIÓN 3: TRANSPORTE Y CHOFER */}
-      <div className="space-y-2.5 pt-2 border-t border-slate-100">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-slate-700 text-xs font-bold uppercase tracking-wider">
-            <Truck className="w-4 h-4 text-emerald-700" />
-            <span>3. Datos del Chofer y Transporte</span>
-          </div>
-
-          {/* Selector de Modalidad de Flete */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <select
-              value={bloque.modalidadTransporte}
-              onChange={(e) => {
-                const val = e.target.value as 'FLETE_TERCEROS' | 'FLETE_PROPIO';
-                onUpdate({
-                  ...bloque,
-                  modalidadTransporte: val,
-                  tipoTransporte: val === 'FLETE_PROPIO' ? 'FLETE' : bloque.tipoTransporte,
-                  fleteOpcion: val === 'FLETE_PROPIO' ? 'Flete Agro Abacus' : bloque.fleteOpcion,
-                });
-              }}
-              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 outline-none cursor-pointer"
-            >
-              <option value="FLETE_TERCEROS">Flete Interno Terceros</option>
-              <option value="FLETE_PROPIO">Flete Interno Propio (Flete AA)</option>
-            </select>
-
-            {bloque.modalidadTransporte === 'FLETE_TERCEROS' && (
-              <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() =>
-                    onUpdate({
-                      ...bloque,
-                      subTipoTerceros: 'CHOFER',
-                      tipoTransporte: 'CHOFER',
-                    })
-                  }
-                  className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition ${
-                    bloque.subTipoTerceros === 'CHOFER'
-                      ? 'bg-emerald-700 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Chofer Manual
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onUpdate({
-                      ...bloque,
-                      subTipoTerceros: 'FLETE_MONTANER',
-                      tipoTransporte: 'FLETE',
-                      fleteOpcion: 'Flete Montaner',
-                    })
-                  }
-                  className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition ${
-                    bloque.subTipoTerceros === 'FLETE_MONTANER'
-                      ? 'bg-amber-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Flete Montaner
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {bloque.modalidadTransporte === 'FLETE_PROPIO' ? (
-          <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center gap-2.5 text-xs text-emerald-900 font-medium">
-            <Truck className="w-4 h-4 text-emerald-700 shrink-0" />
-            <span>Flete Interno Propio (Agro Abacus). No requiere datos específicos de conductor.</span>
-          </div>
-        ) : bloque.subTipoTerceros === 'FLETE_MONTANER' ? (
-          <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl flex items-center gap-2.5 text-xs text-amber-900 font-medium">
-            <Truck className="w-4 h-4 text-amber-700 shrink-0" />
-            <span>Flete Tercerizado (Flete Montaner). Registrado bajo cuenta de transporte general.</span>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-            {/* Chofer Search Selector */}
-            <div className="sm:col-span-2">
-              <ChoferSearchSelector
-                choferes={choferes}
-                selectedChoferNombre={bloque.choferNombre}
-                onSelectChofer={(ch) => {
-                  onUpdate({
-                    ...bloque,
-                    choferNombre: ch.nombre,
-                    choferCuit: ch.cuit || bloque.choferCuit,
-                    choferPatentes: ch.patentes || bloque.choferPatentes,
-                    choferTransporte: ch.transporte || bloque.choferTransporte,
-                    choferTara: ch.tara !== undefined ? ch.tara : bloque.choferTara,
-                  });
-                }}
-                onManualChange={(val) => handleChange('choferNombre', val)}
-                onSaveNewChofer={(data) => {
-                  if (data.nombre && onSaveChofer) {
-                    onSaveChofer({
-                      id: `CHOFER-${Date.now()}`,
-                      nombre: data.nombre,
-                      cuit: bloque.choferCuit.trim() || '—',
-                      patentes: bloque.choferPatentes.trim() || '—',
-                      transporte: bloque.choferTransporte.trim() || 'Sin Transporte',
-                      tara: typeof bloque.choferTara === 'number' ? bloque.choferTara : undefined,
-                    });
-                  }
-                }}
-                label="Nombre del Chofer"
-              />
-            </div>
-
-            {/* Patente Chasis / Acoplado */}
-            <div>
-              <label className="block text-[10px] font-bold uppercase text-slate-700 mb-1 flex items-center gap-1">
-                <Truck className="w-3 h-3 text-emerald-600" />
-                <span>Patente Chasis / Acoplado</span>
-              </label>
-              <input
-                type="text"
-                placeholder="ej: AA123BB / AC456DD"
-                value={bloque.choferPatentes}
-                onChange={(e) => handleChange('choferPatentes', e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono uppercase font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none shadow-2xs"
-              />
-            </div>
-
-            {/* N° Comprobante / Carta de Porte / Remito */}
-            <div>
-              <label className="block text-[10px] font-bold uppercase text-slate-700 mb-1 flex items-center gap-1">
-                <FileText className="w-3 h-3 text-emerald-600" />
-                <span>N° Comprobante / Carta de Porte</span>
-              </label>
-              <input
-                type="text"
-                placeholder="ej: CP-0048-00012345"
-                value={bloque.comprobanteCartaPorte}
-                onChange={(e) => handleChange('comprobanteCartaPorte', e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono uppercase font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none shadow-2xs"
-              />
-            </div>
-
-            {/* CUIT Chofer */}
-            <div>
-              <label className="block text-[10px] font-bold uppercase text-slate-700 mb-1 flex items-center gap-1">
-                <CreditCard className="w-3 h-3 text-emerald-600" />
-                <span>CUIT / DNI Chofer</span>
-              </label>
-              <input
-                type="text"
-                placeholder="ej: 20-34567890-9"
-                value={bloque.choferCuit}
-                onChange={(e) => handleChange('choferCuit', e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none shadow-2xs"
-              />
-            </div>
-
-            {/* Tara Camión (kg) */}
-            <div>
-              <label className="block text-[10px] font-bold uppercase text-slate-700 mb-1 flex items-center gap-1">
-                <Scale className="w-3 h-3 text-emerald-600" />
-                <span>Tara Camión (kg)</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  placeholder="ej: 14500"
-                  value={bloque.choferTara}
-                  onChange={(e) => handleChange('choferTara', e.target.value !== '' ? Number(e.target.value) : '')}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none shadow-2xs pr-8"
-                />
-                <span className="absolute right-2.5 top-2 text-[10px] font-bold text-slate-400 font-mono">kg</span>
-              </div>
-            </div>
-
-            {/* Peso Bruto (Tara + Neto) */}
-            <div className="sm:col-span-2">
-              <label className="block text-[10px] font-bold uppercase text-emerald-800 mb-1 flex items-center gap-1">
-                <Scale className="w-3 h-3 text-emerald-700" />
-                <span>Peso Bruto Calculado (Tara + Neto)</span>
-              </label>
-              <div className="w-full px-3 py-2 bg-emerald-50/70 border border-emerald-200 rounded-xl font-mono font-bold text-emerald-950 text-xs shadow-2xs flex items-center justify-between">
-                <span>{pesoBrutoCalculado !== null ? `${pesoBrutoCalculado.toLocaleString('es-AR')} kg` : '—'}</span>
-                {pesoTara > 0 && pesoNeto > 0 && (
-                  <span className="text-[10px] font-sans font-medium text-emerald-700">
-                    ({pesoTara.toLocaleString('es-AR')} tara + {pesoNeto.toLocaleString('es-AR')} neto)
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* BOTÓN SECUNDARIO VISIBLE: [+] AGREGAR OTRO INGRESO A SILOS */}
-        <div className="pt-3 flex justify-end">
-          <button
-            type="button"
-            onClick={onAddNext}
-            className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-emerald-50 text-emerald-800 hover:text-emerald-900 border-2 border-dashed border-emerald-400 hover:border-emerald-600 rounded-xl font-extrabold text-xs transition duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-98"
-            title="Desplegar un nuevo bloque completo de Ingreso a Silo debajo"
-            id={`btn-add-next-ingreso-${index}`}
-          >
-            <Plus className="w-4 h-4 text-emerald-700" />
-            <span>[+] Agregar otro ingreso a silos</span>
-          </button>
-        </div>
+      {/* BOTÓN SECUNDARIO VISIBLE: [+] AGREGAR OTRO INGRESO A SILOS */}
+      <div className="pt-3 border-t border-slate-100 flex justify-end">
+        <button
+          type="button"
+          onClick={onAddNext}
+          className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-emerald-50 text-emerald-800 hover:text-emerald-900 border-2 border-dashed border-emerald-400 hover:border-emerald-600 rounded-xl font-extrabold text-xs transition duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-98"
+          title="Desplegar un nuevo bloque completo de Ingreso a Silo debajo"
+          id={`btn-add-next-ingreso-${index}`}
+        >
+          <Plus className="w-4 h-4 text-emerald-700" />
+          <span>[+] Agregar otro ingreso a silos</span>
+        </button>
       </div>
     </div>
   );

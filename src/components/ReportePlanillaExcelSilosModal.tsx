@@ -333,7 +333,7 @@ export const ReportePlanillaExcelSilosModal: React.FC<ReportePlanillaExcelSilosM
           'CATEGORÍA',
           'CLIENTE / PROPIETARIO',
           'HUMEDAD (%)',
-          'STOCK ACTUAL (KG)',
+          'KILOS NETOS (KG)',
           'STOCK ACTUAL (TN)',
           'CAPACIDAD MÁX. (TN)',
           '% OCUPACIÓN',
@@ -823,7 +823,7 @@ export const ReportePlanillaExcelSilosModal: React.FC<ReportePlanillaExcelSilosM
                     <th className="p-2 border border-emerald-900">Categoría</th>
                     <th className="p-2 border border-emerald-900">Cliente / Propietario</th>
                     <th className="p-2 border border-emerald-900 text-right">Humedad</th>
-                    <th className="p-2 border border-emerald-900 text-right">Stock (Kg)</th>
+                    <th className="p-2 border border-emerald-900 text-right">Kilos Netos</th>
                     <th className="p-2 border border-emerald-900 text-right">Stock (Tn)</th>
                     <th className="p-2 border border-emerald-900 text-right">Capac. (Tn)</th>
                     <th className="p-2 border border-emerald-900 text-right">% Ocup.</th>

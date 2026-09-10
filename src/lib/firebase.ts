@@ -9,6 +9,7 @@ import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage'
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { Lote, MovimientoStock, SalidaRegistrada, OrdenCarga, MovimientoSilo, Chofer, BolsonCampo, SiloId, EstadoSiloManual, SilosEstadoMap, SILOS_ESTADO_DEFAULT, PlantaConfig, PLANTA_CONFIG_DEFAULT } from '../types';
 import { getCampaniaIdFromDate } from '../utils/campanias';
+import { compressDataUrl } from '../utils/imageCompression';
 
 // Configuración de Firebase obtenida de firebase-applet-config.json
 const firebaseConfig = {
@@ -32,6 +33,13 @@ export const db = initializeFirestore(app, {
 
 // Inicializar Firebase Storage
 export const storage = getStorage(app);
+try {
+  // Limitar el tiempo máximo de reintentos a 3.5 segundos para evitar demoras por storage/retry-limit-exceeded
+  storage.maxUploadRetryTime = 3500;
+  storage.maxOperationRetryTime = 3500;
+} catch {
+  // ignore
+}
 
 /**
  * Normaliza el ID de un lote a la combinación de cliente + "_" + numeroLote.
@@ -52,20 +60,43 @@ export function getLoteDocId(cliente: string, numeroLote: string): string {
 
 /**
  * Sube una cadena en formato Base64 (Data URL) a Firebase Storage.
- * Retorna la URL de descarga del archivo subido.
+ * Optimiza y comprime la imagen a < 250 KB de forma preventiva.
+ * Si Storage no está disponible o supera el límite de reintentos, retorna
+ * de forma segura la imagen comprimida para almacenamiento directo en Firestore sin exceder 1 MB.
  */
 export async function uploadBase64ToStorage(path: string, dataUrl: string): Promise<string> {
   if (!dataUrl || !dataUrl.startsWith('data:')) {
     return dataUrl; // Si no es base64, retornar como está
   }
+
+  // 1. Optimizar imagen en cliente para garantizar que nunca supere ~250 KB
+  let safeDataUrl = dataUrl;
+  if (dataUrl.startsWith('data:image/')) {
+    try {
+      safeDataUrl = await compressDataUrl(dataUrl);
+    } catch (compErr) {
+      console.warn('Advertencia al comprimir imagen antes de subir:', compErr);
+    }
+  }
+
+  // 2. Intentar subir a Firebase Storage con timeout de 3.5s
   try {
     const storageRef = ref(storage, path);
-    await uploadString(storageRef, dataUrl, 'data_url');
-    const downloadUrl = await getDownloadURL(storageRef);
+    const uploadTask = (async () => {
+      await uploadString(storageRef, safeDataUrl, 'data_url');
+      return await getDownloadURL(storageRef);
+    })();
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Storage upload timeout')), 3500)
+    );
+
+    const downloadUrl = await Promise.race([uploadTask, timeoutPromise]);
     return downloadUrl;
   } catch (error) {
-    console.error(`Error al subir archivo a Firebase Storage (${path}):`, error);
-    throw error;
+    console.warn(`Firebase Storage no disponible (${path}). Usando base64 optimizado (${Math.round(safeDataUrl.length / 1024)} KB):`, error);
+    // Retornamos el dataUrl optimizado garantizado para Firestore
+    return safeDataUrl;
   }
 }
 
@@ -224,15 +255,15 @@ export function mapFirestoreToLote(id: string, data: any): Lote {
     ala: data.ala || '',
     sector: data.sector || '',
     ubicacionAcopio: data.ubicacionAcopio || (data.ala && data.sector ? `Ala ${data.ala} - Sector ${data.sector}` : ''),
-    ordenProcesoId: data.ordenProcesoId || '',
-    numeroOrdenMovimiento: data.numeroOrdenMovimiento || '',
     silosOrigen: data.silosOrigen || [],
     siloOrigen: data.siloOrigen || '',
     origenesBolson: data.origenesBolson || [],
     numeroBolsonOrigen: data.numeroBolsonOrigen || data.bolsonOrigenNro || '',
     bolsonOrigenNro: data.bolsonOrigenNro || data.numeroBolsonOrigen || '',
     sectorBolsonOrigen: data.sectorBolsonOrigen || '',
-    humedad: data.humedad !== undefined ? Number(data.humedad) : undefined
+    humedad: data.humedad !== undefined ? Number(data.humedad) : undefined,
+    inaseInicio: data.inaseInicio || '',
+    inaseFinal: data.inaseFinal || ''
   };
 }
 
@@ -292,8 +323,8 @@ export function mapLoteToFirestore(lote: Lote): any {
     sector: lote.sector || '',
     ubicacionAcopio: lote.ubicacionAcopio || '',
     humedad: lote.humedad !== undefined && lote.humedad !== null ? Number(lote.humedad) : null,
-    ordenProcesoId: lote.ordenProcesoId || '',
-    numeroOrdenMovimiento: lote.numeroOrdenMovimiento || '',
+    inaseInicio: lote.inaseInicio || '',
+    inaseFinal: lote.inaseFinal || '',
     silosOrigen: lote.silosOrigen || [],
     siloOrigen: lote.siloOrigen || '',
     origenesBolson: lote.origenesBolson || [],

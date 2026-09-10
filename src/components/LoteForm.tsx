@@ -4,19 +4,16 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Lote, EspecieType, TipoLoteType, TratamientoType, EstadoLoteType, EstadoRegistroLote, CategoriaType, OrdenProceso, SiloId, SiloExtraccion, MovimientoSilo, BolsonCampo, LoteLimitsConfig, MovimientoStock, CicloGerminacionType, CICLOS_GERMINACION, PlantaConfig } from '../types';
+import { Lote, EspecieType, TipoLoteType, TratamientoType, EstadoLoteType, EstadoRegistroLote, CategoriaType, SiloId, SiloExtraccion, MovimientoSilo, BolsonCampo, LoteLimitsConfig, MovimientoStock, PlantaConfig } from '../types';
 import { generateLoteId, formatKg } from '../utils/formatters';
 import { getCampaniaIdFromDate } from '../utils/campanias';
 import { validateLoteLimits, getLoteLimits } from '../utils/loteLimits';
-import { validateSiloLoteMatch } from '../utils/siloValidation';
-import { SilosSelector } from './SilosSelector';
 import { ClienteSelect } from './ClienteSelect';
-import { Save, RotateCcw, AlertTriangle, Plus, Check, Calendar, Factory, Truck, Clock, CheckCircle2, CalendarDays, Info, Trash2, Layers3, Download } from 'lucide-react';
+import { Save, RotateCcw, AlertTriangle, Plus, Check, Calendar, Factory, Truck, Clock, CheckCircle2, CalendarDays, Info, Trash2, Layers3, Download, Edit3, ArrowUpRight, ArrowDownRight, Activity, X } from 'lucide-react';
 import { ImprimirFichaTecnica } from './ImprimirFichaTecnica';
 
 interface LoteFormProps {
   existingLotes: Lote[];
-  ordenesProceso?: OrdenProceso[];
   movimientosSilo?: MovimientoSilo[];
   bolsones?: BolsonCampo[];
   clientes: string[];
@@ -28,7 +25,6 @@ interface LoteFormProps {
   loteLimits?: LoteLimitsConfig;
   onSave: (lote: Lote) => void;
   onCancel: () => void;
-  onCreateOrdenProcesoClick?: () => void;
 }
 
 const getTodayDateStr = () => {
@@ -37,7 +33,6 @@ const getTodayDateStr = () => {
 
 export const LoteForm: React.FC<LoteFormProps> = ({
   existingLotes,
-  ordenesProceso = [],
   movimientosSilo = [],
   bolsones = [],
   clientes,
@@ -48,7 +43,6 @@ export const LoteForm: React.FC<LoteFormProps> = ({
   loteLimits,
   onSave,
   onCancel,
-  onCreateOrdenProcesoClick,
 }) => {
   const isEditing = !!loteAEditar;
   const activeLimits = loteLimits || getLoteLimits();
@@ -105,17 +99,158 @@ export const LoteForm: React.FC<LoteFormProps> = ({
   const [ala, setAla] = useState('');
   const [sector, setSector] = useState('');
   const [humedad, setHumedad] = useState<number | ''>(13.5);
-  const [cicloGerminacion, setCicloGerminacion] = useState<CicloGerminacionType | undefined>(loteAEditar?.cicloGerminacion || 'Sin asignar');
   const [fechaTratamiento, setFechaTratamiento] = useState<string>(() => loteAEditar?.fechaTratamiento || getTodayDateStr());
 
-  // Estados de Orden de Proceso vinculada
-  const [ordenProcesoId, setOrdenProcesoId] = useState('');
-  const [numeroOrdenMovimiento, setNumeroOrdenMovimiento] = useState('');
-  const [silosOrigen, setSilosOrigen] = useState<SiloExtraccion[]>([]);
+  // Gestión de movimientos al editar lote (Entradas, Salidas, Alta)
+  const [movimientosLote, setMovimientosLote] = useState<MovimientoStock[]>([]);
+  const [editingMov, setEditingMov] = useState<MovimientoStock | null>(null);
+  const [isNewMov, setIsNewMov] = useState(false);
+  const [movModalOpen, setMovModalOpen] = useState(false);
+  const [movFormDireccion, setMovFormDireccion] = useState<'Entrada' | 'Salida'>('Salida');
+  const [movFormFecha, setMovFormFecha] = useState(getTodayDateStr());
+  const [movFormTipo, setMovFormTipo] = useState<string>('Salida manual');
+  const [movFormBolsas, setMovFormBolsas] = useState<number>(1);
+  const [movFormKg, setMovFormKg] = useState<number>(800);
+  const [movFormRemito, setMovFormRemito] = useState<string>('');
+  const [movFormDestino, setMovFormDestino] = useState<string>('');
+  const [movFormChofer, setMovFormChofer] = useState<string>('');
+  const [movFormDetalle, setMovFormDetalle] = useState<string>('');
+  const [movFormError, setMovFormError] = useState<string>('');
 
   const [error, setError] = useState('');
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printingLoteObj, setPrintingLoteObj] = useState<Lote | null>(null);
+
+  const recalculateStockFromMovimientos = (movs: MovimientoStock[]) => {
+    let entradasB = 0;
+    let salidasB = 0;
+    let entradasK = 0;
+    let salidasK = 0;
+
+    for (const m of movs) {
+      const isEntrada = m.cantidadBolsas > 0 || (m.tipo || '').toLowerCase().includes('alta') || (m.tipo || '').toLowerCase().includes('ingreso') || (m.tipo || '').toLowerCase().includes('entrada');
+      if (isEntrada) {
+        entradasB += Math.abs(m.cantidadBolsas);
+        entradasK += Math.abs(m.cantidadKg);
+      } else {
+        salidasB += Math.abs(m.cantidadBolsas);
+        salidasK += Math.abs(m.cantidadKg);
+      }
+    }
+
+    const newBolsas = Math.max(0, entradasB - salidasB);
+    const newKg = Math.max(0, entradasK - salidasK);
+    setStockBolsas(newBolsas);
+    setStockKg(newKg);
+    setEstado(newBolsas === 0 ? 'Agotado' : 'Disponible');
+  };
+
+  const handleAbrirEditarMovimiento = (m: MovimientoStock) => {
+    const isEntrada = m.cantidadBolsas > 0 || (m.tipo || '').toLowerCase().includes('alta') || (m.tipo || '').toLowerCase().includes('ingreso') || (m.tipo || '').toLowerCase().includes('entrada');
+    setEditingMov(m);
+    setIsNewMov(false);
+    setMovFormDireccion(isEntrada ? 'Entrada' : 'Salida');
+    setMovFormFecha(m.fecha || getTodayDateStr());
+    setMovFormTipo(isEntrada ? 'Alta' : (m.tipo === 'Despacho' || m.tipo === 'Salida por movimiento' || m.tipo === 'Salida manual' ? m.tipo : 'Salida manual'));
+    setMovFormBolsas(Math.abs(m.cantidadBolsas));
+    setMovFormKg(Math.abs(m.cantidadKg));
+    setMovFormRemito(m.remitoCliente || '');
+    setMovFormDestino(m.destino || '');
+    setMovFormChofer(m.chofer || '');
+    setMovFormDetalle(m.detalle || '');
+    setMovFormError('');
+    setMovModalOpen(true);
+  };
+
+  const handleAbrirNuevoMovimiento = () => {
+    setEditingMov(null);
+    setIsNewMov(true);
+    setMovFormDireccion('Salida');
+    setMovFormFecha(getTodayDateStr());
+    setMovFormTipo('Salida manual');
+    setMovFormBolsas(1);
+    const defaultKg = 1 * (Number(kgPorBolsa) || 800);
+    setMovFormKg(defaultKg);
+    setMovFormRemito('');
+    setMovFormDestino('');
+    setMovFormChofer('');
+    setMovFormDetalle('');
+    setMovFormError('');
+    setMovModalOpen(true);
+  };
+
+  const handleEliminarMovimiento = (movId: string) => {
+    if (!window.confirm('¿Confirma la eliminación de este movimiento? El stock del lote se recalculará automáticamente.')) {
+      return;
+    }
+    const updated = movimientosLote.filter(m => m.id !== movId);
+    setMovimientosLote(updated);
+    recalculateStockFromMovimientos(updated);
+  };
+
+  const handleGuardarMovimiento = (e: React.FormEvent) => {
+    e.preventDefault();
+    setMovFormError('');
+
+    if (movFormBolsas <= 0 || !Number.isInteger(movFormBolsas)) {
+      setMovFormError('La cantidad de bolsas debe ser un número entero mayor a 0.');
+      return;
+    }
+    if (movFormKg <= 0 || isNaN(movFormKg)) {
+      setMovFormError('La cantidad de kilos debe ser mayor a 0.');
+      return;
+    }
+
+    const deltaBolsas = movFormDireccion === 'Entrada' ? movFormBolsas : -movFormBolsas;
+    const deltaKg = movFormDireccion === 'Entrada' ? movFormKg : -movFormKg;
+
+    let updatedMovs: MovimientoStock[] = [];
+
+    if (isNewMov || !editingMov) {
+      const nuevoMov: MovimientoStock = {
+        id: `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        fecha: movFormFecha,
+        tipo: movFormTipo,
+        cantidadBolsas: deltaBolsas,
+        kgPorBolsa: Number(kgPorBolsa) || 800,
+        cantidadKg: deltaKg,
+        remitoCliente: movFormRemito.trim() || undefined,
+        destino: movFormDestino.trim() || undefined,
+        chofer: movFormChofer.trim() || undefined,
+        detalle: movFormDetalle.trim() || `${movFormTipo} registrada`,
+        tipoSalida: movFormDireccion === 'Salida' ? (
+          movFormTipo === 'Despacho' ? 'despacho' :
+          movFormTipo === 'Salida por movimiento' ? 'movimiento' : 'manual'
+        ) : undefined
+      };
+      updatedMovs = [nuevoMov, ...movimientosLote];
+    } else {
+      updatedMovs = movimientosLote.map(m => {
+        if (m.id === editingMov.id) {
+          return {
+            ...m,
+            fecha: movFormFecha,
+            tipo: movFormTipo,
+            cantidadBolsas: deltaBolsas,
+            cantidadKg: deltaKg,
+            remitoCliente: movFormRemito.trim() || undefined,
+            destino: movFormDestino.trim() || undefined,
+            chofer: movFormChofer.trim() || undefined,
+            detalle: movFormDetalle.trim() || `${movFormTipo} modificada`,
+            tipoSalida: movFormDireccion === 'Salida' ? (
+              movFormTipo === 'Despacho' ? 'despacho' :
+              movFormTipo === 'Salida por movimiento' ? 'movimiento' : 'manual'
+            ) : undefined
+          };
+        }
+        return m;
+      });
+    }
+
+    setMovimientosLote(updatedMovs);
+    recalculateStockFromMovimientos(updatedMovs);
+    setMovModalOpen(false);
+  };
 
   const handlePrintCurrentLote = () => {
     const currentLote: Lote = {
@@ -140,21 +275,13 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       sector,
       ubicacionAcopio: ala && sector ? `Ala ${ala} - Sector ${sector}` : '',
       humedad: humedad !== '' ? Number(humedad) : undefined,
-      cicloGerminacion: cicloGerminacion || 'Sin asignar',
-      ordenProcesoId,
-      numeroOrdenMovimiento,
-      silosOrigen,
-      historial: loteAEditar?.historial || [],
+      silosOrigen: [],
+      historial: isEditing ? movimientosLote : (loteAEditar?.historial || []),
       auditoria: loteAEditar?.auditoria || [],
     };
     setPrintingLoteObj(currentLote);
     setShowPrintModal(true);
   };
-
-  // Filtrar órdenes de proceso para listar únicamente las que están "EN CURSO" (o la ya vinculada si se edita un lote)
-  const ordenesEnCurso = useMemo(() => {
-    return ordenesProceso.filter(op => op.estado === 'EN CURSO' || (loteAEditar && op.id === loteAEditar.ordenProcesoId));
-  }, [ordenesProceso, loteAEditar]);
 
   // Inicializar o cargar lote a editar
   useEffect(() => {
@@ -183,10 +310,22 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       setAla(loteAEditar.ala || '');
       setSector(loteAEditar.sector || '');
       setHumedad(loteAEditar.humedad !== undefined ? loteAEditar.humedad : 13.5);
-      setCicloGerminacion(loteAEditar.cicloGerminacion || 'Sin asignar');
-      setOrdenProcesoId(loteAEditar.ordenProcesoId || '');
-      setNumeroOrdenMovimiento(loteAEditar.numeroOrdenMovimiento || '');
-      setSilosOrigen(loteAEditar.silosOrigen || []);
+      
+      let initialHistorial = loteAEditar.historial ? [...loteAEditar.historial] : [];
+      if (initialHistorial.length === 0 && loteAEditar.stockBolsas > 0) {
+        initialHistorial = [
+          {
+            id: `MOV-ALTA-${loteAEditar.id}`,
+            fecha: loteAEditar.fechaIngreso || getTodayDateStr(),
+            tipo: 'Alta',
+            cantidadBolsas: loteAEditar.stockBolsas,
+            kgPorBolsa: loteAEditar.kgPorBolsa || 40,
+            cantidadKg: loteAEditar.stockKg || (loteAEditar.stockBolsas * (loteAEditar.kgPorBolsa || 40)),
+            detalle: 'Alta inicial del lote en planta'
+          }
+        ];
+      }
+      setMovimientosLote(initialHistorial);
     } else {
       // Generar nuevo loteNro sugerido
       const allLoteNros = existingLotes.map(l => l.loteNro || l.id);
@@ -199,45 +338,9 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       setObservaciones('');
       setAla('');
       setSector('');
-      if (ordenesEnCurso.length > 0) {
-        const firstOp = ordenesEnCurso[0];
-        setOrdenProcesoId(firstOp.id);
-        if (firstOp.silosOrigen && firstOp.silosOrigen.length > 0) {
-          setSilosOrigen(firstOp.silosOrigen);
-        }
-        if (firstOp.tipoOrden === 'MOVIMIENTO') {
-          setNumeroOrdenMovimiento(firstOp.numeroOrdenMovimiento || '');
-        }
-      } else {
-        setOrdenProcesoId('');
-      }
+      setMovimientosLote([]);
     }
-  }, [loteAEditar, existingLotes, ordenesEnCurso]);
-
-  // Sync orden de proceso selection with order fields (variedad, producto, categoria, etc.)
-  const handleOrdenProcesoChange = (opId: string) => {
-    setOrdenProcesoId(opId);
-    const selectedOp = ordenesProceso.find(o => o.id === opId);
-    if (selectedOp) {
-      if (selectedOp.variedad) setVariedad(selectedOp.variedad);
-      if (selectedOp.categoria) setCategoria(selectedOp.categoria as CategoriaType);
-      
-      if (tratamientos.includes('Sin Tratar') || (selectedOp.tratamiento && (selectedOp.tratamiento.toLowerCase().includes('sin') || selectedOp.tratamiento.toLowerCase().includes('sin tratar')))) {
-        setProducto('Ninguno');
-      } else if (selectedOp.producto) {
-        setProducto(selectedOp.producto);
-      }
-
-      if (selectedOp.silosOrigen && selectedOp.silosOrigen.length > 0) {
-        setSilosOrigen(selectedOp.silosOrigen);
-      }
-      if (selectedOp.tipoOrden === 'MOVIMIENTO') {
-        setNumeroOrdenMovimiento(selectedOp.numeroOrdenMovimiento || '');
-      } else {
-        setNumeroOrdenMovimiento('');
-      }
-    }
-  };
+  }, [loteAEditar, existingLotes]);
 
 
   // Recalcular ID único dinámicamente si cambia el cliente o loteNro (si no está en modo edición)
@@ -317,16 +420,6 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       setError('Debe seleccionar un Sector de acopio obligatoriamente.');
       return;
     }
-    if (!ordenProcesoId) {
-      setError('Debe seleccionar una Orden de Proceso obligatoriamente para la vinculación y trazabilidad.');
-      return;
-    }
-
-    const selectedOp = ordenesProceso.find(o => o.id === ordenProcesoId);
-    if (selectedOp && selectedOp.tipoOrden === 'MOVIMIENTO' && !numeroOrdenMovimiento.trim()) {
-      setError('La Orden de Proceso seleccionada es de MOVIMIENTO. Debe indicar el N° de Orden de Movimiento.');
-      return;
-    }
 
     if (stockBolsas < 0) {
       setError('La cantidad de bolsas no puede ser negativa.');
@@ -340,40 +433,6 @@ export const LoteForm: React.FC<LoteFormProps> = ({
     if (estadoRegistro === 'REALIZADO' && !fechaHoraProduccion.trim()) {
       setError('Debe ingresar manualmente la Fecha y Hora de Producción para guardar en modo REALIZADO.');
       return;
-    }
-
-    // Validar coincidencia de datos (Cliente, Especie, Variedad) al vincular Silos de Origen
-    if (silosOrigen && silosOrigen.length > 0 && estadoRegistro === 'REALIZADO') {
-      for (const s of silosOrigen) {
-        if (s.siloId) {
-          const matchCheck = validateSiloLoteMatch(
-            s.siloId as SiloId,
-            { cliente, especie, variedad },
-            movimientosSilo
-          );
-          if (!matchCheck.valid) {
-            setError(matchCheck.errorMessage || `No se puede vincular el ${s.siloId} por diferencia en los orígenes vinculantes.`);
-            return;
-          }
-        }
-      }
-    }
-
-    // Validar que la suma de kilos/bolsas del lote no supere el stock disponible del/los silo(s) de origen seleccionado(s)
-    if (silosOrigen && silosOrigen.length > 0 && siloStocks) {
-      let stockSilosDisponible = 0;
-      silosOrigen.forEach(s => {
-        stockSilosDisponible += (siloStocks[s.siloId as SiloId] || 0);
-      });
-
-      if (isEditing && loteAEditar && loteAEditar.stockKg) {
-        stockSilosDisponible += loteAEditar.stockKg;
-      }
-
-      if (stockKg > stockSilosDisponible) {
-        setError(`La cantidad total del lote (${formatKg(stockKg)}) supera el stock disponible acumulado en los silos de origen seleccionados (${formatKg(stockSilosDisponible)}).`);
-        return;
-      }
     }
 
     const ubicacionStr = ala && sector ? `Ala ${ala} - Sector ${sector}` : (ala || sector || 'Sin asignar');
@@ -403,7 +462,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
         cantidadBolsas: addBolsas,
         kgPorBolsa: Number(kgPorBolsa),
         cantidadKg: addKg,
-        detalle: `Reporte Diario de Producción (${fechaHoraProduccion || fechaIngreso}) - OP #${ordenProcesoId || 'S/N'}`
+        detalle: `Reporte Diario de Producción (${fechaHoraProduccion || fechaIngreso})`
       };
 
       const loteAcumulado: Lote = {
@@ -425,9 +484,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
         sector: sector || existingLoteRepetido.sector,
         ubicacionAcopio: ubicacionStr || existingLoteRepetido.ubicacionAcopio,
         humedad: humedad !== '' ? Number(humedad) : existingLoteRepetido.humedad,
-        ordenProcesoId: ordenProcesoId || existingLoteRepetido.ordenProcesoId,
-        numeroOrdenMovimiento: (selectedOp?.tipoOrden === 'MOVIMIENTO' ? numeroOrdenMovimiento.trim() : undefined) || existingLoteRepetido.numeroOrdenMovimiento,
-        silosOrigen: silosOrigen.length > 0 ? silosOrigen : existingLoteRepetido.silosOrigen,
+        silosOrigen: [],
         historial: [nuevoMov, ...(existingLoteRepetido.historial || [])]
       };
 
@@ -469,10 +526,8 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       ubicacionAcopio: ubicacionStr,
       humedad: humedad !== '' ? Number(humedad) : undefined,
       fechaTratamiento: tratamientos.includes('Tratado') ? (fechaTratamiento || getTodayDateStr()) : undefined,
-      ordenProcesoId: ordenProcesoId,
-      numeroOrdenMovimiento: selectedOp?.tipoOrden === 'MOVIMIENTO' ? numeroOrdenMovimiento.trim() : undefined,
-      silosOrigen: silosOrigen,
-      historial: loteAEditar ? loteAEditar.historial : [
+      silosOrigen: [],
+      historial: isEditing ? movimientosLote : (loteAEditar ? loteAEditar.historial : [
         {
           id: `MOV-${Date.now()}`,
           fecha: fechaIngreso,
@@ -482,7 +537,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
           cantidadKg: stockKg,
           detalle: 'Carga inicial de lote - Reporte de Producción'
         }
-      ]
+      ])
     };
 
     onSave(loteGuardar);
@@ -596,74 +651,6 @@ export const LoteForm: React.FC<LoteFormProps> = ({
                 </div>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Sección de Orden de Proceso Vinculada */}
-        <div className="bg-gradient-to-r from-emerald-50 to-slate-50 border border-emerald-200/80 p-5 rounded-2xl shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-2">
-              <Factory className="w-4 h-4 text-emerald-700" />
-              Orden de Proceso Vinculada *
-            </label>
-
-            {onCreateOrdenProcesoClick && (
-              <button
-                type="button"
-                onClick={onCreateOrdenProcesoClick}
-                className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 hover:underline flex items-center gap-1"
-              >
-                + Crear nueva Orden de Proceso
-              </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Selector de Orden de Proceso */}
-            <div className="md:col-span-2">
-              <select
-                value={ordenProcesoId}
-                onChange={(e) => handleOrdenProcesoChange(e.target.value)}
-                required
-                className="w-full px-4 py-2.5 bg-white text-slate-800 text-sm font-semibold rounded-xl border border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 shadow-2xs"
-              >
-                <option value="">
-                  {ordenesEnCurso.length === 0 ? '-- No hay órdenes de proceso "En Curso" --' : '-- Seleccionar Orden de Proceso (En Curso) * --'}
-                </option>
-                {ordenesEnCurso.map(op => (
-                  <option key={op.id} value={op.id}>
-                    N° {op.numeroOrden} - {op.variedad} ({op.producto}) [{op.tipoOrden}] {op.tipoMovimiento ? `- ${op.tipoMovimiento}` : ''}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-emerald-800/80 mt-1">
-                Se muestran únicamente las Órdenes de Proceso con estado "En Curso".
-              </p>
-            </div>
-
-            {/* Campo N° de Orden de Movimiento (Solo visible/requerido si Tipo de Orden = MOVIMIENTO) */}
-            {(() => {
-              const selectedOp = ordenesProceso.find(o => o.id === ordenProcesoId);
-              if (selectedOp && selectedOp.tipoOrden === 'MOVIMIENTO') {
-                return (
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-blue-900 mb-1 flex items-center gap-1.5">
-                      <Truck className="w-3.5 h-3.5 text-blue-600" />
-                      N° Orden de Movimiento *
-                    </label>
-                    <input
-                      type="text"
-                      value={numeroOrdenMovimiento}
-                      onChange={(e) => setNumeroOrdenMovimiento(e.target.value)}
-                      placeholder="Ej. OM-402"
-                      required
-                      className="w-full px-4 py-2 bg-white text-slate-800 font-mono text-sm font-bold rounded-xl border border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                );
-              }
-              return null;
-            })()}
           </div>
         </div>
 
@@ -975,30 +962,6 @@ export const LoteForm: React.FC<LoteFormProps> = ({
             </p>
           </div>
 
-          {/* Ciclo de Germinación */}
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-2 flex items-center justify-between">
-              <span>Ciclo de Germinación</span>
-              <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                Calidad
-              </span>
-            </label>
-            <select
-              value={cicloGerminacion || 'Sin asignar'}
-              onChange={(e) => setCicloGerminacion(e.target.value as CicloGerminacionType)}
-              className="w-full px-4 py-2.5 bg-white text-gray-800 text-sm font-semibold rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
-            >
-              {CICLOS_GERMINACION.map((ciclo) => (
-                <option key={ciclo} value={ciclo}>
-                  {ciclo}
-                </option>
-              ))}
-            </select>
-            <p className="text-[10px] text-gray-500 mt-1">
-              * Período de germinación del análisis de calidad de semilla.
-            </p>
-          </div>
-
           {/* Parámetros de Stock (Cálculo Dinámico) */}
           <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4 bg-[#F6EFDC] bg-opacity-40 p-4 rounded-xl border border-[#F6EFDC] border-opacity-50">
             <div>
@@ -1042,19 +1005,304 @@ export const LoteForm: React.FC<LoteFormProps> = ({
             </div>
           </div>
 
-          {/* Silos de Origen */}
-          <div className="md:col-span-2">
-            <SilosSelector
-              silosSeleccionados={silosOrigen}
-              siloStocks={siloStocks}
-              movimientosSilo={movimientosSilo}
-              loteCliente={cliente}
-              loteEspecie={especie}
-              loteVariedad={variedad}
-              targetKg={stockKg}
-              onChange={setSilosOrigen}
-            />
-          </div>
+          {/* Gestión de Movimientos al Editar Lote */}
+          {isEditing && (
+            <div className="md:col-span-2 bg-gradient-to-br from-emerald-50/50 via-white to-amber-50/30 rounded-2xl border border-emerald-200/80 p-5 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-emerald-100">
+                <div>
+                  <h3 className="text-sm font-bold text-[#00603C] uppercase tracking-wider flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-[#C9922E]" />
+                    Movimientos del Lote (Entradas, Salidas y Alta)
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Modifique o elimine los movimientos existentes. Las bolsas y kilos del lote se recalculan automáticamente.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAbrirNuevoMovimiento}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#00603C] hover:bg-[#004d30] text-white text-xs font-bold rounded-lg shadow-xs transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Agregar Movimiento
+                </button>
+              </div>
+
+              {movimientosLote.length === 0 ? (
+                <div className="text-center py-6 text-xs text-gray-500 bg-white/70 rounded-xl border border-dashed border-gray-200">
+                  No hay movimientos registrados para este lote.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {movimientosLote.map((m, idx) => {
+                    const isEntrada = m.cantidadBolsas > 0 || (m.tipo || '').toLowerCase().includes('alta') || (m.tipo || '').toLowerCase().includes('ingreso') || (m.tipo || '').toLowerCase().includes('entrada');
+                    return (
+                      <div
+                        key={m.id || idx}
+                        className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 hover:border-emerald-200 hover:shadow-xs transition"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                              isEntrada
+                                ? 'bg-emerald-100 text-[#00603C]'
+                                : 'bg-amber-100 text-[#A0522D]'
+                            }`}
+                          >
+                            {isEntrada ? (
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                            ) : (
+                              <ArrowDownRight className="w-3.5 h-3.5" />
+                            )}
+                            {isEntrada ? 'Entrada' : 'Salida'}
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-gray-800">
+                                {m.tipo || (isEntrada ? 'Alta' : 'Salida manual')}
+                              </span>
+                              <span className="text-[11px] text-gray-500 font-mono">
+                                {m.fecha}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-gray-500 truncate max-w-xs sm:max-w-md">
+                              {m.detalle || (m.remitoCliente ? `Remito: ${m.remitoCliente}` : '—')}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="text-right">
+                            <span
+                              className={`text-xs font-bold font-mono ${
+                                isEntrada ? 'text-[#00603C]' : 'text-[#A0522D]'
+                              }`}
+                            >
+                              {isEntrada ? '+' : '-'}
+                              {Math.abs(m.cantidadBolsas)} b.
+                            </span>
+                            <div className="text-[10px] text-gray-400 font-mono">
+                              {Math.abs(m.cantidadKg).toLocaleString('es-AR')} kg
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 border-l border-gray-100 pl-2">
+                            <button
+                              type="button"
+                              onClick={() => handleAbrirEditarMovimiento(m)}
+                              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition"
+                              title="Modificar este movimiento"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleEliminarMovimiento(m.id)}
+                              className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition"
+                              title="Eliminar este movimiento"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Modal para Modificar o Agregar Movimiento */}
+          {movModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+              <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="px-5 py-4 bg-gradient-to-r from-emerald-900 to-[#00603C] text-white flex items-center justify-between">
+                  <h3 className="font-bold text-sm uppercase tracking-wider flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-[#C9922E]" />
+                    {isNewMov ? 'Nuevo Movimiento de Lote' : 'Modificar Movimiento'}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setMovModalOpen(false)}
+                    className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleGuardarMovimiento} className="p-5 space-y-4 overflow-y-auto">
+                  {movFormError && (
+                    <div className="p-3 bg-red-50 text-red-700 text-xs rounded-lg border border-red-200">
+                      {movFormError}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                        Entrada / Salida
+                      </label>
+                      <select
+                        value={movFormDireccion}
+                        onChange={(e) => {
+                          const dir = e.target.value as 'Entrada' | 'Salida';
+                          setMovFormDireccion(dir);
+                          if (dir === 'Entrada') {
+                            setMovFormTipo('Alta');
+                          } else {
+                            setMovFormTipo('Salida manual');
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-white text-gray-800 text-xs font-semibold rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
+                      >
+                        <option value="Entrada">Entrada</option>
+                        <option value="Salida">Salida</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                        Fecha
+                      </label>
+                      <input
+                        type="date"
+                        value={movFormFecha}
+                        onChange={(e) => setMovFormFecha(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 bg-white text-gray-800 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
+                      >
+                      </input>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                      Tipo de Movimiento
+                    </label>
+                    <select
+                      value={movFormTipo}
+                      onChange={(e) => setMovFormTipo(e.target.value)}
+                      className="w-full px-3 py-2 bg-white text-gray-800 text-xs font-semibold rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
+                    >
+                      {movFormDireccion === 'Entrada' ? (
+                        <option value="Alta">Alta</option>
+                      ) : (
+                        <>
+                          <option value="Salida manual">Salida manual</option>
+                          <option value="Despacho">Despacho</option>
+                          <option value="Salida por movimiento">Salida por movimiento</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                        Cantidad de Bolsas
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={movFormBolsas}
+                        onChange={(e) => {
+                          const val = Math.max(1, parseInt(e.target.value, 10) || 0);
+                          setMovFormBolsas(val);
+                          setMovFormKg(val * (Number(kgPorBolsa) || 800));
+                        }}
+                        className="w-full px-3 py-2 bg-white text-gray-800 text-xs font-mono font-bold rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                        Kilos
+                      </label>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={movFormKg}
+                        onChange={(e) => setMovFormKg(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-white text-gray-800 text-xs font-mono font-bold rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                        N° Remito Cliente
+                      </label>
+                      <input
+                        type="text"
+                        value={movFormRemito}
+                        onChange={(e) => setMovFormRemito(e.target.value)}
+                        placeholder="Ej. R-0001-000492"
+                        className="w-full px-3 py-2 bg-white text-gray-800 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                        Destino
+                      </label>
+                      <input
+                        type="text"
+                        value={movFormDestino}
+                        onChange={(e) => setMovFormDestino(e.target.value)}
+                        placeholder="Ej. Planta Pergamino"
+                        className="w-full px-3 py-2 bg-white text-gray-800 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                      Chofer
+                    </label>
+                    <input
+                      type="text"
+                      value={movFormChofer}
+                      onChange={(e) => setMovFormChofer(e.target.value)}
+                      placeholder="Nombre del chofer"
+                      className="w-full px-3 py-2 bg-white text-gray-800 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                      Detalle / Observaciones
+                    </label>
+                    <textarea
+                      value={movFormDetalle}
+                      onChange={(e) => setMovFormDetalle(e.target.value)}
+                      placeholder="Observaciones de este movimiento..."
+                      rows={2}
+                      className="w-full px-3 py-2 bg-white text-gray-800 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => setMovModalOpen(false)}
+                      className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-[#00603C] hover:bg-[#004d30] text-white text-xs font-bold rounded-lg transition"
+                    >
+                      Guardar Movimiento
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {/* Observaciones (Texto libre largo) */}
           <div className="md:col-span-2">

@@ -12,6 +12,7 @@ import { ChoferSearchSelector } from './ChoferSearchSelector';
 import { ClienteSelect } from './ClienteSelect';
 import { FileText, ArrowRight, AlertTriangle, UserCheck, Check, Trash2, Plus, Paperclip, Upload, X, Download, Loader2 } from 'lucide-react';
 import { exportWithHtml2Pdf } from '../utils/exportPdf';
+import { compressImageFile } from '../utils/imageCompression';
 
 interface RegistrarSalidaProps {
   lotes: Lote[];
@@ -132,21 +133,34 @@ export const RegistrarSalida: React.FC<RegistrarSalidaProps> = ({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
+    try {
+      if (file.type && file.type.startsWith('image/')) {
+        const compressed = await compressImageFile(file);
         setRemitoClienteAdjunto({
           nombre: file.name,
-          data: event.target.result as string,
-          type: file.type
+          data: compressed,
+          type: 'image/jpeg'
         });
+      } else {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            setRemitoClienteAdjunto({
+              nombre: file.name,
+              data: event.target.result as string,
+              type: file.type
+            });
+          }
+        };
+        reader.readAsDataURL(file);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Error procesando adjunto:', err);
+    }
   };
 
   const handleRemoveFile = () => {

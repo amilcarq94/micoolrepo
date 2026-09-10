@@ -5,10 +5,11 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Lote, EstadoLoteType, TipoLoteType, OrdenProceso, MovimientoSilo, LoteLimitsConfig, PlantaConfig } from '../types';
+import { Lote, EstadoLoteType, TipoLoteType, MovimientoSilo, LoteLimitsConfig, PlantaConfig, AuditLogEntry, CategoriaType, CATEGORIAS_OFICIALES } from '../types';
 import { formatNumberArg, formatKg, formatDateStr } from '../utils/formatters';
-import { Search, Grid, List, Plus, Filter, Eye, Edit2, ArrowDownRight, Trash2, QrCode, Download, Lock, ShieldAlert, KeyRound, X, Flame, Warehouse, Layers, Info, SlidersHorizontal, Check, Pin, RotateCcw, ChevronDown, Package, Sprout, Clock, CheckCircle2, BarChart2, Building2, Tag, FlaskConical, PieChart, Wheat, Sliders, PackagePlus, RefreshCw, FileText, ListFilter, Copy, Scale, FileSpreadsheet, Calendar } from 'lucide-react';
+import { Search, Grid, List, Plus, Filter, Eye, Edit2, ArrowDownRight, Trash2, QrCode, Download, Lock, ShieldAlert, KeyRound, X, Flame, Warehouse, Layers, Info, SlidersHorizontal, Check, Pin, RotateCcw, ChevronDown, Package, Sprout, Clock, CheckCircle2, BarChart2, Building2, Tag, FlaskConical, PieChart, Wheat, Sliders, PackagePlus, RefreshCw, FileText, ListFilter, Copy, Scale, FileSpreadsheet, Calendar, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Maximize2, Minimize2 } from 'lucide-react';
 import { BatchPrintIdBolsasModal } from './BatchPrintIdBolsasModal';
+import { BatchPrintLotesModal } from './BatchPrintLotesModal';
 import { ImprimirFichaTecnica } from './ImprimirFichaTecnica';
 import { QrCodeModal } from './QrCodeModal';
 import { LoteLimitsConfigModal } from './LoteLimitsConfigModal';
@@ -187,7 +188,6 @@ export const normalizeCliente = (c?: string): string => {
 
 interface LotesViewProps {
   lotes: Lote[];
-  ordenesProceso?: OrdenProceso[];
   movimientosSilo?: MovimientoSilo[];
   siloStocks?: Record<SiloId, number>;
   bolsones?: BolsonCampo[];
@@ -211,7 +211,6 @@ interface LotesViewProps {
 
 export const LotesView: React.FC<LotesViewProps> = ({
   lotes,
-  ordenesProceso,
   movimientosSilo,
   siloStocks,
   bolsones,
@@ -265,14 +264,12 @@ export const LotesView: React.FC<LotesViewProps> = ({
     loteOriginal,
     bolsasACurar,
     fechaTratamiento,
-    numeroOrdenMovimiento,
     productoQuimico,
     loteExistenteT
   }: {
     loteOriginal: Lote;
     bolsasACurar: number;
     fechaTratamiento: string;
-    numeroOrdenMovimiento: string;
     productoQuimico: string;
     loteExistenteT?: Lote;
   }) => {
@@ -291,7 +288,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
         kgPorBolsa,
         kg: kgACurar,
         cantidadKg: kgACurar,
-        detalle: `Salida por movimiento: Curado por OM ${numeroOrdenMovimiento} -> enviado a Lote ${loteExistenteT.loteNro}`
+        detalle: `Salida por movimiento: Curado -> enviado a Lote ${loteExistenteT.loteNro}`
       };
 
       const nuevasBolsasOriginal = Math.max(0, loteOriginal.stockBolsas - bolsasACurar);
@@ -310,7 +307,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
             fechaHora: new Date().toISOString(),
             tipo: 'Edición',
             usuario: currentUser.nombre,
-            descripcion: `Salida por movimiento: Egreso por Curado de ${bolsasACurar} bolsas hacia Lote ${loteExistenteT.loteNro}. OM: ${numeroOrdenMovimiento}`
+            descripcion: `Salida por movimiento: Egreso por Curado de ${bolsasACurar} bolsas hacia Lote ${loteExistenteT.loteNro}`
           },
           ...(loteOriginal.auditoria || [])
         ]
@@ -325,7 +322,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
         kgPorBolsa,
         kg: kgACurar,
         cantidadKg: kgACurar,
-        detalle: `Ingreso por Curado desde Lote ${loteOriginal.loteNro} - OM: ${numeroOrdenMovimiento}`
+        detalle: `Ingreso por Curado desde Lote ${loteOriginal.loteNro}`
       };
 
       const nuevasBolsasT = (loteExistenteT.stockBolsas || 0) + bolsasACurar;
@@ -337,7 +334,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
         stockKg: nuevosKgT,
         estado: 'Disponible',
         fechaTratamiento,
-        numeroOrdenMovimiento: numeroOrdenMovimiento || loteExistenteT.numeroOrdenMovimiento,
         producto: productoQuimico || loteExistenteT.producto,
         historial: [ingresoMov, ...(loteExistenteT.historial || [])],
         auditoria: [
@@ -346,7 +342,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
             fechaHora: new Date().toISOString(),
             tipo: 'Edición',
             usuario: currentUser.nombre,
-            descripcion: `Ingreso por Curado de ${bolsasACurar} bolsas desde Lote ${loteOriginal.loteNro}. OM: ${numeroOrdenMovimiento}`
+            descripcion: `Ingreso por Curado de ${bolsasACurar} bolsas desde Lote ${loteOriginal.loteNro}`
           },
           ...(loteExistenteT.auditoria || [])
         ]
@@ -370,7 +366,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
           tratamiento: ['Tratado'],
           estado: 'Disponible',
           fechaTratamiento,
-          numeroOrdenMovimiento,
           producto: productoQuimico || 'Maxim Quattro + Inoculante',
           auditoria: [
             {
@@ -378,7 +373,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
               fechaHora: new Date().toISOString(),
               tipo: 'Edición',
               usuario: currentUser.nombre,
-              descripcion: `Curado total. Lote renombrado a ${nuevoNombreT}. OM: ${numeroOrdenMovimiento}`
+              descripcion: `Curado total. Lote renombrado a ${nuevoNombreT}`
             },
             ...(loteOriginal.auditoria || [])
           ]
@@ -415,7 +410,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
               fechaHora: new Date().toISOString(),
               tipo: 'Edición',
               usuario: currentUser.nombre,
-              descripcion: `Salida por movimiento: Desdoblamiento por Curado de ${bolsasACurar} bolsas hacia Lote ${loteOriginal.loteNro}T. OM: ${numeroOrdenMovimiento}`
+              descripcion: `Salida por movimiento: Desdoblamiento por Curado de ${bolsasACurar} bolsas hacia Lote ${loteOriginal.loteNro}T`
             },
             ...(loteOriginal.auditoria || [])
           ]
@@ -433,7 +428,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
           kgPorBolsa,
           kg: kgACurar,
           cantidadKg: kgACurar,
-          detalle: `Origen: Curado parcial de ${loteOriginal.loteNro} - OM: ${numeroOrdenMovimiento}`
+          detalle: `Origen: Curado parcial de ${loteOriginal.loteNro}`
         };
 
         const nuevoLoteT: Lote = {
@@ -446,7 +441,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
           producto: productoQuimico || 'Maxim Quattro + Inoculante',
           estado: 'Disponible',
           fechaTratamiento,
-          numeroOrdenMovimiento,
           historial: [ingresoMovT],
           auditoria: [
             {
@@ -454,7 +448,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
               fechaHora: new Date().toISOString(),
               tipo: 'Creación',
               usuario: currentUser.nombre,
-              descripcion: `Creación por Curado Parcial (${bolsasACurar} bolsas) desde Lote ${loteOriginal.loteNro}. OM: ${numeroOrdenMovimiento}`
+              descripcion: `Creación por Curado Parcial (${bolsasACurar} bolsas) desde Lote ${loteOriginal.loteNro}`
             }
           ]
         };
@@ -584,14 +578,50 @@ export const LotesView: React.FC<LotesViewProps> = ({
   const [viewType, setViewType] = useState<'grid' | 'table' | 'heatmap'>('table');
   const [selectedHeatmapCell, setSelectedHeatmapCell] = useState<{ ala: string; sector: string } | null>(null);
 
-  // Estado para las columnas visibles en la vista de tabla (N° de lote, Cliente, Variedad, Tipo, Tratamiento, Cantidad de bolsas, Estado)
+  // Estado para batch de fichas técnicas en selección múltiple
+  const [batchFichasLotes, setBatchFichasLotes] = useState<Lote[] | null>(null);
+
+  // Estado para el menú desplegable de opciones de cada lote en tabla
+  const [activeActionDropdownId, setActiveActionDropdownId] = useState<string | null>(null);
+
+  // Tipos y estados para ordenamiento por columna en la vista de tabla
+  type TableSortField =
+    | 'fechaAlta'
+    | 'cliente'
+    | 'especie'
+    | 'variedad'
+    | 'loteId'
+    | 'tipo'
+    | 'categoria'
+    | 'envase'
+    | 'bolsas'
+    | 'stockKg'
+    | 'estado';
+
+  const [sortField, setSortField] = useState<TableSortField>('fechaAlta');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const handleToggleSort = (field: TableSortField) => {
+    if (sortField === field) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  // Columnas visibles en vista de tabla compacta
   const [visibleColumns, setVisibleColumns] = useState({
-    loteId: true,
+    fechaAlta: true,
     cliente: true,
+    especie: true,
     variedad: true,
+    loteId: true,
     tipo: true,
-    tratamiento: true,
+    categoria: true,
+    envase: true,
     bolsas: true,
+    stockKg: true,
     estado: true,
   });
   const [showColumnSelector, setShowColumnSelector] = useState(false);
@@ -604,6 +634,219 @@ export const LotesView: React.FC<LotesViewProps> = ({
 
   // Estado para la confirmación de borrado de un lote individual
   const [loteToDelete, setLoteToDelete] = useState<Lote | null>(null);
+
+  // Estados para Edición Directa de Lote en Tabla (sin abrir hoja distinta)
+  const [inlineEditingLoteId, setInlineEditingLoteId] = useState<string | null>(null);
+  const [inlineEditData, setInlineEditData] = useState<{
+    loteNro: string;
+    stockBolsas: number;
+    categoria: string;
+    estado: EstadoLoteType;
+    tipo: TipoLoteType;
+    estadoRegistro?: 'PRE-CARGA' | 'REALIZADO';
+  }>({
+    loteNro: '',
+    stockBolsas: 0,
+    categoria: 'Original',
+    estado: 'Disponible',
+    tipo: 'Final',
+  });
+  const [isSavingInline, setIsSavingInline] = useState(false);
+  const [inlineSaveError, setInlineSaveError] = useState<string | null>(null);
+  const [inlineSaveSuccess, setInlineSaveSuccess] = useState<string | null>(null);
+
+  // Estado para edición rápida de nombre de lote directamente en la celda de la tabla
+  const [inlineEditingNameId, setInlineEditingNameId] = useState<string | null>(null);
+  const [inlineEditingNameVal, setInlineEditingNameVal] = useState<string>('');
+  const [isSavingInlineName, setIsSavingInlineName] = useState<boolean>(false);
+
+  // Estado para expandir vista de tabla
+  const [isTableExpanded, setIsTableExpanded] = useState<boolean>(true);
+
+  // Estado para modal rápido de edición en la misma vista (tarjetas o ventana directa)
+  const [quickEditModalLote, setQuickEditModalLote] = useState<Lote | null>(null);
+
+  const handleStartEditLoteName = (l: Lote) => {
+    setInlineEditingNameId(l.id);
+    setInlineEditingNameVal(l.loteNro || l.id);
+  };
+
+  const handleSaveLoteNameDirect = async (l: Lote) => {
+    const trimmed = inlineEditingNameVal.trim();
+    if (!trimmed) {
+      alert('El nombre del lote no puede estar vacío.');
+      return;
+    }
+    if (trimmed === (l.loteNro || l.id)) {
+      setInlineEditingNameId(null);
+      return;
+    }
+
+    setIsSavingInlineName(true);
+    try {
+      const auditEntry: AuditLogEntry = {
+        id: `AUD-EDIT-NAME-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Edición',
+        usuario: currentUser.nombre,
+        descripcion: `Nombre de lote modificado en tabla: "${l.loteNro || l.id}" ➔ "${trimmed}".`,
+        detalles: `Editado directamente en celda de tabla por ${currentUser.nombre}.`
+      };
+
+      const updatedLote: Lote = {
+        ...l,
+        loteNro: trimmed,
+        auditoria: [auditEntry, ...(l.auditoria || [])]
+      };
+
+      if (onSaveLote) {
+        await onSaveLote(updatedLote);
+      } else if (onBatchUpdateLotes) {
+        await onBatchUpdateLotes([updatedLote]);
+      }
+
+      setInlineEditingNameId(null);
+      setInlineSaveSuccess(`Nombre de lote actualizado a "${trimmed}".`);
+      setTimeout(() => setInlineSaveSuccess(null), 3000);
+    } catch (err: any) {
+      console.error('Error guardando nombre de lote:', err);
+      alert('Error al actualizar el nombre del lote');
+    } finally {
+      setIsSavingInlineName(false);
+    }
+  };
+
+  const handleStartInlineEdit = (l: Lote) => {
+    setInlineEditingLoteId(l.id);
+    setInlineEditData({
+      loteNro: l.loteNro || l.id,
+      stockBolsas: l.stockBolsas ?? 0,
+      categoria: l.categoria || 'Original',
+      estado: l.estado || 'Disponible',
+      tipo: l.tipo || 'Final',
+      estadoRegistro: l.estadoRegistro || 'REALIZADO',
+    });
+    setInlineSaveError(null);
+    setInlineSaveSuccess(null);
+  };
+
+  const handleOpenQuickEditModal = (l: Lote) => {
+    setQuickEditModalLote(l);
+    setInlineEditData({
+      loteNro: l.loteNro || l.id,
+      stockBolsas: l.stockBolsas ?? 0,
+      categoria: l.categoria || 'Original',
+      estado: l.estado || 'Disponible',
+      tipo: l.tipo || 'Final',
+      estadoRegistro: l.estadoRegistro || 'REALIZADO',
+    });
+    setInlineSaveError(null);
+  };
+
+  const handleSaveInlineEdit = async (originalLote: Lote) => {
+    if (!inlineEditData.loteNro.trim()) {
+      setInlineSaveError('El nombre / N° de lote no puede estar vacío.');
+      return;
+    }
+    if (inlineEditData.stockBolsas < 0) {
+      setInlineSaveError('La cantidad de bolsas no puede ser negativa.');
+      return;
+    }
+
+    setIsSavingInline(true);
+    setInlineSaveError(null);
+
+    try {
+      const kgPorBolsa = originalLote.kgPorBolsa || 40;
+      const nuevoStockKg = inlineEditData.stockBolsas * kgPorBolsa;
+
+      let nuevoEstado = inlineEditData.estado;
+      if (inlineEditData.stockBolsas === 0 && nuevoEstado === 'Disponible') {
+        nuevoEstado = 'Agotado';
+      } else if (inlineEditData.stockBolsas > 0 && nuevoEstado === 'Agotado') {
+        nuevoEstado = 'Disponible';
+      }
+
+      const cambios: string[] = [];
+      if (inlineEditData.loteNro.trim() !== originalLote.loteNro) {
+        cambios.push(`Nombre de Lote: "${originalLote.loteNro}" ➔ "${inlineEditData.loteNro.trim()}"`);
+      }
+      if (inlineEditData.stockBolsas !== originalLote.stockBolsas) {
+        cambios.push(`Bolsas dadas de alta: ${originalLote.stockBolsas} ➔ ${inlineEditData.stockBolsas} (${nuevoStockKg.toLocaleString('es-AR')} kg)`);
+      }
+      if (nuevoEstado !== originalLote.estado) {
+        cambios.push(`Estado de Lote: "${originalLote.estado}" ➔ "${nuevoEstado}"`);
+      }
+      if (inlineEditData.tipo !== originalLote.tipo) {
+        cambios.push(`Tipo: "${originalLote.tipo}" ➔ "${inlineEditData.tipo}"`);
+      }
+      if (inlineEditData.categoria !== (originalLote.categoria || 'Original')) {
+        cambios.push(`Categoría: "${originalLote.categoria || 'Original'}" ➔ "${inlineEditData.categoria}"`);
+      }
+
+      const auditEntry: AuditLogEntry = {
+        id: `AUD-EDIT-TABLA-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Edición',
+        usuario: currentUser.nombre,
+        descripcion: `Edición directa en vista de tabla: ${cambios.length > 0 ? cambios.join(' | ') : 'Sin cambios'}.`,
+        detalles: `Editado desde tabla por ${currentUser.nombre}.`
+      };
+
+      // Si cambió la cantidad de bolsas de alta, actualizar o insertar movimiento inicial de alta en el historial
+      let nuevoHistorial = [...(originalLote.historial || [])];
+      if (inlineEditData.stockBolsas !== originalLote.stockBolsas) {
+        const movAltaIdx = nuevoHistorial.findIndex(m => m.id.startsWith('MOV-ALTA') || m.tipo.includes('Entrada') || m.tipo === 'Entrada manual');
+        if (movAltaIdx >= 0) {
+          nuevoHistorial[movAltaIdx] = {
+            ...nuevoHistorial[movAltaIdx],
+            cantidadBolsas: inlineEditData.stockBolsas,
+            cantidadKg: nuevoStockKg,
+            detalle: `Alta actualizada desde edición de tabla: ${inlineEditData.stockBolsas} bolsas.`
+          };
+        } else {
+          nuevoHistorial.unshift({
+            id: `MOV-ALTA-${originalLote.id}`,
+            fecha: originalLote.fechaIngreso || new Date().toISOString().split('T')[0],
+            tipo: 'Entrada manual',
+            cantidadBolsas: inlineEditData.stockBolsas,
+            kgPorBolsa: kgPorBolsa,
+            cantidadKg: nuevoStockKg,
+            detalle: `Alta registrada desde edición de tabla: ${inlineEditData.stockBolsas} bolsas.`
+          });
+        }
+      }
+
+      const updatedLote: Lote = {
+        ...originalLote,
+        loteNro: inlineEditData.loteNro.trim(),
+        tipo: inlineEditData.tipo,
+        categoria: (inlineEditData.categoria as CategoriaType) || originalLote.categoria,
+        stockBolsas: inlineEditData.stockBolsas,
+        stockKg: nuevoStockKg,
+        estado: nuevoEstado,
+        estadoRegistro: inlineEditData.estadoRegistro || originalLote.estadoRegistro,
+        historial: nuevoHistorial,
+        auditoria: [auditEntry, ...(originalLote.auditoria || [])]
+      };
+
+      if (onSaveLote) {
+        await onSaveLote(updatedLote);
+      } else if (onBatchUpdateLotes) {
+        await onBatchUpdateLotes([updatedLote]);
+      }
+
+      setInlineEditingLoteId(null);
+      setQuickEditModalLote(null);
+      setInlineSaveSuccess(`Lote ${updatedLote.loteNro} actualizado exitosamente.`);
+      setTimeout(() => setInlineSaveSuccess(null), 4000);
+    } catch (err: any) {
+      console.error('Error guardando edición rápida de lote:', err);
+      setInlineSaveError(err?.message || 'Error al guardar los datos del lote');
+    } finally {
+      setIsSavingInline(false);
+    }
+  };
 
   // Estados de Paginación de la Tabla de Lotes
   const [currentPage, setCurrentPage] = useState(1);
@@ -742,14 +985,34 @@ export const LotesView: React.FC<LotesViewProps> = ({
   }, [lotesContextoCliente, lotes, plantaConfig, especies]);
 
   const variedadesDisponibles = useMemo(() => {
-    const fromContext = lotesContextoCliente.map(l => l.variedad).filter(Boolean) as string[];
-    if (fromContext.length > 0) {
-      return Array.from(new Set(fromContext)).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    if (filterClientes.length > 0) {
+      const fromContext = lotesContextoCliente.map(l => l.variedad).filter(Boolean) as string[];
+      const dbList = plantaConfig?.variedadesDb || [];
+      const fromDb = dbList.filter(v => {
+        const normVCli = normalizeCliente(v.cliente);
+        return filterClientes.some(fc => {
+          const normFc = normalizeCliente(fc);
+          return normFc === normVCli || fc.trim().toLowerCase() === (v.cliente || '').trim().toLowerCase();
+        });
+      }).map(v => v.nombre).filter(Boolean);
+
+      const combined = Array.from(new Set([...fromContext, ...fromDb]));
+      return combined.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     }
     const base = plantaConfig?.variedades || [];
     const fromLotes = lotes.map(l => l.variedad).filter(Boolean) as string[];
     return Array.from(new Set([...base, ...fromLotes])).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  }, [lotesContextoCliente, lotes, plantaConfig]);
+  }, [filterClientes, lotesContextoCliente, lotes, plantaConfig]);
+
+  // Al cambiar cliente o especie, depurar variedades seleccionadas que ya no correspondan a las opciones disponibles
+  useEffect(() => {
+    if (filterVariedades.length > 0) {
+      setFilterVariedades(prev => {
+        const valid = prev.filter(v => variedadesDisponibles.includes(v));
+        return valid.length === prev.length ? prev : valid;
+      });
+    }
+  }, [filterClientes, filterEspecies, variedadesDisponibles]);
 
   const tiposDisponibles = useMemo(() => {
     const fromContext = lotesContextoCliente.map(l => l.tipo).filter(Boolean) as string[];
@@ -770,6 +1033,11 @@ export const LotesView: React.FC<LotesViewProps> = ({
     const fromLotes = lotes.map(l => l.categoria).filter(Boolean) as string[];
     return Array.from(new Set([...base, ...fromLotes])).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [lotesContextoCliente, lotes, plantaConfig]);
+
+  const categoriasParaEditor = useMemo(() => {
+    const oficiales = Array.from(CATEGORIAS_OFICIALES || []);
+    return Array.from(new Set([...oficiales, ...categoriasDisponibles, 'Original', 'Fundadora', 'PreBase', 'Primera Multiplicación (PRIMU)', 'Segunda Multiplicación', 'Certificada', 'Identificada', 'Comercial']));
+  }, [categoriasDisponibles]);
 
   const tratamientosDisponibles = useMemo(() => {
     const base = plantaConfig?.tratamientos || ['Sin Tratar', 'Tratado'];
@@ -879,11 +1147,74 @@ export const LotesView: React.FC<LotesViewProps> = ({
     });
   }, [lotes, filterEstadoRegistro, search, filterClientes, filterEspecies, filterVariedades, filterTipos, filterCategorias, filterTratamientos, filterEstados]);
 
+  // Lotes filtrados y ordenados según columna seleccionada
+  const sortedFilteredLotes = useMemo(() => {
+    return [...filteredLotes].sort((a, b) => {
+      let aVal: any = '';
+      let bVal: any = '';
+
+      switch (sortField) {
+        case 'fechaAlta':
+          aVal = a.fechaIngreso || a.fechaAlta || (a.fechaHoraProduccion ? a.fechaHoraProduccion.split('T')[0] : '') || '';
+          bVal = b.fechaIngreso || b.fechaAlta || (b.fechaHoraProduccion ? b.fechaHoraProduccion.split('T')[0] : '') || '';
+          break;
+        case 'cliente':
+          aVal = (a.cliente || '').toLowerCase();
+          bVal = (b.cliente || '').toLowerCase();
+          break;
+        case 'especie':
+          aVal = (a.especie || '').toLowerCase();
+          bVal = (b.especie || '').toLowerCase();
+          break;
+        case 'variedad':
+          aVal = (a.variedad || '').toLowerCase();
+          bVal = (b.variedad || '').toLowerCase();
+          break;
+        case 'loteId':
+          aVal = (a.loteNro || a.id || '').toLowerCase();
+          bVal = (b.loteNro || b.id || '').toLowerCase();
+          break;
+        case 'tipo':
+          aVal = (a.tipo || '').toLowerCase();
+          bVal = (b.tipo || '').toLowerCase();
+          break;
+        case 'categoria':
+          aVal = (a.categoria || '').toLowerCase();
+          bVal = (b.categoria || '').toLowerCase();
+          break;
+        case 'envase':
+          aVal = a.envase || (a.kgPorBolsa ? `${a.kgPorBolsa}` : '40');
+          bVal = b.envase || (b.kgPorBolsa ? `${b.kgPorBolsa}` : '40');
+          break;
+        case 'bolsas':
+          aVal = Number(a.stockBolsas) || 0;
+          bVal = Number(b.stockBolsas) || 0;
+          break;
+        case 'stockKg':
+          aVal = Number(a.stockKg) || 0;
+          bVal = Number(b.stockKg) || 0;
+          break;
+        case 'estado':
+          aVal = (a.estado || '').toLowerCase();
+          bVal = (b.estado || '').toLowerCase();
+          break;
+        default:
+          return 0;
+      }
+
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      const cmp = String(aVal).localeCompare(String(bVal), 'es', { numeric: true, sensitivity: 'base' });
+      return sortOrder === 'asc' ? cmp : -cmp;
+    });
+  }, [filteredLotes, sortField, sortOrder]);
+
   // Lotes paginados según página y tamaño seleccionados
   const paginatedLotes = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredLotes.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredLotes, currentPage, itemsPerPage]);
+    return sortedFilteredLotes.slice(startIndex, startIndex + itemsPerPage);
+  }, [sortedFilteredLotes, currentPage, itemsPerPage]);
 
   // Lotes filtrados con todos los criterios excepto filterTipos (para los conteos dinámicos del filtro de tipo en tabla)
   const lotesParaConteoTipos = useMemo(() => {
@@ -1082,32 +1413,15 @@ export const LotesView: React.FC<LotesViewProps> = ({
         ? `SECTOR ${l.sector}`
         : 'Sin asignar';
 
-      // Resolver vinculación a Orden, Silo y Bolsón de Origen
-      const linkedOp = ordenesProceso?.find(
-        o => o.id === l.ordenProcesoId || o.numeroOrden === l.ordenProcesoId
-      );
-      const ordenProcesoMovStr = linkedOp
-        ? linkedOp.tipoOrden === 'MOVIMIENTO'
-          ? (linkedOp.numeroOrdenMovimiento || `OM-${linkedOp.numeroOrden}`)
-          : `OP-${linkedOp.numeroOrden}`
-        : l.numeroOrdenMovimiento
-        ? l.numeroOrdenMovimiento
-        : l.ordenProcesoId
-        ? `OP-${l.ordenProcesoId}`
-        : 'Sin dato';
-
       const siloOrigenStr = l.siloOrigen
         ? String(l.siloOrigen)
         : l.silosOrigen && l.silosOrigen.length > 0
         ? l.silosOrigen.map(s => s.siloId).join(', ')
-        : linkedOp?.silosOrigen && linkedOp.silosOrigen.length > 0
-        ? linkedOp.silosOrigen.map(s => s.siloId).join(', ')
         : 'Sin dato';
 
       const targetSilos = new Set<string>();
       if (l.siloOrigen) targetSilos.add(String(l.siloOrigen));
       if (l.silosOrigen) l.silosOrigen.forEach(s => targetSilos.add(s.siloId));
-      if (linkedOp?.silosOrigen) linkedOp.silosOrigen.forEach(s => targetSilos.add(s.siloId));
 
       const ingresoPrevioSilo = movimientosSilo
         ?.filter(m => m.tipo === 'INGRESO' && targetSilos.has(m.siloId) && m.bolsonOrigenNro)
@@ -1128,8 +1442,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
         bolsonOrigenStr =
           l.numeroBolsonOrigen ||
           l.bolsonOrigenNro ||
-          (linkedOp as any)?.numeroBolsonOrigen ||
-          (linkedOp as any)?.bolsonOrigenNro ||
           ingresoPrevioSilo?.bolsonOrigenNro ||
           'Sin dato';
       }
@@ -1137,7 +1449,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
       if (sectorBolsonOrigenStr === '—') {
         sectorBolsonOrigenStr =
           l.sectorBolsonOrigen ||
-          (linkedOp as any)?.bolsonOrigenSector ||
           ingresoPrevioSilo?.bolsonOrigenSector ||
           '—';
       }
@@ -1154,8 +1465,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
         'Tipo de lote': l.tipo || 'Final',
         'Categoría': l.categoria || 'PRIMU',
         'Tratamiento': tratamientoStr,
-        'N° Orden de Proceso / Movimiento': ordenProcesoMovStr,
-        'Silo de origen': siloOrigenStr,
+        'INASE incio': l.inaseInicio || '—',
+        'INASE final': l.inaseFinal || '—',
         'N° de Bolsón de origen': bolsonOrigenStr,
         'Sector de bolsón de origen': sectorBolsonOrigenStr
       };
@@ -1377,7 +1688,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
     });
 
     // 2. HOJA 2 = LOTES MOV REALIZADOS
-    // Columnas: "Fecha de MOV realizado" / "Cliente" / "Especie" / "Variedad" / "Número de lote" / "Bolsas realizadas" / "Kg por bolsa" / "Stock total" / "Tipo de lote" / "Categoría" / "Tratamiento" / "N° Orden DE MovimientO" / "Producto Aplicado / Principio Activo"
+    // Columnas: "Fecha de MOV realizado" / "Cliente" / "Especie" / "Variedad" / "Número de lote" / "Bolsas realizadas" / "Kg por bolsa" / "Stock total" / "Tipo de lote" / "Categoría" / "Tratamiento" / "Producto Aplicado / Principio Activo"
     const lotesMovData = targetMovRealizados.map(l => {
       const fechaRealizadaStr = l.fechaRealizacionMovimiento || l.fechaMovimiento || l.fechaIngreso || l.fechaHoraProduccion?.split('T')[0] || '—';
       const bolsas = Number(l.stockBolsas) || 0;
@@ -1389,7 +1700,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
         tratamientoStr = 'Tratado';
       }
 
-      const numOrdenMov = l.numeroOrdenMovimiento || l.ordenMovimientoId || l.ordenProceso || l.numeroOrdenProceso || '—';
       const productoAplicado = l.productoAplicado || l.producto || '—';
 
       return {
@@ -1404,7 +1714,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
         'Tipo de lote': l.tipo || 'Final',
         'Categoría': l.categoria || 'PRIMU',
         'Tratamiento': tratamientoStr,
-        'N° Orden DE MovimientO': numOrdenMov,
         'Producto Aplicado / Principio Activo': productoAplicado,
       };
     });
@@ -1453,8 +1762,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
       'Tipo de lote',
       'Categoría',
       'Tratamiento',
-      'N° Orden de Proceso / Movimiento',
-      'Silo de origen',
+      'INASE incio',
+      'INASE final',
       'N° de Bolsón de origen',
       'Sector de bolsón de origen'
     ];
@@ -1478,31 +1787,15 @@ export const LotesView: React.FC<LotesViewProps> = ({
         ? l.tratamiento.join(', ')
         : 'Sin tratar';
 
-      const linkedOp = ordenesProceso?.find(
-        o => o.id === l.ordenProcesoId || o.numeroOrden === l.ordenProcesoId
-      );
-      const ordenProcesoMovStr = linkedOp
-        ? linkedOp.tipoOrden === 'MOVIMIENTO'
-          ? (linkedOp.numeroOrdenMovimiento || `OM-${linkedOp.numeroOrden}`)
-          : `OP-${linkedOp.numeroOrden}`
-        : l.numeroOrdenMovimiento
-        ? l.numeroOrdenMovimiento
-        : l.ordenProcesoId
-        ? `OP-${l.ordenProcesoId}`
-        : 'Sin dato';
-
       const siloOrigenStr = l.siloOrigen
         ? String(l.siloOrigen)
         : l.silosOrigen && l.silosOrigen.length > 0
         ? l.silosOrigen.map(s => s.siloId).join(', ')
-        : linkedOp?.silosOrigen && linkedOp.silosOrigen.length > 0
-        ? linkedOp.silosOrigen.map(s => s.siloId).join(', ')
         : 'Sin dato';
 
       const targetSilosCsv = new Set<string>();
       if (l.siloOrigen) targetSilosCsv.add(String(l.siloOrigen));
       if (l.silosOrigen) l.silosOrigen.forEach(s => targetSilosCsv.add(s.siloId));
-      if (linkedOp?.silosOrigen) linkedOp.silosOrigen.forEach(s => targetSilosCsv.add(s.siloId));
 
       const ingresoPrevioSiloCsv = movimientosSilo
         ?.filter(m => m.tipo === 'INGRESO' && targetSilosCsv.has(m.siloId) && m.bolsonOrigenNro)
@@ -1523,8 +1816,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
         bolsonOrigenStr =
           l.numeroBolsonOrigen ||
           l.bolsonOrigenNro ||
-          (linkedOp as any)?.numeroBolsonOrigen ||
-          (linkedOp as any)?.bolsonOrigenNro ||
           ingresoPrevioSiloCsv?.bolsonOrigenNro ||
           'Sin dato';
       }
@@ -1532,7 +1823,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
       if (sectorBolsonOrigenStr === '—') {
         sectorBolsonOrigenStr =
           l.sectorBolsonOrigen ||
-          (linkedOp as any)?.bolsonOrigenSector ||
           ingresoPrevioSiloCsv?.bolsonOrigenSector ||
           '—';
       }
@@ -1549,8 +1839,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
         l.tipo || 'Final',
         l.categoria || 'PRIMU',
         tratamientoStr,
-        ordenProcesoMovStr,
-        siloOrigenStr,
+        l.inaseInicio || '—',
+        l.inaseFinal || '—',
         bolsonOrigenStr,
         sectorBolsonOrigenStr
       ];
@@ -2027,8 +2317,89 @@ export const LotesView: React.FC<LotesViewProps> = ({
           </div>
         </div>
 
-        {/* Grid de Controles de Filtrado Múltiple en Cascada */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+        {/* FILTRO PRINCIPAL: CLIENTE (SIMILAR A LA HOJA PRODUCCIÓN) */}
+        <div className="bg-[#E3EFE7]/50 border-2 border-[#00603C]/30 rounded-xl p-3.5 sm:p-4 flex flex-col justify-between space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-[#00603C] text-white flex items-center justify-center shadow-xs shrink-0">
+                <Building2 className="w-4.5 h-4.5 text-[#C9922E]" />
+              </div>
+              <div>
+                <label
+                  htmlFor="filtro-principal-cliente-lotes"
+                  className="block text-xs font-black uppercase tracking-wider text-[#00603C] font-sans"
+                >
+                  Filtro Principal: Cliente
+                </label>
+                <span className="block text-[11px] text-gray-500">
+                  Condiciona especies, variedades y disponibilidad vinculada en lotes
+                </span>
+              </div>
+            </div>
+
+            {filterClientes.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterClientes([])}
+                className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 font-bold self-start sm:self-center cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+                Quitar Filtro Cliente
+              </button>
+            )}
+          </div>
+
+          <div className="relative">
+            <select
+              id="filtro-principal-cliente-lotes"
+              value={filterClientes.length === 1 ? filterClientes[0] : (filterClientes.length > 1 ? '__multiple__' : '')}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (!val) {
+                  setFilterClientes([]);
+                } else {
+                  setFilterClientes([val]);
+                }
+              }}
+              className="w-full bg-white border-2 border-[#00603C]/40 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#00603C] focus:border-[#00603C] shadow-xs cursor-pointer"
+            >
+              <option value="">-- Todos los Clientes (Lotes Globales) --</option>
+              {filterClientes.length > 1 && (
+                <option value="__multiple__" disabled>
+                  -- Múltiples Clientes ({filterClientes.join(', ')}) --
+                </option>
+              )}
+              {clientesDisponibles.map((c) => {
+                const count = lotes.filter(l => {
+                  const normL = normalizeCliente(l.cliente);
+                  const normC = normalizeCliente(c);
+                  return normL === normC || (l.cliente || '').trim().toLowerCase() === c.trim().toLowerCase();
+                }).length;
+                return (
+                  <option key={c} value={c}>
+                    {c} ({count} {count === 1 ? 'lote' : 'lotes'})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          <div className="text-[11px] text-[#00603C] font-medium flex flex-wrap items-center justify-between gap-1">
+            {filterClientes.length > 0 ? (
+              <span>Filtrando lotes exclusivamente para <strong>{filterClientes.join(', ')}</strong></span>
+            ) : (
+              <span className="text-gray-500">Visualizando partidas de todos los clientes sin restricción</span>
+            )}
+            {filterClientes.length > 0 && (
+              <span className="text-xs font-mono font-bold text-[#00603C] bg-white/80 px-2 py-0.5 rounded-md border border-[#00603C]/20">
+                {lotesContextoCliente.length} {lotesContextoCliente.length === 1 ? 'lote activo' : 'lotes activos'}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Grid de Controles de Filtrado Secundario en Cascada */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
           
           {/* Buscador de Texto */}
           <div className="relative sm:col-span-2 md:col-span-1 lg:col-span-1 xl:col-span-1">
@@ -2044,22 +2415,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
               placeholder="Buscar por lote, cliente..."
             />
           </div>
-
-          {/* Filtro Cliente (Multi) */}
-          <MultiSelectDropdown
-            id="select-filtro-cliente"
-            label="Cliente"
-            options={clientesDisponibles}
-            selectedValues={filterClientes}
-            onChange={setFilterClientes}
-            getOptionCount={(cl) => {
-              const normCl = normalizeCliente(cl);
-              return lotes.filter(l => {
-                const normL = normalizeCliente(l.cliente);
-                return normL === normCl || (l.cliente || '').trim().toLowerCase() === cl.trim().toLowerCase();
-              }).length;
-            }}
-          />
 
           {/* Filtro Especie (Multi - en cascada) */}
           <MultiSelectDropdown
@@ -2349,6 +2704,23 @@ export const LotesView: React.FC<LotesViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Botón Descargar Fichas Técnicas de Lotes Seleccionados */}
+              <button
+                type="button"
+                id="btn-descargar-fichas-seleccionados"
+                onClick={() => {
+                  const selected = lotes.filter((l) => selectedLoteIds.includes(l.id));
+                  if (selected.length > 0) {
+                    setBatchFichasLotes(selected);
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-black text-xs rounded-xl shadow-md hover:shadow-lg transition cursor-pointer tracking-wider uppercase font-sans active:scale-95 border border-emerald-500"
+                title={`Abrir Vista Previa y Descargar Fichas Técnicas de los ${selectedLoteIds.length} lotes seleccionados`}
+              >
+                <FileText className="w-4 h-4 text-amber-300 stroke-[2.5]" />
+                <span>Descargar Fichas ({selectedLoteIds.length})</span>
+              </button>
+
               {/* Botón Vista Previa / Descargar ID Bolsas de Lotes Seleccionados */}
               <button
                 type="button"
@@ -2420,12 +2792,16 @@ export const LotesView: React.FC<LotesViewProps> = ({
                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Mostrar Columnas</span>
                         <button 
                           onClick={() => setVisibleColumns({
-                            loteId: true,
+                            fechaAlta: true,
                             cliente: true,
+                            especie: true,
                             variedad: true,
+                            loteId: true,
                             tipo: true,
-                            tratamiento: true,
+                            categoria: true,
+                            envase: true,
                             bolsas: true,
+                            stockKg: true,
                             estado: true,
                           })}
                           className="text-[9px] font-black text-[#00603C] hover:underline cursor-pointer"
@@ -2435,12 +2811,16 @@ export const LotesView: React.FC<LotesViewProps> = ({
                       </div>
                       <div className="space-y-1.5 max-h-60 overflow-y-auto">
                         {[
-                          { key: 'loteId', label: 'N° de lote' },
+                          { key: 'fechaAlta', label: 'Fecha de alta' },
                           { key: 'cliente', label: 'Cliente' },
+                          { key: 'especie', label: 'Especie' },
                           { key: 'variedad', label: 'Variedad' },
+                          { key: 'loteId', label: 'Lote' },
                           { key: 'tipo', label: 'Tipo de lote' },
-                          { key: 'tratamiento', label: 'Tratamiento' },
+                          { key: 'categoria', label: 'Categoría' },
+                          { key: 'envase', label: 'Envase' },
                           { key: 'bolsas', label: 'Cantidad de bolsas' },
+                          { key: 'stockKg', label: 'Cantidad de kg' },
                           { key: 'estado', label: 'Estado' },
                         ].map(({ key, label }) => (
                           <label 
@@ -2769,9 +3149,10 @@ export const LotesView: React.FC<LotesViewProps> = ({
                           
                           <div className="flex items-center gap-1.5">
                             <button
-                              onClick={() => onEditLote(l)}
+                              type="button"
+                              onClick={() => handleOpenQuickEditModal(l)}
                               className="p-1.5 text-gray-500 hover:text-[#00603C] rounded hover:bg-gray-100 transition"
-                              title="Editar"
+                              title="Editar Lote en la misma vista (Nombre, Bolsas, Estado, Tipo)"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
@@ -2974,9 +3355,10 @@ export const LotesView: React.FC<LotesViewProps> = ({
                   )}
 
                   <button
-                    onClick={() => onEditLote(l)}
+                    type="button"
+                    onClick={() => handleOpenQuickEditModal(l)}
                     className="p-2 text-gray-500 hover:text-[#00603C] rounded-lg hover:bg-[#E3EFE7] transition text-xs flex items-center gap-1"
-                    title="Editar Lote"
+                    title="Editar Lote en la misma vista (Nombre, Bolsas, Estado, Tipo)"
                   >
                     <Edit2 className="w-4 h-4" />
                     <span className="hidden sm:inline">Editar</span>
@@ -3032,7 +3414,48 @@ export const LotesView: React.FC<LotesViewProps> = ({
       ) : (
         
         /* VISTA TABLA (ESTILO DE TABLA INSTITUCIONAL) */
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden space-y-0">
+        <div className={`bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden space-y-0 transition-all ${
+          isTableExpanded ? 'w-full ring-1 ring-slate-200' : ''
+        }`}>
+          {/* Header Superior: Título de la tabla y botón para Expandir / Reducir Vista de Tabla */}
+          <div className="bg-[#004D30] text-white px-4 py-2.5 flex items-center justify-between border-b border-emerald-800 flex-wrap gap-2">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs font-black uppercase tracking-wider text-amber-300">
+                Vista de Tabla de Lotes
+              </span>
+              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 font-mono font-bold border border-emerald-700">
+                {filteredLotes.length} lotes encontrados
+              </span>
+              {isTableExpanded && (
+                <span className="text-[10px] px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black uppercase tracking-wide">
+                  Modo Expandido
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                id="btn-toggle-expand-tabla-lotes"
+                onClick={() => setIsTableExpanded(prev => !prev)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-900/90 hover:bg-emerald-800 text-amber-300 hover:text-amber-200 rounded-lg text-xs font-black border border-emerald-700 shadow-xs transition cursor-pointer"
+                title={isTableExpanded ? 'Cambiar a vista compacta' : 'Expandir vista de tabla para mayor amplitud y comodidad'}
+              >
+                {isTableExpanded ? (
+                  <>
+                    <Minimize2 className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Vista Compacta</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Expandir Vista de Tabla</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
           {/* Barras de Filtros Rápidos (Específicos y Visibles para Vista Tabla) */}
           <div className="p-3 sm:p-4 bg-gradient-to-r from-slate-900 via-slate-800 to-[#004D30] text-white border-b border-gray-200/80 space-y-3 shadow-inner">
             {/* 1. Filtro Rápido Tipo */}
@@ -3194,11 +3617,29 @@ export const LotesView: React.FC<LotesViewProps> = ({
             </div>
           </div>
 
+          {/* Notificación de Guardado de Edición de Lote */}
+          {inlineSaveSuccess && (
+            <div className="p-3 bg-emerald-50 border-b border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between shadow-2xs">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{inlineSaveSuccess}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInlineSaveSuccess(null)}
+                className="text-emerald-700 hover:text-emerald-950 p-1 rounded transition cursor-pointer"
+                title="Cerrar notificación"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-[#00603C] text-white font-sans text-xs uppercase tracking-wider">
-                  <th className="py-3.5 px-4 font-semibold text-center w-10">
+                  <th className="py-2.5 px-3 font-semibold text-center w-10">
                     <input
                       type="checkbox"
                       checked={filteredLotes.length > 0 && filteredLotes.every(l => selectedLoteIds.includes(l.id))}
@@ -3211,240 +3652,391 @@ export const LotesView: React.FC<LotesViewProps> = ({
                           setSelectedLoteIds(prev => prev.filter(id => !currentIds.includes(id)));
                         }
                       }}
-                      title="Seleccionar todos para eliminar"
-                      aria-label="Seleccionar todos para eliminar"
-                      className="rounded border-gray-300 text-white focus:ring-offset-0 focus:ring-0 h-4 w-4 cursor-pointer"
+                      title="Seleccionar todos los lotes"
+                      aria-label="Seleccionar todos los lotes"
+                      className="rounded border-gray-300 text-[#00603C] focus:ring-offset-0 focus:ring-0 h-4 w-4 cursor-pointer"
                     />
                   </th>
-                  {visibleColumns.loteId && <th className="py-3.5 px-3.5 font-extrabold uppercase text-xs tracking-wider text-amber-300 whitespace-nowrap">N° de lote</th>}
-                  {visibleColumns.cliente && <th className="py-3.5 px-3.5 font-bold uppercase text-xs tracking-wider text-white whitespace-nowrap">Cliente</th>}
-                  {visibleColumns.variedad && <th className="py-3.5 px-3.5 font-bold uppercase text-xs tracking-wider text-white whitespace-nowrap">Variedad</th>}
+
+                  {/* 1. Fecha de alta */}
+                  {visibleColumns.fechaAlta && (
+                    <th
+                      onClick={() => handleToggleSort('fechaAlta')}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'fechaAlta' ? 'text-amber-300' : 'text-white'}`}
+                      title={`Ordenar por Fecha de Alta (${sortField === 'fechaAlta' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1">
+                        <span>Fecha de alta</span>
+                        {sortField === 'fechaAlta' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* 2. Cliente */}
+                  {visibleColumns.cliente && (
+                    <th
+                      onClick={() => handleToggleSort('cliente')}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'cliente' ? 'text-amber-300' : 'text-white'}`}
+                      title={`Ordenar por Cliente (${sortField === 'cliente' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1">
+                        <span>Cliente</span>
+                        {sortField === 'cliente' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* 3. Especie */}
+                  {visibleColumns.especie && (
+                    <th
+                      onClick={() => handleToggleSort('especie')}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'especie' ? 'text-amber-300' : 'text-white'}`}
+                      title={`Ordenar por Especie (${sortField === 'especie' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1">
+                        <span>Especie</span>
+                        {sortField === 'especie' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* 4. Variedad */}
+                  {visibleColumns.variedad && (
+                    <th
+                      onClick={() => handleToggleSort('variedad')}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'variedad' ? 'text-amber-300' : 'text-white'}`}
+                      title={`Ordenar por Variedad (${sortField === 'variedad' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1">
+                        <span>Variedad</span>
+                        {sortField === 'variedad' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* 5. Lote (Grande, claro y fácil de visualizar) */}
+                  {visibleColumns.loteId && (
+                    <th
+                      onClick={() => handleToggleSort('loteId')}
+                      className={`py-2 px-2.5 font-black uppercase text-xs tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'loteId' ? 'text-amber-300' : 'text-amber-400'}`}
+                      title={`Ordenar por Lote (${sortField === 'loteId' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1">
+                        <span>Lote</span>
+                        {sortField === 'loteId' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-amber-300/50 hover:text-amber-300" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* 6. Tipo de lote */}
                   {visibleColumns.tipo && (
-                    <th className="py-3.5 px-3.5 font-extrabold uppercase text-xs tracking-wider text-amber-300 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <Tag className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
-                        <span>Tipo</span>
-                        {filterTipos.length > 0 && (
-                          <span className="px-1.5 py-0.2 bg-amber-400 text-slate-950 text-[9px] font-black rounded font-mono">
-                            {filterTipos.length}
-                          </span>
+                    <th
+                      onClick={() => handleToggleSort('tipo')}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'tipo' ? 'text-amber-300' : 'text-white'}`}
+                      title={`Ordenar por Tipo (${sortField === 'tipo' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1">
+                        <span>Tipo de lote</span>
+                        {sortField === 'tipo' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
                         )}
                       </div>
                     </th>
                   )}
-                  {visibleColumns.tratamiento && (
-                    <th className="py-3.5 px-3.5 font-extrabold uppercase text-xs tracking-wider text-cyan-300 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <FlaskConical className="w-3.5 h-3.5 text-cyan-300 stroke-[2.5]" />
-                        <span>Tratamiento</span>
-                        {filterTratamientos.length > 0 && (
-                          <span className="px-1.5 py-0.2 bg-cyan-400 text-slate-950 text-[9px] font-black rounded font-mono">
-                            {filterTratamientos.length}
-                          </span>
+
+                  {/* 7. Categoría */}
+                  {visibleColumns.categoria && (
+                    <th
+                      onClick={() => handleToggleSort('categoria')}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'categoria' ? 'text-amber-300' : 'text-white'}`}
+                      title={`Ordenar por Categoría (${sortField === 'categoria' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1">
+                        <span>Categoría</span>
+                        {sortField === 'categoria' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
                         )}
                       </div>
                     </th>
                   )}
-                  {visibleColumns.bolsas && <th className="py-3.5 px-3.5 font-bold uppercase text-xs tracking-wider text-white text-right whitespace-nowrap">Cantidad de bolsas</th>}
-                  {visibleColumns.estado && <th className="py-3.5 px-3.5 font-bold uppercase text-xs tracking-wider text-white text-center whitespace-nowrap">Estado</th>}
-                  <th className="py-3.5 px-3.5 font-bold uppercase text-xs tracking-wider text-white text-center whitespace-nowrap">Acción</th>
+
+                  {/* 8. Envase */}
+                  {visibleColumns.envase && (
+                    <th
+                      onClick={() => handleToggleSort('envase')}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'envase' ? 'text-amber-300' : 'text-white'}`}
+                      title={`Ordenar por Envase (${sortField === 'envase' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1">
+                        <span>Envase</span>
+                        {sortField === 'envase' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* 9. Cantidad de bolsas en stock */}
+                  {visibleColumns.bolsas && (
+                    <th
+                      onClick={() => handleToggleSort('bolsas')}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-right select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'bolsas' ? 'text-amber-300' : 'text-white'}`}
+                      title={`Ordenar por Bolsas en Stock (${sortField === 'bolsas' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1 justify-end">
+                        <span>Cantidad bolsas</span>
+                        {sortField === 'bolsas' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* 10. Cantidad de kg en stock */}
+                  {visibleColumns.stockKg && (
+                    <th
+                      onClick={() => handleToggleSort('stockKg')}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-right select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'stockKg' ? 'text-amber-300' : 'text-white'}`}
+                      title={`Ordenar por Kg en Stock (${sortField === 'stockKg' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1 justify-end">
+                        <span>Cantidad kg</span>
+                        {sortField === 'stockKg' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* 11. Estado */}
+                  {visibleColumns.estado && (
+                    <th
+                      onClick={() => handleToggleSort('estado')}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-center select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'estado' ? 'text-amber-300' : 'text-white'}`}
+                      title={`Ordenar por Estado (${sortField === 'estado' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1 justify-center">
+                        <span>Estado</span>
+                        {sortField === 'estado' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* 12. Acción */}
+                  <th className="py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-white text-center whitespace-nowrap">
+                    Acción
+                  </th>
                 </tr>
               </thead>
+
               <tbody className="divide-y divide-gray-100 text-xs">
                 {paginatedLotes.map((l, index) => (
                   <tr
                     key={l.id}
-                    className={index % 2 === 0 ? 'bg-white hover:bg-slate-50/80 transition-colors' : 'bg-[#E3EFE7]/30 hover:bg-[#E3EFE7]/60 transition-colors'}
+                    className={
+                      index % 2 === 0
+                        ? 'bg-white hover:bg-slate-50/80 transition-colors'
+                        : 'bg-[#E3EFE7]/30 hover:bg-[#E3EFE7]/60 transition-colors'
+                    }
                   >
-                    <td className="py-3 px-3 text-center">
+                    {/* Checkbox de Selección */}
+                    <td className="py-2 px-3 text-center">
                       <input
                         type="checkbox"
                         checked={selectedLoteIds.includes(l.id)}
                         onChange={() => toggleSelectLote(l.id)}
-                        title="Seleccionar lote para eliminar"
-                        aria-label="Seleccionar lote para eliminar"
+                        title="Seleccionar lote"
+                        aria-label="Seleccionar lote"
                         className="rounded border-gray-300 text-[#00603C] focus:ring-[#00603C] h-4 w-4 cursor-pointer"
                       />
                     </td>
-                    {/* 1. N° de lote con botón individual Imprimir ID Bolsas */}
-                    {visibleColumns.loteId && (
-                      <td className="py-3 px-3.5">
-                        <div className="flex flex-col gap-1.5 items-start">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {/* Badge de Número de Lote Rectangular Gris Oscuro */}
-                            <div className="inline-flex items-center justify-between gap-2.5 px-3 py-1.5 bg-slate-800 text-white rounded-lg border border-slate-700 ring-1 ring-amber-400/30 shadow-2xs min-w-[120px]">
-                              <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest font-sans shrink-0">LOTE</span>
-                              <span className="text-sm sm:text-base font-black font-mono text-amber-300 tracking-wider">
-                                {l.loteNro || 'S/N'}
-                              </span>
-                            </div>
 
-                            {/* Botón Individual FICHA (Ficha Técnica Oficial A4 del Lote) */}
-                            <button
-                              type="button"
-                              id={`btn-ficha-table-${l.id}`}
-                              onClick={() => setSelectedFichaLote(l)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[#00603C] hover:bg-[#004D30] text-white font-black text-[10.5px] rounded-lg shadow-xs hover:shadow transition cursor-pointer tracking-wider uppercase font-sans active:scale-95 border border-emerald-600"
-                              title={`Abrir e imprimir Ficha Técnica Oficial del Lote ${l.loteNro || l.id} (A4)`}
-                            >
-                              <FileText className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
-                              <span>FICHA</span>
-                            </button>
-
-                            {/* Botón Individual ID BOLSAS (Generador de Etiquetas · 7 por hoja A4) */}
-                            <button
-                              type="button"
-                              id={`btn-id-bolsas-table-${l.id}`}
-                              onClick={() => setSelectedIdBolsasLote(l)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[10.5px] rounded-lg shadow-xs hover:shadow transition cursor-pointer tracking-wider uppercase font-sans active:scale-95 border border-amber-500"
-                              title={`Generar e imprimir etiquetas ID Bolsas del Lote ${l.loteNro || l.id} (7 por hoja A4)`}
-                            >
-                              <Tag className="w-3.5 h-3.5 text-slate-950 stroke-[2.5]" />
-                              <span>ID BOLSAS</span>
-                            </button>
-                          </div>
-
-                          {/* Badge de Estado de Registro, ID y TIPO */}
-                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                            {l.estadoRegistro === 'PRE-CARGA' ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[9px] rounded-md shadow-2xs" title="Pre-Carga: Lote planificado. NO descuenta stock de silos.">
-                                <Clock className="w-3 h-3 text-amber-600" />
-                                PRE-CARGA
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 font-extrabold text-[9px] rounded-md shadow-2xs" title="Realizado: Producción ejecutada.">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                REALIZADO
-                              </span>
-                            )}
-                            <span className="font-mono text-[9px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                              ID: {l.id}
-                            </span>
-                            <span
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border shadow-2xs ${getTipoBadgeStyle(l.tipo)}`}
-                              title={`Tipo de lote: ${l.tipo || 'Sin tipo'}`}
-                            >
-                              <Tag className="w-2.5 h-2.5 shrink-0" />
-                              <span>TIPO: {l.tipo || 'Sin tipo'}</span>
-                            </span>
-                          </div>
-                        </div>
+                    {/* 1. Fecha de alta */}
+                    {visibleColumns.fechaAlta && (
+                      <td className="py-2 px-2.5 font-mono text-xs text-slate-700 whitespace-nowrap">
+                        {formatDateStr(l.fechaIngreso || l.fechaAlta || (l.fechaHoraProduccion ? l.fechaHoraProduccion.split('T')[0] : ''))}
                       </td>
                     )}
 
                     {/* 2. Cliente */}
                     {visibleColumns.cliente && (
-                      <td className="py-3 px-3.5 font-bold text-slate-800 text-xs sm:text-sm whitespace-nowrap">
+                      <td className="py-2 px-2.5 font-semibold text-slate-900 text-xs whitespace-nowrap max-w-[160px] truncate" title={l.cliente || '—'}>
                         {l.cliente || '—'}
                       </td>
                     )}
 
-                    {/* 3. Variedad */}
-                    {visibleColumns.variedad && (
-                      <td className="py-3 px-3.5">
-                        <div className="font-extrabold text-slate-900 text-xs sm:text-sm whitespace-nowrap">
-                          {l.variedad || '—'}
-                        </div>
-                        {l.especie && (
-                          <div className="text-[11px] font-semibold text-slate-500">
-                            {l.especie}
-                          </div>
-                        )}
+                    {/* 3. Especie */}
+                    {visibleColumns.especie && (
+                      <td className="py-2 px-2.5 text-xs text-slate-700 font-medium whitespace-nowrap">
+                        {l.especie || '—'}
                       </td>
                     )}
 
-                    {/* 4. Tipo de Lote (Dato Visible de la información del lote) */}
-                    {visibleColumns.tipo && (
-                      <td className="py-3 px-3.5 whitespace-nowrap">
-                        <div className="flex flex-col gap-1 items-start">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border shadow-2xs ${getTipoBadgeStyle(l.tipo)}`}
-                          >
-                            <Tag className="w-3.5 h-3.5 shrink-0" />
-                            <span>{l.tipo || 'Final'}</span>
-                          </span>
-                          {!filterTipos.includes(l.tipo) && l.tipo && (
+                    {/* 4. Variedad */}
+                    {visibleColumns.variedad && (
+                      <td className="py-2 px-2.5 text-xs font-bold text-slate-900 whitespace-nowrap">
+                        {l.variedad || '—'}
+                      </td>
+                    )}
+
+                    {/* 5. Lote (Grande, claro y fácil de visualizar - con edición directa en tabla) */}
+                    {visibleColumns.loteId && (
+                      <td className="py-2 px-2.5 whitespace-nowrap">
+                        {inlineEditingNameId === l.id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={inlineEditingNameVal}
+                              onChange={(e) => setInlineEditingNameVal(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSaveLoteNameDirect(l);
+                                } else if (e.key === 'Escape') {
+                                  setInlineEditingNameId(null);
+                                }
+                              }}
+                              autoFocus
+                              className="px-2 py-1 text-xs font-black font-mono bg-amber-50 border-2 border-amber-500 rounded focus:outline-none focus:ring-2 focus:ring-emerald-600 text-slate-900 w-36 shadow-xs"
+                              placeholder="Nombre lote..."
+                            />
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setFilterTipos([l.tipo]);
-                              }}
-                              className="text-[9.5px] font-bold text-slate-400 hover:text-[#00603C] hover:underline cursor-pointer flex items-center gap-0.5 transition"
-                              title={`Filtrar exclusivamente lotes tipo "${l.tipo}"`}
+                              disabled={isSavingInlineName}
+                              onClick={() => handleSaveLoteNameDirect(l)}
+                              className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow-xs cursor-pointer"
+                              title="Guardar nombre (Enter)"
                             >
-                              <Filter className="w-2.5 h-2.5" />
-                              <span>Filtrar sólo {l.tipo}</span>
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    )}
-
-                    {/* Tratamiento */}
-                    {visibleColumns.tratamiento && (
-                      <td className="py-3 px-3.5 whitespace-nowrap">
-                        <div className="flex flex-col gap-1 items-start">
-                          {(() => {
-                            const trats = Array.isArray(l.tratamiento) ? l.tratamiento : [l.tratamiento];
-                            const isTratado = trats.some(t => String(t).toLowerCase() === 'tratado' || (t && t !== 'Sin Tratar' && t !== 'Sin Tratamiento')) ||
-                                              (l.tipoMovimiento || '').toLowerCase().includes('tratado') ||
-                                              Boolean(l.productoAplicado && l.productoAplicado.trim() !== '') ||
-                                              Boolean(l.producto && !['Ninguno', 'Sin Tratamiento', 'FINAL', 'INTERMEDIO', ''].includes(l.producto));
-                            return (
-                              <span
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border shadow-2xs ${
-                                  isTratado
-                                    ? 'bg-cyan-100 text-cyan-950 border-cyan-400/80 ring-1 ring-cyan-400/30'
-                                    : 'bg-slate-100 text-slate-800 border-slate-300'
-                                }`}
-                              >
-                                <FlaskConical className={`w-3.5 h-3.5 shrink-0 ${isTratado ? 'text-cyan-700' : 'text-slate-500'}`} />
-                                <span>{isTratado ? 'Tratado' : 'Sin Tratar'}</span>
-                              </span>
-                            );
-                          })()}
-                          {l.productoAplicado && (
-                            <span className="text-[10px] font-semibold text-slate-500 truncate max-w-[140px]" title={l.productoAplicado}>
-                              {l.productoAplicado}
+                            <button
+                              type="button"
+                              disabled={isSavingInlineName}
+                              onClick={() => setInlineEditingNameId(null)}
+                              className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded shadow-xs cursor-pointer"
+                              title="Cancelar (Esc)"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 group/lotename">
+                            <span className="text-sm sm:text-base font-black font-mono text-slate-950 px-2.5 py-0.5 bg-amber-200/90 rounded border border-amber-400 shadow-2xs tracking-wider inline-block">
+                              {l.loteNro || l.id}
                             </span>
-                          )}
-                        </div>
-                      </td>
-                    )}
-
-                    {/* 5. Cantidad de bolsas */}
-                    {visibleColumns.bolsas && (
-                      <td className="py-3 px-3.5 text-right">
-                        <div className="font-black text-slate-900 font-mono text-xs sm:text-sm whitespace-nowrap">
-                          {formatNumberArg(l.stockBolsas, 0)} u.
-                        </div>
-                        {l.stockKg > 0 && (
-                          <div className="text-[10px] font-mono text-[#00603C] font-semibold">
-                            {formatNumberArg(l.stockKg, 0)} kg
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditLoteName(l)}
+                              className="p-1 text-slate-400 hover:text-amber-800 hover:bg-amber-100 rounded transition opacity-60 group-hover/lotename:opacity-100 cursor-pointer"
+                              title="Editar nombre de lote desde la tabla"
+                            >
+                              <Edit2 className="w-3.5 h-3.5 text-amber-700" />
+                            </button>
+                            {l.estadoRegistro === 'PRE-CARGA' && (
+                              <span className="px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[9px] rounded font-mono" title="Pre-Carga: Planificado">
+                                PRE
+                              </span>
+                            )}
                           </div>
                         )}
                       </td>
                     )}
 
-                    {/* 6. Estado */}
+                    {/* 6. Tipo de lote */}
+                    {visibleColumns.tipo && (
+                      <td className="py-2 px-2.5 whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-black uppercase tracking-wider border shadow-2xs ${getTipoBadgeStyle(l.tipo)}`}>
+                          <Tag className="w-3 h-3 shrink-0" />
+                          <span>{l.tipo || 'Final'}</span>
+                        </span>
+                      </td>
+                    )}
+
+                    {/* 7. Categoría */}
+                    {visibleColumns.categoria && (
+                      <td className="py-2 px-2.5 text-xs font-semibold text-slate-800 whitespace-nowrap">
+                        {l.categoria || 'Original'}
+                      </td>
+                    )}
+
+                    {/* 8. Envase */}
+                    {visibleColumns.envase && (
+                      <td className="py-2 px-2.5 text-xs text-slate-700 font-medium whitespace-nowrap">
+                        {l.envase || (l.kgPorBolsa ? `Bolsa ${l.kgPorBolsa} kg` : 'Bolsa 40 kg')}
+                      </td>
+                    )}
+
+                    {/* 9. Cantidad de bolsas en stock */}
+                    {visibleColumns.bolsas && (
+                      <td className="py-2 px-2.5 text-right whitespace-nowrap">
+                        <div className="font-mono font-black text-slate-900 text-xs sm:text-sm">
+                          {formatNumberArg(l.stockBolsas, 0)} b.
+                        </div>
+                      </td>
+                    )}
+
+                    {/* 10. Cantidad de kg en stock */}
+                    {visibleColumns.stockKg && (
+                      <td className="py-2 px-2.5 text-right whitespace-nowrap">
+                        <div className="font-mono font-bold text-emerald-800 text-xs sm:text-sm">
+                          {formatNumberArg(l.stockKg, 0)} kg
+                        </div>
+                      </td>
+                    )}
+
+                    {/* 11. Estado */}
                     {visibleColumns.estado && (
-                      <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                        <span className={`inline-block px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider rounded-full border ${getEstadoBadgeStyle(l.estado)}`}>
+                      <td className="py-2 px-2.5 text-center whitespace-nowrap">
+                        <span className={`inline-block px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider rounded-full border ${getEstadoBadgeStyle(l.estado)}`}>
                           {l.estado}
                         </span>
                       </td>
                     )}
 
-                    {/* 7. Acción */}
-                    <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-1 sm:gap-1.5">
+                    {/* 12. Acción */}
+                    <td className="py-2 px-2.5 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {/* Botón Pasar a Realizado (intacto para PRE-CARGA) */}
                         {l.estadoRegistro === 'PRE-CARGA' && (
                           (l.esMovimiento || l.tipoMovimiento || l.loteOrigen || (l.loteNro && l.loteNro.toUpperCase().includes('MOV'))) ? (
                             <button
                               type="button"
                               onClick={() => setLoteToMovRealizado(l)}
-                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-black flex items-center gap-1 shadow-xs transition cursor-pointer border border-blue-500 uppercase tracking-wider"
+                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-black flex items-center gap-1 shadow-xs transition cursor-pointer border border-blue-500 uppercase tracking-wider shrink-0"
                               title="MOV REALIZADO: Fijar manualmente el día en el que se realizó efectivamente el movimiento"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5 text-white stroke-[2.5]" />
@@ -3454,7 +4046,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setLoteToProcess(l)}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs transition cursor-pointer"
+                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs transition cursor-pointer shrink-0"
                               title="Pasar a Realizado (Ingresar silos, bolsones y sectores de origen)"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
@@ -3462,53 +4054,97 @@ export const LotesView: React.FC<LotesViewProps> = ({
                             </button>
                           )
                         )}
-                        {!l.tratamiento.includes('Tratado') && l.stockBolsas > 0 && (
+
+                        {/* Botón Editor de Lote (Modificar manualmente cantidad de bolsas de alta, tipo, categoría, nombre) */}
+                        <button
+                          type="button"
+                          id={`btn-editor-lote-${l.id}`}
+                          onClick={() => handleOpenQuickEditModal(l)}
+                          className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-black shadow-2xs transition cursor-pointer flex items-center gap-1 shrink-0"
+                          title="Editor de Lote: Modificar bolsas de alta, tipo, categoría y nombre"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-amber-700" />
+                          <span className="text-[10px] hidden sm:inline">Editor</span>
+                        </button>
+
+                        {/* Botón Desplegable Opciones: Detalle, Ficha, ID Bolsas */}
+                        <div className="relative inline-block text-left">
                           <button
-                            onClick={() => setLoteToTratar(l)}
-                            className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-[10px] font-extrabold flex items-center gap-1 shadow-xs transition cursor-pointer"
-                            title="Curar / Tratar Semilla (Generar Lote T)"
+                            type="button"
+                            id={`btn-opciones-lote-${l.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveActionDropdownId(prev => prev === l.id ? null : l.id);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 hover:border-slate-400 rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
+                            title="Opciones del lote"
                           >
-                            <FlaskConical className="w-3.5 h-3.5" />
-                            <span>Curar</span>
+                            <span>Opciones</span>
+                            <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${activeActionDropdownId === l.id ? 'rotate-180' : ''}`} />
                           </button>
-                        )}
-                        <button
-                          onClick={() => onSelectLote(l)}
-                          className="p-1.5 text-slate-600 hover:text-[#00603C] hover:bg-slate-100 rounded-lg transition"
-                          title="Ver Ficha Detalle"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => onEditLote(l)}
-                          className="p-1.5 text-slate-600 hover:text-[#C9922E] hover:bg-slate-100 rounded-lg transition"
-                          title="Editar Lote"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setSelectedQrLote(l)}
-                          className="p-1.5 text-slate-600 hover:text-[#00603C] hover:bg-slate-100 rounded-lg transition"
-                          title="Generar QR"
-                        >
-                          <QrCode className="w-4 h-4 text-[#C9922E]" />
-                        </button>
-                        {l.stockBolsas > 0 && (
-                          <button
-                            onClick={() => onRegistrarSalidaLote(l)}
-                            className="p-1.5 text-slate-600 hover:text-green-700 hover:bg-slate-100 rounded-lg transition"
-                            title="Registrar Salida / Despacho"
-                          >
-                            <ArrowDownRight className="w-4 h-4 text-emerald-600" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setLoteToDelete(l)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                          title="Eliminar Lote"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+
+                          {activeActionDropdownId === l.id && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveActionDropdownId(null);
+                                }}
+                              />
+                              <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in-50 zoom-in-95 text-left">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveActionDropdownId(null);
+                                    handleOpenQuickEditModal(l);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-amber-900 bg-amber-50/50 hover:bg-amber-100 transition text-left cursor-pointer border-b border-amber-100"
+                                >
+                                  <Edit2 className="w-4 h-4 text-amber-600" />
+                                  <span className="font-bold">Editor de Lote</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveActionDropdownId(null);
+                                    onSelectLote(l);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 transition text-left cursor-pointer"
+                                >
+                                  <Eye className="w-4 h-4 text-emerald-600" />
+                                  <span>Detalle</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveActionDropdownId(null);
+                                    setSelectedFichaLote(l);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 transition text-left cursor-pointer"
+                                >
+                                  <FileText className="w-4 h-4 text-[#00603C]" />
+                                  <span>Ficha</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveActionDropdownId(null);
+                                    setSelectedIdBolsasLote(l);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-900 transition text-left cursor-pointer"
+                                >
+                                  <Tag className="w-4 h-4 text-amber-600" />
+                                  <span>ID Bolsas</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -3820,13 +4456,21 @@ export const LotesView: React.FC<LotesViewProps> = ({
         />
       )}
 
+      {/* Modal Fichas Técnicas (A4) de Lotes Seleccionados */}
+      {batchFichasLotes && batchFichasLotes.length > 0 && (
+        <BatchPrintLotesModal
+          isOpen={Boolean(batchFichasLotes && batchFichasLotes.length > 0)}
+          lotes={batchFichasLotes}
+          onClose={() => setBatchFichasLotes(null)}
+        />
+      )}
+
       {/* Modal Tratar / Curar Semilla */}
       {loteToTratar && (
         <TratarLoteModal
           isOpen={Boolean(loteToTratar)}
           lote={loteToTratar}
           allLotes={lotes}
-          ordenesProceso={ordenesProceso}
           onClose={() => setLoteToTratar(null)}
           onConfirmTratamiento={(params) => {
             setLoteToTratar(null);
@@ -4007,6 +4651,186 @@ export const LotesView: React.FC<LotesViewProps> = ({
             setLotesToMovRealizadoBatch([]);
           }}
         />
+      )}
+
+      {/* Modal de Edición Rápida en la Misma Vista (para Cards / Vista General) */}
+      {quickEditModalLote && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-[#00603C] text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-400 text-slate-950 rounded-lg shadow-xs">
+                  <Edit2 className="w-5 h-5 text-slate-950 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black font-sans tracking-wide">Editor de Lote</h3>
+                  <p className="text-xs text-emerald-200">
+                    Editar manualmente cantidad de alta de bolsas, tipo, categoría y nombre
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickEditModalLote(null);
+                  setInlineSaveError(null);
+                }}
+                className="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <div className="p-5 space-y-4">
+              {/* Información Fija de Referencia */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-wrap gap-4 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Cliente</span>
+                  <span className="font-extrabold text-slate-800">{quickEditModalLote.cliente || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Variedad / Especie</span>
+                  <span className="font-extrabold text-slate-800">{quickEditModalLote.variedad || '—'} {quickEditModalLote.especie ? `(${quickEditModalLote.especie})` : ''}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Peso por Bolsa</span>
+                  <span className="font-extrabold text-slate-800 font-mono">{quickEditModalLote.kgPorBolsa || 40} kg/b</span>
+                </div>
+              </div>
+
+              {/* 1. Nombre de Lote */}
+              <div>
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700 block mb-1">
+                  Nombre de Lote:
+                </label>
+                <input
+                  type="text"
+                  id="quick-edit-nombre-lote"
+                  value={inlineEditData.loteNro}
+                  onChange={(e) => setInlineEditData(prev => ({ ...prev, loteNro: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm font-bold font-mono text-slate-900 bg-white border-2 border-slate-300 focus:border-amber-400 focus:ring-2 focus:ring-emerald-600 rounded-xl outline-none shadow-xs"
+                  placeholder="Ej: LOTE-2026-001"
+                />
+              </div>
+
+              {/* 2. Cantidad de Bolsas dadas de alta */}
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Cantidad de Bolsas dadas de alta:
+                  </label>
+                  <span className="text-xs font-mono font-bold text-emerald-800">
+                    = {formatNumberArg(inlineEditData.stockBolsas * (quickEditModalLote.kgPorBolsa || 40), 0)} kg
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    id="quick-edit-bolsas-lote"
+                    min="0"
+                    step="1"
+                    value={inlineEditData.stockBolsas}
+                    onChange={(e) => setInlineEditData(prev => ({ ...prev, stockBolsas: Math.max(0, parseInt(e.target.value) || 0) }))}
+                    className="w-full px-3 py-2 text-sm font-bold font-mono text-slate-900 bg-white border-2 border-slate-300 focus:border-amber-400 focus:ring-2 focus:ring-emerald-600 rounded-xl outline-none shadow-xs pr-16"
+                  />
+                  <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 pointer-events-none">
+                    bolsas
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 3. Tipo */}
+                <div>
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700 block mb-1">
+                    Tipo de Lote:
+                  </label>
+                  <select
+                    id="quick-edit-tipo-lote"
+                    value={inlineEditData.tipo}
+                    onChange={(e) => setInlineEditData(prev => ({ ...prev, tipo: e.target.value as TipoLoteType }))}
+                    className="w-full px-3 py-2 text-xs font-black text-slate-800 bg-white border-2 border-slate-300 focus:border-amber-400 focus:ring-2 focus:ring-emerald-600 rounded-xl outline-none shadow-xs cursor-pointer"
+                  >
+                    {(plantaConfig?.tipos && plantaConfig.tipos.length > 0
+                      ? plantaConfig.tipos
+                      : ['Final', 'Intermedio', 'Procesado', 'Semilla', 'Descarte', 'Bajo Consumo', 'Mezcla', 'Rechazo']
+                    ).map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 4. Categoría */}
+                <div>
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700 block mb-1">
+                    Categoría:
+                  </label>
+                  <select
+                    id="quick-edit-categoria-lote"
+                    value={inlineEditData.categoria}
+                    onChange={(e) => setInlineEditData(prev => ({ ...prev, categoria: e.target.value }))}
+                    className="w-full px-3 py-2 text-xs font-black text-slate-800 bg-white border-2 border-slate-300 focus:border-amber-400 focus:ring-2 focus:ring-emerald-600 rounded-xl outline-none shadow-xs cursor-pointer"
+                  >
+                    {categoriasParaEditor.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* 5. Estado de Lote */}
+              <div>
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700 block mb-1">
+                  Estado de Lote:
+                </label>
+                <select
+                  id="quick-edit-estado-lote"
+                  value={inlineEditData.estado}
+                  onChange={(e) => setInlineEditData(prev => ({ ...prev, estado: e.target.value as EstadoLoteType }))}
+                  className="w-full px-3 py-2 text-xs font-black text-slate-800 bg-white border-2 border-slate-300 focus:border-amber-400 focus:ring-2 focus:ring-emerald-600 rounded-xl outline-none shadow-xs cursor-pointer"
+                >
+                  <option value="Disponible">Disponible</option>
+                  <option value="Reservado">Reservado</option>
+                  <option value="Agotado">Agotado</option>
+                  <option value="A Consumo">A Consumo</option>
+                </select>
+              </div>
+
+              {inlineSaveError && (
+                <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs font-bold text-rose-800 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{inlineSaveError}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-end items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickEditModalLote(null);
+                  setInlineSaveError(null);
+                }}
+                disabled={isSavingInline}
+                className="px-4 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveInlineEdit(quickEditModalLote)}
+                disabled={isSavingInline}
+                className="inline-flex items-center gap-1.5 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-black tracking-wider uppercase shadow-sm transition cursor-pointer border border-emerald-600 disabled:opacity-50"
+              >
+                <Check className="w-4 h-4 stroke-[3]" />
+                <span>{isSavingInline ? 'Guardando...' : 'Guardar Cambios'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

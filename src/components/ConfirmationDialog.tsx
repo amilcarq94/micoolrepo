@@ -63,7 +63,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   if (!isOpen) return null;
 
   const isConfirmationSatisfied = requireConfirmationText
-    ? typedConfirmation.trim() === requireConfirmationText.trim()
+    ? typedConfirmation.trim().toLowerCase() === requireConfirmationText.trim().toLowerCase()
     : true;
 
   const handleConfirm = async () => {

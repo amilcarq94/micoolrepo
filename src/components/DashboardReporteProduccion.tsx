@@ -793,19 +793,6 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
               <span>Curado</span>
             </button>
 
-            {/* Opción 3: Cumplimiento de Objetivos */}
-            <button
-              onClick={() => setActiveSubReporte('cumplimiento')}
-              className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
-                activeSubReporte === 'cumplimiento'
-                  ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-black shadow-lg scale-[1.02]'
-                  : 'text-emerald-100 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              <Target className="w-4 h-4" />
-              <span>Cumplimiento</span>
-            </button>
-
           </div>
 
         </div>
@@ -1056,183 +1043,11 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
       {/* CONTENIDO DEL SUB-REPORTE ACTIVO */}
       {/* ------------------------------------------------------------- */}
 
-      {activeSubReporte === 'cumplimiento' ? (
-        /* MÓDULO ESPECIALIZADO DE CUMPLIMIENTO DE OBJETIVOS */
-        <div className="space-y-6">
-          {/* TARJETAS KPI DE CUMPLIMIENTO */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                  Órdenes en Módulo
-                </span>
-                <div className="p-2 bg-emerald-50 text-[#00603C] rounded-xl">
-                  <Target className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-slate-900 font-mono">
-                  {ordenesProcesoFiltradas.length}
-                </span>
-                <span className="text-xs font-bold text-slate-500">órdenes</span>
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Filtradas según búsqueda y estado
-              </p>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                  Objetivo Pedido Total
-                </span>
-                <div className="p-2 bg-amber-50 text-amber-800 rounded-xl">
-                  <Package className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-slate-900 font-mono">
-                  {formatNumberArg(totalObjetivoBbGlobal, 0)}
-                </span>
-                <span className="text-xs font-bold text-slate-500">Bolsas / BB</span>
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Suma de metas en las órdenes
-              </p>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                  Bolsas Vinculadas / Real
-                </span>
-                <div className="p-2 bg-emerald-50 text-[#00603C] rounded-xl">
-                  <CheckCircle2 className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-[#00603C] font-mono">
-                  {formatNumberArg(totalHechosBbGlobal, 0)}
-                </span>
-                <span className="text-xs font-bold text-slate-500">Bolsas / BB</span>
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Producidas y vinculadas
-              </p>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                  Cumplimiento Global
-                </span>
-                <div className="p-2 bg-amber-50 text-amber-800 rounded-xl">
-                  <Zap className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-amber-600 font-mono">
-                  {pctGlobalCumplimiento}%
-                </span>
-                <span className="text-xs font-bold text-slate-500">alcanzado</span>
-              </div>
-              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-[#00603C] to-emerald-500 h-full transition-all duration-500"
-                  style={{ width: `${Math.min(100, pctGlobalCumplimiento)}%` }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* BARRA DE FILTROS ESPECÍFICA PARA CUMPLIMIENTO */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
-              <span className="text-xs font-extrabold uppercase text-slate-500 tracking-wider shrink-0 flex items-center gap-1.5">
-                <Filter className="w-4 h-4 text-[#00603C]" />
-                <span>Estado de Orden:</span>
-              </span>
-              {['TODAS', 'EN CURSO', 'TERMINADO', 'SIN INICIAR'].map((est) => (
-                <button
-                  key={est}
-                  type="button"
-                  onClick={() => setFiltroEstadoOrden(est)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
-                    filtroEstadoOrden === est
-                      ? 'bg-[#00603C] text-white shadow-sm'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  {est}
-                </button>
-              ))}
-            </div>
-
-            <div className="text-xs text-slate-500 font-medium">
-              Mostrando <strong className="text-slate-800">{ordenesProcesoFiltradas.length}</strong> órdenes
-            </div>
-          </div>
-
-          {/* LISTA DE TARJETAS CON CAMPOS EDITABLES DIRECTOS */}
-          {ordenesProcesoFiltradas.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4">
-              {ordenesProcesoFiltradas.map((ord) => (
-                <OrdenCumplimientoCard
-                  key={ord.id}
-                  orden={ord}
-                  onSaveOrden={onSaveOrden}
-                  onOpenModal={(selectedOrd) => setOrdenCumplimientoAEditar(selectedOrd)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-3">
-              <AlertCircle className="w-10 h-10 mx-auto text-slate-300" />
-              <h3 className="text-sm font-bold text-slate-700">No se encontraron Órdenes de Proceso</h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
-                No hay órdenes que coincidan con los criterios de búsqueda o filtro seleccionados.
-              </p>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* VISTA ORIGINAL DE CLASIFICACION O CURADO */
-        <div className="space-y-6">
-          {/* RESUMEN DE CUMPLIMIENTO DE OBJETIVOS (BANNER EN VISTAS DE CLASIFICACIÓN / CURADO) */}
-          {ordenesProceso.length > 0 && (
-            <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900 text-white p-5 rounded-2xl border border-emerald-800/60 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-emerald-500/20 text-emerald-300 rounded-2xl border border-emerald-500/30">
-                  <Target className="w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-extrabold text-white flex items-center gap-2">
-                    <span>Cumplimiento de Objetivos en Planta</span>
-                    <span className="px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 text-[10px] font-black uppercase">
-                      {pctGlobalCumplimiento}% Alcanzado
-                    </span>
-                  </h4>
-                  <p className="text-xs text-emerald-200/80 mt-0.5">
-                    Bolsas Vinculadas: <strong className="text-white font-mono">{totalHechosBbGlobal}</strong> / <span className="font-mono">{totalObjetivoBbGlobal}</span> BB Pedidos ({ordenesProceso.length} Órdenes Activas)
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setActiveSubReporte('cumplimiento')}
-                className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-xl transition-all shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
-              >
-                <Sliders className="w-4 h-4" />
-                <span>Gestionar Objetivos y Bolsas</span>
-              </button>
-            </div>
-          )}
-
-          {/* TARJETAS KPI RESUMEN DEL SUB-REPORTE ACTIVO */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            
-            {/* KPI 1: Kilos Totales */}
+      <div className="space-y-6">
+        {/* TARJETAS KPI RESUMEN DEL SUB-REPORTE ACTIVO */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          {/* KPI 1: Kilos Totales */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2 relative overflow-hidden">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
@@ -1520,22 +1335,6 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
 
       </div>
     </div>
-  )}
-
-  {/* MODAL DE EDICIÓN AMPLIADA SI SE ABRE DESDE LAS TARJETAS */}
-  {ordenCumplimientoAEditar && (
-    <EditarCumplimientoModal
-      isOpen={!!ordenCumplimientoAEditar}
-      orden={ordenCumplimientoAEditar}
-      onSave={(ordenActualizada) => {
-        if (onSaveOrden) {
-          onSaveOrden(ordenActualizada);
-        }
-        setOrdenCumplimientoAEditar(null);
-      }}
-      onClose={() => setOrdenCumplimientoAEditar(null)}
-    />
-  )}
 
 </div>
 );

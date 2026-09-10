@@ -24,8 +24,6 @@ interface FilaPrevia {
   cliente: string;
   especie: string;
   variedad: string;
-  ordenProcesoId: string;
-  numeroOrdenMovimiento: string;
   siloOrigen: string;
   numeroBolsonOrigen: string;
   sectorBolsonOrigen: string;
@@ -50,8 +48,6 @@ interface ColumnMapping {
   cliente: string;
   especie: string;
   variedad: string;
-  ordenProcesoId: string;
-  numeroOrdenMovimiento: string;
   siloOrigen: string;
   numeroBolsonOrigen: string;
   sectorBolsonOrigen: string;
@@ -87,8 +83,6 @@ export const ImportarStock: React.FC<ImportarStockProps> = ({
     cliente: '',
     especie: '',
     variedad: '',
-    ordenProcesoId: '',
-    numeroOrdenMovimiento: '',
     siloOrigen: '',
     numeroBolsonOrigen: '',
     sectorBolsonOrigen: '',
@@ -112,7 +106,6 @@ export const ImportarStock: React.FC<ImportarStockProps> = ({
         "Especie",
         "Variedad",
         "Número de lote",
-        "N° Orden de Proceso / Movimiento",
         "Silo de origen",
         "N° de Bolsón de origen",
         "Sector de Bolsón de origen",
@@ -133,7 +126,6 @@ export const ImportarStock: React.FC<ImportarStockProps> = ({
         "Soja",
         "DM 46R18 GTS",
         "LB-2026-0010",
-        "OP-104",
         "Silo 01",
         "Bolsón 04",
         "A",
@@ -152,7 +144,6 @@ export const ImportarStock: React.FC<ImportarStockProps> = ({
         "Trigo",
         "Baguette 620",
         "LB-2026-0011",
-        "OP-105",
         "Silo 02",
         "Bolsón 02",
         "B",
@@ -177,7 +168,6 @@ export const ImportarStock: React.FC<ImportarStockProps> = ({
       { wch: 12 }, // Especie
       { wch: 16 }, // Variedad
       { wch: 16 }, // N° Lote
-      { wch: 22 }, // Orden Proceso
       { wch: 14 }, // Silo
       { wch: 18 }, // Bolsón
       { wch: 12 }, // Sector
@@ -264,8 +254,6 @@ export const ImportarStock: React.FC<ImportarStockProps> = ({
           cliente: autoMatchColumn(rawHeaders, ["cliente", "productor", "comitente"]),
           especie: autoMatchColumn(rawHeaders, ["especie", "grano", "cultivo"]),
           variedad: autoMatchColumn(rawHeaders, ["variedad", "semilla"]),
-          ordenProcesoId: autoMatchColumn(rawHeaders, ["orden de proceso / movimiento", "orden de proceso", "orden proceso", "op", "n° orden"]),
-          numeroOrdenMovimiento: autoMatchColumn(rawHeaders, ["n° orden movimiento", "orden movimiento", "om"]),
           siloOrigen: autoMatchColumn(rawHeaders, ["silo de origen", "silo origen", "silo"]),
           numeroBolsonOrigen: autoMatchColumn(rawHeaders, ["n° de bolsón de origen", "bolsón de origen", "bolson de origen", "bolsón", "bolson"]),
           sectorBolsonOrigen: autoMatchColumn(rawHeaders, ["sector de bolsón de origen", "sector de bolsón", "sector bolsón", "sector bolson", "sector"]),
@@ -302,8 +290,6 @@ export const ImportarStock: React.FC<ImportarStockProps> = ({
     const idxCliente = excelHeaders.indexOf(columnMapping.cliente);
     const idxEspecie = excelHeaders.indexOf(columnMapping.especie);
     const idxVariedad = columnMapping.variedad ? excelHeaders.indexOf(columnMapping.variedad) : -1;
-    const idxOp = columnMapping.ordenProcesoId ? excelHeaders.indexOf(columnMapping.ordenProcesoId) : -1;
-    const idxOm = columnMapping.numeroOrdenMovimiento ? excelHeaders.indexOf(columnMapping.numeroOrdenMovimiento) : -1;
     const idxSilo = columnMapping.siloOrigen ? excelHeaders.indexOf(columnMapping.siloOrigen) : -1;
     const idxBolson = columnMapping.numeroBolsonOrigen ? excelHeaders.indexOf(columnMapping.numeroBolsonOrigen) : -1;
     const idxSectorBolson = columnMapping.sectorBolsonOrigen ? excelHeaders.indexOf(columnMapping.sectorBolsonOrigen) : -1;
@@ -336,8 +322,6 @@ export const ImportarStock: React.FC<ImportarStockProps> = ({
       const rawCliente = idxCliente !== -1 && row[idxCliente] ? String(row[idxCliente]).trim() : 'San Diego Semilla';
       const rawEspecie = idxEspecie !== -1 && row[idxEspecie] ? String(row[idxEspecie]).trim() : '';
       const rawVariedad = idxVariedad !== -1 && row[idxVariedad] ? String(row[idxVariedad]).trim() : 'Sin variedad';
-      const rawOp = idxOp !== -1 && row[idxOp] ? String(row[idxOp]).trim() : '';
-      const rawOm = idxOm !== -1 && row[idxOm] ? String(row[idxOm]).trim() : '';
       const rawSilo = idxSilo !== -1 && row[idxSilo] ? String(row[idxSilo]).trim() : '';
       const rawBolson = idxBolson !== -1 && row[idxBolson] ? String(row[idxBolson]).trim() : '';
       const rawSectorBolson = idxSectorBolson !== -1 && row[idxSectorBolson] ? String(row[idxSectorBolson]).trim() : '';
@@ -417,8 +401,6 @@ export const ImportarStock: React.FC<ImportarStockProps> = ({
         cliente: rawCliente,
         especie: rawEspecie,
         variedad: rawVariedad,
-        ordenProcesoId: rawOp,
-        numeroOrdenMovimiento: rawOm,
         siloOrigen: rawSilo,
         numeroBolsonOrigen: rawBolson,
         sectorBolsonOrigen: rawSectorBolson,
@@ -537,8 +519,6 @@ export const ImportarStock: React.FC<ImportarStockProps> = ({
           fechaIngreso: f.fechaIngreso,
           campaniaId: getCampaniaIdFromDate(f.fechaIngreso),
           estado: estadoInicial,
-          ordenProcesoId: f.ordenProcesoId || undefined,
-          numeroOrdenMovimiento: f.numeroOrdenMovimiento || undefined,
           siloOrigen: f.siloOrigen || undefined,
           numeroBolsonOrigen: f.numeroBolsonOrigen || undefined,
           bolsonOrigenNro: f.numeroBolsonOrigen || undefined,

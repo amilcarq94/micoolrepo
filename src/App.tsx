@@ -11,7 +11,8 @@ import { LoteDetail } from './components/LoteDetail';
 import { LoteForm } from './components/LoteForm';
 import { ImportarStock } from './components/ImportarStock';
 import { RegistrarSalida } from './components/RegistrarSalida';
-import { SalidasList } from './components/SalidasList';
+import { SalidasList, SalidaUnifiedRow } from './components/SalidasList';
+import { DashboardProduccion } from './components/DashboardProduccion';
 import { Lote, SalidaRegistrada, MovimientoStock, EstadoLoteType, AuditLogEntry, OrdenCarga, OrdenProceso, EstadoOrdenProceso, MovimientoSilo, TipoMovimientoSilo, SiloId, CAPACIDAD_MAX_SILO, Chofer, BolsonCampo, EstadoSiloManual, SilosEstadoMap, SILOS_ESTADO_DEFAULT, PlantaConfig, PLANTA_CONFIG_DEFAULT } from './types';
 import { getLoteAuditoria } from './utils/audit';
 import { LOTES_INICIALES, SALIDAS_INICIALES, CLIENTES_PRECARGADOS, ESPECIES_PRECARGADAS, ORDENES_CARGA_INICIALES, ORDENES_PROCESO_INICIALES, MOVIMIENTOS_SILO_INICIALES, CHOFERES_INICIALES, BOLSONES_INICIALES } from './data/mockData';
@@ -20,11 +21,10 @@ import { GenerarLoteView } from './components/GenerarLoteView';
 import { CalculoBolsasDashboard } from './components/CalculoBolsasDashboard';
 import { QrCodeScanner } from './components/QrCodeScanner';
 import { DespachosSection } from './components/DespachosSection';
-import { OrdenesProcesoView } from './components/OrdenesProcesoView';
-import { IngresoSilosView } from './components/IngresoSilosView';
 import { ChoferesView } from './components/ChoferesView';
 import { DataBasesView } from './components/DataBasesView';
 import { ModoPlantaMobileView } from './components/ModoPlantaMobileView';
+import { IngresoSilosView } from './components/IngresoSilosView';
 import { CampaniaSelector } from './components/CampaniaSelector';
 import { getActiveCampaniaIdStored, setActiveCampaniaIdStored, getCampaniaIdFromDate } from './utils/campanias';
 import { findExistingChofer, mergeChoferData } from './utils/choferes';
@@ -78,7 +78,53 @@ export default function App() {
   const [salidas, setSalidas] = useState<SalidaRegistrada[]>([]);
   const [ordenesCarga, setOrdenesCarga] = useState<OrdenCarga[]>([]);
   const [ordenesProceso, setOrdenesProceso] = useState<OrdenProceso[]>([]);
-  const [movimientosSilo, setMovimientosSilo] = useState<MovimientoSilo[]>([]);
+  const [movimientosSilo, setMovimientosSilo] = useState<MovimientoSilo[]>(() => {
+    try {
+      const saved = localStorage.getItem('agro_movimientos_silo_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved) as MovimientoSilo[];
+        // Garantizar que Silo 2 tenga como base el stock inicial (15.480 kg, Stine, Soja 50EE59) respetando ingresos y salidas manuales
+        const hasSilo2 = parsed.some((m) => m.siloId === 'Silo 2');
+        if (!hasSilo2) {
+          const silo2Base: MovimientoSilo = {
+            id: 'ING-SILO-102',
+            siloId: 'Silo 2',
+            fecha: '2026-07-05',
+            tipo: 'INGRESO',
+            kg: 15480,
+            cliente: 'Stine',
+            especie: 'Soja',
+            variedad: '50EE59',
+            categoria: 'Original',
+            campoOrigen: 'La Barrancosa',
+            bolsonOrigenNro: 'Bolsón 44C',
+            bolsonOrigenSector: 'Sector B2',
+            depositoOrigen: 'Depósito Norte',
+            humedad: 12.8,
+          };
+          return [...parsed, silo2Base];
+        }
+        // Si existe ING-SILO-102 pero con datos desactualizados (Eco Rural / 18500), corregir solo ese movimiento sin alterar salidas u otros ingresos manuales
+        return parsed.map((m) => {
+          if (m.id === 'ING-SILO-102' && (m.cliente === 'Eco Rural' || m.kg === 18500)) {
+            return {
+              ...m,
+              siloId: 'Silo 2',
+              kg: 15480,
+              cliente: 'Stine',
+              especie: 'Soja',
+              variedad: '50EE59',
+              categoria: 'Original',
+            };
+          }
+          return m;
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return MOVIMIENTOS_SILO_INICIALES;
+  });
   const [choferes, setChoferes] = useState<Chofer[]>([]);
   const [bolsones, setBolsones] = useState<BolsonCampo[]>([]);
   const [silosEstadoManual, setSilosEstadoManual] = useState<SilosEstadoMap>(() => {
@@ -262,9 +308,10 @@ export default function App() {
   }, [siloStocks]);
 
   // 3. Control de Vistas
-  // 'modo-planta' | 'generar-lote' | 'ordenes-proceso' | 'ingreso-silos' | 'calculo-bolsas' | 'lotes' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'
-  const [activeView, setActiveView] = useState<'modo-planta' | 'generar-lote' | 'ordenes-proceso' | 'ingreso-silos' | 'calculo-bolsas' | 'lotes' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'>('modo-planta');
+  // 'modo-planta' | 'silos' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'
+  const [activeView, setActiveView] = useState<'modo-planta' | 'silos' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'>('modo-planta');
   const [loteSeleccionado, setLoteSeleccionado] = useState<Lote | null>(null);
+  const [loteDetailSourceView, setLoteDetailSourceView] = useState<'lotes' | 'produccion'>('lotes');
   const [loteAEditar, setLoteAEditar] = useState<Lote | null>(null);
   const [preselectedLoteId, setPreselectedLoteId] = useState<string | undefined>(undefined);
   const [publicLote, setPublicLote] = useState<Lote | null>(null);
@@ -375,7 +422,49 @@ export default function App() {
     seedMovimientosSiloIfEmpty(MOVIMIENTOS_SILO_INICIALES);
     const unsubMovimientosSilo = onSnapshot(collection(db, 'movimientos_silo'), (snapshot) => {
       setIsFirebaseConnected(true);
-      const loadedMovs = snapshot.docs.map(doc => doc.data() as MovimientoSilo);
+      let loadedMovs = snapshot.docs.map(doc => doc.data() as MovimientoSilo);
+
+      // Sincronización y calibración para Silo 2: asegurar base inicial (15.480 kg, Stine, Soja 50EE59) permitiendo todos los ingresos y salidas manuales
+      const movsSilo2 = loadedMovs.filter(m => m.siloId === 'Silo 2');
+      if (movsSilo2.length === 0) {
+        const nuevoMovSilo2: MovimientoSilo = {
+          id: 'ING-SILO-102',
+          siloId: 'Silo 2',
+          fecha: '2026-07-05',
+          tipo: 'INGRESO',
+          kg: 15480,
+          cliente: 'Stine',
+          especie: 'Soja',
+          variedad: '50EE59',
+          categoria: 'Original',
+          campoOrigen: 'La Barrancosa',
+          bolsonOrigenNro: 'Bolsón 44C',
+          bolsonOrigenSector: 'Sector B2',
+          depositoOrigen: 'Depósito Norte',
+          humedad: 12.8
+        };
+        const docRef = doc(db, 'movimientos_silo', nuevoMovSilo2.id);
+        setDoc(docRef, sanitizeForFirestore(nuevoMovSilo2), { merge: true }).catch(err => console.warn('Error seed Silo 2 Firestore:', err));
+        loadedMovs = [...loadedMovs, nuevoMovSilo2];
+      } else {
+        // Si existe ING-SILO-102 con datos desactualizados de mock (Eco Rural / 18500), corregir solo ese documento base sin tocar otros ingresos o salidas
+        const targetMov = loadedMovs.find(m => m.id === 'ING-SILO-102');
+        if (targetMov && (targetMov.cliente === 'Eco Rural' || targetMov.kg === 18500)) {
+          const updatedMov: MovimientoSilo = {
+            ...targetMov,
+            siloId: 'Silo 2',
+            kg: 15480,
+            cliente: 'Stine',
+            especie: 'Soja',
+            variedad: '50EE59',
+            categoria: 'Original',
+          };
+          const docRef = doc(db, 'movimientos_silo', updatedMov.id);
+          setDoc(docRef, sanitizeForFirestore(updatedMov), { merge: true }).catch(err => console.warn('Error sync Silo 2 Firestore:', err));
+          loadedMovs = loadedMovs.map(m => m.id === updatedMov.id ? updatedMov : m);
+        }
+      }
+
       setMovimientosSilo(loadedMovs);
     }, (error) => {
       console.error("Error subscribing to 'movimientos_silo':", error);
@@ -612,8 +701,18 @@ export default function App() {
   const handleSaveOrden = async (nuevaOrden: OrdenCarga) => {
     try {
       const docRef = doc(db, 'ordenesCarga', nuevaOrden.id);
-      await setDoc(docRef, sanitizeForFirestore(nuevaOrden));
-      showNotification(`Orden ${nuevaOrden.id} generada y asignada con éxito.`);
+      await setDoc(docRef, sanitizeForFirestore(nuevaOrden), { merge: true });
+      setOrdenesCarga(prev => {
+        const exists = prev.some(o => o.id === nuevaOrden.id);
+        const next = exists ? prev.map(o => o.id === nuevaOrden.id ? nuevaOrden : o) : [nuevaOrden, ...prev];
+        try {
+          localStorage.setItem('agro_ordenes_carga', JSON.stringify(next));
+        } catch {
+          // ignore storage quota errors
+        }
+        return next;
+      });
+      showNotification(`Orden creada: ${nuevaOrden.id}`);
     } catch (e) {
       console.error('Error al guardar orden en Firestore:', e);
       showNotification('Error crítico al persistir la orden de carga.');
@@ -627,7 +726,7 @@ export default function App() {
     firmaChofer?: string
   ) => {
     try {
-      // 1. Subir a Firebase Storage si son base64
+      // 1. Subir a Firebase Storage si son base64 (con compresión y fallback seguro a base64 ligero < 250 KB)
       let fotoUrl = fotoRemito;
       if (fotoRemito && fotoRemito.startsWith('data:')) {
         fotoUrl = await uploadBase64ToStorage(`ordenes/${ordenId}/foto_remito.png`, fotoRemito);
@@ -638,12 +737,28 @@ export default function App() {
         firmaUrl = await uploadBase64ToStorage(`ordenes/${ordenId}/firma_chofer.png`, firmaChofer);
       }
 
+      // 2. Actualizar estado local inmediatamente para que la UI responda al instante
+      setOrdenesCarga(prev => {
+        const next = prev.map(o => o.id === ordenId ? {
+          ...o,
+          estado: nuevoEstado,
+          ...(fotoUrl !== undefined && { fotoRemito: fotoUrl }),
+          ...(firmaUrl !== undefined && { firmaChofer: firmaUrl })
+        } : o);
+        try {
+          localStorage.setItem('agro_ordenes_carga', JSON.stringify(next));
+        } catch (err) {
+          console.warn('Error guardando en localStorage:', err);
+        }
+        return next;
+      });
+
       const docRef = doc(db, 'ordenesCarga', ordenId);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         estado: nuevoEstado,
         ...(fotoUrl !== undefined && { fotoRemito: fotoUrl }),
         ...(firmaUrl !== undefined && { firmaChofer: firmaUrl })
-      });
+      }, { merge: true });
 
       showNotification(`Orden ${ordenId} marcada como ${nuevoEstado}.`);
     } catch (e) {
@@ -685,11 +800,16 @@ export default function App() {
           const nuevoMov: MovimientoStock = {
             id: `MOV-OC-${Date.now()}-${item.loteId}`,
             fecha: fechaHoy,
-            tipo: 'Salida',
+            tipo: 'Salida por despacho',
             cantidadBolsas: item.cantidadBolsas,
             kgPorBolsa: targetLote.kgPorBolsa,
             cantidadKg: item.kgTotales,
-            detalle: `Carga Despachada bajo Orden N° ${ordenId} (Lote: ${item.loteNro})`
+            detalle: `Despacho bajo Orden N° ${ordenId} (${item.cantidadBolsas} b. / ${item.kgTotales} kg)${orden.destino ? ` - Destino: ${orden.destino}` : ''}`,
+            remitoCliente: orden.remitoCliente || '-',
+            destino: orden.destino || '-',
+            chofer: orden.chofer || '-',
+            tipoSalida: 'despacho',
+            ordenId: orden.id
           };
 
           // Registrar el movimiento en la subcolección del lote
@@ -720,7 +840,21 @@ export default function App() {
           });
         }
 
+        // Marcar la orden como con stock descontado
+        if (ordenId) {
+          const ocRef = doc(db, 'ordenesCarga', ordenId);
+          batch.update(ocRef, {
+            stockDescontado: true,
+            fechaBajaStock: new Date().toISOString()
+          });
+        }
+
         await batch.commit();
+
+        if (ordenId) {
+          setOrdenesCarga(prev => prev.map(o => o.id === ordenId ? { ...o, stockDescontado: true, fechaBajaStock: new Date().toISOString() } : o));
+        }
+
         return true;
       } catch (error) {
         console.error('Error al registrar despacho de múltiples lotes en lote batch:', error);
@@ -739,15 +873,32 @@ export default function App() {
     const nuevoMov: MovimientoStock = {
       id: `MOV-OC-${Date.now()}`,
       fecha: new Date().toISOString().split('T')[0],
-      tipo: 'Salida',
+      tipo: 'Salida por despacho',
       cantidadBolsas: bolsas,
       kgPorBolsa: lote.kgPorBolsa,
       cantidadKg: kg,
-      detalle: `Carga Despachada bajo Orden N° ${ordenId}`
+      detalle: `Despacho bajo Orden N° ${ordenId} (${bolsas} b. / ${kg} kg)${orden?.destino ? ` - Destino: ${orden.destino}` : ''}`,
+      remitoCliente: orden?.remitoCliente || '-',
+      destino: orden?.destino || '-',
+      chofer: orden?.chofer || '-',
+      tipoSalida: 'despacho',
+      ordenId: orden?.id
     };
 
     try {
       await registrarMovimientoTransaccion(loteId, nuevoMov);
+      if (ordenId) {
+        try {
+          const ocRef = doc(db, 'ordenesCarga', ordenId);
+          await updateDoc(ocRef, {
+            stockDescontado: true,
+            fechaBajaStock: new Date().toISOString()
+          });
+        } catch (eOc) {
+          console.warn('Error al actualizar orden como stockDescontado:', eOc);
+        }
+        setOrdenesCarga(prev => prev.map(o => o.id === ordenId ? { ...o, stockDescontado: true, fechaBajaStock: new Date().toISOString() } : o));
+      }
       return true;
     } catch (e) {
       console.error('Error al registrar despacho en transacción:', e);
@@ -757,12 +908,195 @@ export default function App() {
 
   const handleDeleteOrden = async (ordenId: string) => {
     try {
+      const orden = ordenesCarga.find(o => o.id === ordenId);
+      // Si la orden tenía stock descontado, reintegrar stock a los lotes
+      if (orden && orden.stockDescontado) {
+        if (orden.lotesOrigen && orden.lotesOrigen.length > 0) {
+          for (const item of orden.lotesOrigen) {
+            const targetLote = lotes.find(l => l.id === item.loteId);
+            if (targetLote) {
+              const nuevoStockBolsas = targetLote.stockBolsas + item.cantidadBolsas;
+              const nuevoStockKg = nuevoStockBolsas * targetLote.kgPorBolsa;
+              const nuevoEstado = nuevoStockBolsas > 0 && targetLote.estado === 'Agotado' ? 'Disponible' : targetLote.estado;
+              const auditEvent: AuditLogEntry = {
+                id: `AUD-DEL-OC-${Date.now()}-${item.loteId}`,
+                fechaHora: new Date().toISOString(),
+                tipo: 'Stock',
+                usuario: currentUser?.nombre || 'Administración de Planta',
+                descripcion: `Reintegro de stock por eliminación de Orden ${ordenId}: +${item.cantidadBolsas} b. (${item.kgTotales} kg).`,
+                detalles: `Lote: ${targetLote.loteNro}. Destino: ${orden.destino || '-'}.`
+              };
+              const loteRef = doc(db, 'lotes', item.loteId);
+              await updateDoc(loteRef, {
+                stockBolsas: nuevoStockBolsas,
+                stockKgTotal: nuevoStockKg,
+                estado: nuevoEstado,
+                auditoria: [auditEvent, ...(targetLote.auditoria || [])]
+              });
+            }
+          }
+        } else if (orden.loteId) {
+          const targetLote = lotes.find(l => l.id === orden.loteId);
+          if (targetLote) {
+            const nuevoStockBolsas = targetLote.stockBolsas + orden.cantidadBolsas;
+            const nuevoStockKg = nuevoStockBolsas * targetLote.kgPorBolsa;
+            const nuevoEstado = nuevoStockBolsas > 0 && targetLote.estado === 'Agotado' ? 'Disponible' : targetLote.estado;
+            const auditEvent: AuditLogEntry = {
+              id: `AUD-DEL-OC-${Date.now()}`,
+              fechaHora: new Date().toISOString(),
+              tipo: 'Stock',
+              usuario: currentUser?.nombre || 'Administración de Planta',
+              descripcion: `Reintegro de stock por eliminación de Orden ${ordenId}: +${orden.cantidadBolsas} b. (${orden.kgTotales} kg).`,
+              detalles: `Lote: ${targetLote.loteNro}. Destino: ${orden.destino || '-'}.`
+            };
+            const loteRef = doc(db, 'lotes', orden.loteId);
+            await updateDoc(loteRef, {
+              stockBolsas: nuevoStockBolsas,
+              stockKgTotal: nuevoStockKg,
+              estado: nuevoEstado,
+              auditoria: [auditEvent, ...(targetLote.auditoria || [])]
+            });
+          }
+        }
+      }
+
       const docRef = doc(db, 'ordenesCarga', ordenId);
       await deleteDoc(docRef);
+      setOrdenesCarga(prev => prev.filter(o => o.id !== ordenId));
       showNotification(`Orden ${ordenId} eliminada correctamente.`);
     } catch (e) {
       console.error('Error al eliminar orden:', e);
       showNotification('Error al eliminar la orden de carga.');
+    }
+  };
+
+  const handleDeleteMultipleOrdenes = async (ordenIds: string[]) => {
+    try {
+      if (!ordenIds || ordenIds.length === 0) return;
+      for (const id of ordenIds) {
+        await handleDeleteOrden(id);
+      }
+      if (ordenIds.length > 1) {
+        showNotification(`Se eliminaron ${ordenIds.length} despachos correctamente.`);
+      }
+    } catch (e) {
+      console.error('Error al eliminar órdenes múltiples:', e);
+      showNotification('Error al eliminar los despachos seleccionados.');
+    }
+  };
+
+  const executeDeleteSingleDespacho = async (row: SalidaUnifiedRow) => {
+    let loteReintegrado = false;
+
+    // 1. Si proviene de la colección 'salidas' o estado local de salidas
+    if (row.rawSalida || salidas.some(s => s.id === row.id)) {
+      const salidaId = row.rawSalida ? row.rawSalida.id : row.id;
+      try {
+        await deleteDoc(doc(db, 'salidas', salidaId));
+      } catch (eDel) {
+        console.warn('Error al borrar doc en Firestore salidas (posible mock):', eDel);
+      }
+      setSalidas(prev => prev.filter(s => s.id !== salidaId));
+
+      // Reintegrar stock al lote
+      if (row.loteId && row.cantidadBolsas > 0) {
+        const targetLote = lotes.find(l => l.id === row.loteId);
+        if (targetLote) {
+          const nuevoStockBolsas = targetLote.stockBolsas + row.cantidadBolsas;
+          const nuevoStockKg = nuevoStockBolsas * targetLote.kgPorBolsa;
+          const nuevoEstado = nuevoStockBolsas > 0 && targetLote.estado === 'Agotado' ? 'Disponible' : targetLote.estado;
+          const auditEvent: AuditLogEntry = {
+            id: `AUD-DEL-SAL-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            fechaHora: new Date().toISOString(),
+            tipo: 'Stock',
+            usuario: currentUser?.nombre || 'Administración de Planta',
+            descripcion: `Eliminación de Despacho (Remito ${row.remitoCliente || row.id}). Stock reintegrado: +${row.cantidadBolsas} b. (${row.totalKg} kg).`,
+            detalles: `Reintegro por eliminación de comprobante de salida. Cliente: ${row.cliente}.`
+          };
+
+          const loteRef = doc(db, 'lotes', row.loteId);
+          await updateDoc(loteRef, {
+            stockBolsas: nuevoStockBolsas,
+            stockKgTotal: nuevoStockKg,
+            estado: nuevoEstado,
+            auditoria: [auditEvent, ...(targetLote.auditoria || [])]
+          });
+          loteReintegrado = true;
+        }
+      }
+    }
+
+    // 2. Si proviene de 'ordenesCarga'
+    if (row.rawOrden || ordenesCarga.some(o => o.id === row.id)) {
+      const ordenId = row.rawOrden ? row.rawOrden.id : row.id;
+      await handleDeleteOrden(ordenId);
+      loteReintegrado = true;
+    }
+
+    // 3. Si proviene de movimiento de lote
+    if (row.rawMovimiento && row.loteId) {
+      try {
+        const movRef = doc(db, 'lotes', row.loteId, 'movimientos', row.rawMovimiento.id);
+        await deleteDoc(movRef);
+      } catch (eMov) {
+        console.warn('Error eliminando subcoleccion movimiento:', eMov);
+      }
+      if (!loteReintegrado && row.cantidadBolsas > 0) {
+        const targetLote = lotes.find(l => l.id === row.loteId);
+        if (targetLote) {
+          const nuevoStockBolsas = targetLote.stockBolsas + row.cantidadBolsas;
+          const nuevoStockKg = nuevoStockBolsas * targetLote.kgPorBolsa;
+          const nuevoEstado = nuevoStockBolsas > 0 && targetLote.estado === 'Agotado' ? 'Disponible' : targetLote.estado;
+          const auditEvent: AuditLogEntry = {
+            id: `AUD-DEL-MOV-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            fechaHora: new Date().toISOString(),
+            tipo: 'Stock',
+            usuario: currentUser?.nombre || 'Administración de Planta',
+            descripcion: `Eliminación de Despacho por movimiento ${row.rawMovimiento.id}. Stock reintegrado: +${row.cantidadBolsas} b. (${row.totalKg} kg).`,
+            detalles: `Reintegro por baja de movimiento. Cliente: ${row.cliente}.`
+          };
+
+          const loteRef = doc(db, 'lotes', row.loteId);
+          await updateDoc(loteRef, {
+            stockBolsas: nuevoStockBolsas,
+            stockKgTotal: nuevoStockKg,
+            estado: nuevoEstado,
+            auditoria: [auditEvent, ...(targetLote.auditoria || [])]
+          });
+        }
+      }
+    }
+  };
+
+  const handleDeleteDespacho = async (row: SalidaUnifiedRow) => {
+    try {
+      await executeDeleteSingleDespacho(row);
+      showNotification(`Despacho ${row.remitoCliente ? `Remito ${row.remitoCliente}` : `N° ${row.id}`} eliminado correctamente.`);
+    } catch (e) {
+      console.error('Error al eliminar despacho:', e);
+      showNotification('Error al eliminar el despacho.');
+      throw e;
+    }
+  };
+
+  const handleDeleteMultipleDespachos = async (rows: SalidaUnifiedRow[]) => {
+    try {
+      if (!rows || rows.length === 0) return;
+      let totalBolsasReintegradas = 0;
+      for (const row of rows) {
+        await executeDeleteSingleDespacho(row);
+        totalBolsasReintegradas += (row.cantidadBolsas || 0);
+      }
+      if (rows.length === 1) {
+        const r = rows[0];
+        showNotification(`Despacho ${r.remitoCliente ? `Remito ${r.remitoCliente}` : `N° ${r.id}`} eliminado correctamente.`);
+      } else {
+        showNotification(`Se eliminaron ${rows.length} despachos correctamente (${totalBolsasReintegradas.toLocaleString('es-AR')} bolsas reintegradas a sus lotes).`);
+      }
+    } catch (e) {
+      console.error('Error al eliminar despachos múltiples:', e);
+      showNotification('Error al eliminar los despachos seleccionados.');
+      throw e;
     }
   };
 
@@ -1060,7 +1394,6 @@ export default function App() {
               kg: kgCant,
               loteResultanteId: docId,
               loteNro: loteGuardar.loteNro,
-              ordenProcesoId: loteGuardar.ordenProcesoId,
               cliente: loteGuardar.cliente,
               especie: loteGuardar.especie,
               variedad: loteGuardar.variedad,
@@ -1086,7 +1419,7 @@ export default function App() {
         return [...sinAnteriores, ...nuevosMovsSiloLote];
       });
 
-      showNotification(`Lote ${docId} guardado correctamente. ${esRealizado ? '(Salida de silo activada)' : '(Pre-carga registrada sin descontar silos)'}`);
+      showNotification(`Lote ${docId} guardado correctamente.`);
       setLoteAEditar(null);
       setActiveView('lotes');
     } catch (e) {
@@ -1132,7 +1465,6 @@ export default function App() {
                 kg: kgCant,
                 loteResultanteId: loteGuardar.id,
                 loteNro: loteGuardar.loteNro,
-                ordenProcesoId: loteGuardar.ordenProcesoId,
                 cliente: loteGuardar.cliente,
                 especie: loteGuardar.especie,
                 variedad: loteGuardar.variedad,
@@ -1159,7 +1491,7 @@ export default function App() {
         return [...sinAnteriores, ...nuevosMovsSiloBatch];
       });
 
-      showNotification(`¡${updatedLotes.length} lotes actualizados a REALIZADO con éxito (Salida de Silo generada)!`);
+      showNotification(`¡${updatedLotes.length} lotes actualizados a REALIZADO con éxito!`);
     } catch (e) {
       console.error('Error al realizar edición masiva de lotes:', e);
       showNotification('Error al aplicar cambios masivos.');
@@ -1257,6 +1589,44 @@ export default function App() {
     } catch (e) {
       console.error('Error al actualizar ubicación del lote:', e);
       showNotification('Error al actualizar la ubicación en el servidor.');
+    }
+  };
+
+  const handleUpdateLoteInase = async (loteId: string, inaseInicio: string, inaseFinal: string) => {
+    try {
+      const loteRef = doc(db, 'lotes', loteId);
+      const loteAnterior = lotes.find(l => l.id === loteId);
+      const currentAuditoria = loteAnterior?.auditoria || [];
+
+      const auditEntry: AuditLogEntry = {
+        id: `AUD-INASE-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Edición',
+        usuario: currentUser?.nombre || 'Jefe de Planta',
+        descripcion: `Código INASE actualizado: Inicio [${inaseInicio || '—'}] / Final [${inaseFinal || '—'}].`,
+        detalles: `Modificación manual de numeración INASE.`
+      };
+
+      await updateDoc(loteRef, {
+        inaseInicio: inaseInicio,
+        inaseFinal: inaseFinal,
+        auditoria: [auditEntry, ...currentAuditoria]
+      });
+
+      setLotes(prev => prev.map(l => l.id === loteId ? { ...l, inaseInicio, inaseFinal } : l));
+      if (loteSeleccionado?.id === loteId) {
+        setLoteSeleccionado(prev => prev ? { ...prev, inaseInicio, inaseFinal } : null);
+      }
+
+      showNotification(`Código INASE guardado para el lote.`);
+    } catch (e) {
+      console.error('Error al guardar Código INASE:', e);
+      // Actualización optimista local
+      setLotes(prev => prev.map(l => l.id === loteId ? { ...l, inaseInicio, inaseFinal } : l));
+      if (loteSeleccionado?.id === loteId) {
+        setLoteSeleccionado(prev => prev ? { ...prev, inaseInicio, inaseFinal } : null);
+      }
+      showNotification('Código INASE guardado localmente.');
     }
   };
 
@@ -1798,13 +2168,22 @@ export default function App() {
   // Función para refrescar y resincronizar información desde Firestore
   const handleRefreshData = async () => {
     try {
-      const snapshot = await getDocs(collection(db, 'lotes'));
-      const loadedLotes = snapshot.docs.map(doc => mapFirestoreToLote(doc.id, doc.data()));
+      const [snapshotLotes, snapshotOrdenes] = await Promise.all([
+        getDocs(collection(db, 'lotes')),
+        getDocs(collection(db, 'ordenesCarga'))
+      ]);
+      const loadedLotes = snapshotLotes.docs.map(doc => mapFirestoreToLote(doc.id, doc.data()));
       if (loadedLotes.length > 0) {
         setLotes(loadedLotes);
       }
+      const loadedOrdenes = snapshotOrdenes.docs.map(doc => ({ id: doc.id, ...doc.data() } as OrdenCarga));
+      if (loadedOrdenes.length > 0) {
+        setOrdenesCarga(loadedOrdenes);
+      }
+      showNotification('Datos de lotes y órdenes actualizados correctamente.');
     } catch (e) {
       console.warn('Refresh local fallback:', e);
+      showNotification('Datos actualizados.');
     }
   };
 
@@ -1908,99 +2287,28 @@ export default function App() {
             {!sidebarCollapsed ? 'Operaciones & Planta' : '•••'}
           </div>
 
-          {/* Tab 2: Órdenes de Proceso */}
+          {/* Tab 2: Silos (Carga Manual de Kilos, Humedad, Variedad y Descontaminación) */}
           <button
-            id="nav-tab-ordenes-proceso"
-            onClick={() => navigateTo('ordenes-proceso')}
+            id="nav-tab-silos"
+            onClick={() => navigateTo('silos')}
             className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transition-all duration-200 cursor-pointer ${
-              sidebarCollapsed ? 'justify-center p-3' : 'gap-2.5 px-3 py-2.5'
-            } ${
-              activeView === 'ordenes-proceso'
-                ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-sm ring-1.5 ring-[#C9922E]/60'
-                : 'text-white hover:bg-white/10'
-            }`}
-            title="Órdenes de Proceso y Movimiento"
-          >
-            <ClipboardList className="w-5 h-5 shrink-0" />
-            {!sidebarCollapsed && <span className="truncate">Órdenes Proceso</span>}
-          </button>
-
-          {/* Tab 5: Ingreso a Silos */}
-          <button
-            id="nav-tab-ingreso-silos"
-            onClick={() => navigateTo('ingreso-silos')}
-            className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transform-gpu transition-all duration-200 cursor-pointer hover:scale-[1.02] active:scale-[0.98] ${
               sidebarCollapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'
             } ${
-              activeView === 'ingreso-silos'
-                ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-md ring-1.5 ring-[#C9922E]/80 brightness-105'
-                : tieneAlertaSilo95
-                ? 'text-white bg-red-900/50 border border-red-500/80 shadow-[0_0_12px_rgba(239,68,68,0.5)] hover:bg-red-900/70 hover:border-red-400'
-                : 'text-white hover:bg-white/15 hover:shadow-xs'
+              activeView === 'silos'
+                ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-md ring-1.5 ring-[#C9922E]/80'
+                : 'text-white hover:bg-white/10'
             }`}
-            title={
-              tieneAlertaSilo95
-                ? `¡ALERTA!: ${silosConAlerta95.join(', ')} al 95%+ de capacidad (>=171.000 kg)`
-                : undefined
-            }
+            title="Silos Clasificadora: Carga Manual de Kilos, Humedad de Silos, Variedad y Descontaminación"
           >
             <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5 truncate'}`}>
-              <div className="relative group/silo-icon inline-flex items-center justify-center shrink-0">
-                <SiloIcon
-                  size={24}
-                  color={tieneAlertaSilo95 ? '#f87171' : activeView === 'ingreso-silos' ? '#00603C' : '#C9922E'}
-                  className="silo-icon-institucional shrink-0 transition-transform duration-200 group-hover/silo-icon:scale-110"
-                />
-
-                {/* Tooltip con resumen rápido del peso total almacenado en todos los silos con glassmorphism pronunciado y máximo contraste */}
-                <div className="absolute left-full ml-3.5 top-1/2 -translate-y-1/2 hidden group-hover/silo-icon:flex flex-col items-start bg-slate-950/85 backdrop-blur-xl backdrop-saturate-150 text-white text-[10px] font-sans px-3.5 py-2.5 rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.55)] border border-white/20 ring-1 ring-emerald-400/20 pointer-events-none whitespace-nowrap z-50 animate-in fade-in-0 zoom-in-95 duration-150">
-                  <div className="flex items-center gap-1.5 text-emerald-300 font-bold uppercase text-[9px] tracking-wider mb-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"></span>
-                    <span className="drop-shadow-xs">Stock Total en Silos</span>
-                  </div>
-                  <div className="font-mono font-black text-base text-white tracking-tight leading-tight flex items-baseline gap-1">
-                    <span className="text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
-                      {totalSilosKgStored.toLocaleString('es-AR')}
-                    </span>
-                    <span className="text-[11px] font-sans font-bold text-emerald-300 drop-shadow-xs">kg</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-white/10 text-[9.5px] font-mono">
-                    <span className="text-amber-300 font-bold drop-shadow-xs">
-                      {(totalSilosKgStored / 1000).toFixed(1)} Tn
-                    </span>
-                    <span className="text-white/60">/</span>
-                    <span className="text-slate-200 font-medium">1.080 Tn</span>
-                    <span className="text-emerald-300 font-bold ml-1 bg-emerald-950/60 border border-emerald-400/30 px-1.5 py-0.2 rounded-md">
-                      {( (totalSilosKgStored / (6 * CAPACIDAD_MAX_SILO)) * 100 ).toFixed(1)}%
-                    </span>
-                  </div>
-                  {/* Flechita decorativa hacia el ícono con glassmorphism */}
-                  <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 bg-slate-950/85 backdrop-blur-xl rotate-45 border-l border-b border-white/20"></div>
-                </div>
-
-                {/* Indicador de estado de conexión en tiempo real con Firebase con animación de pulso suave */}
-                <span
-                  id="silos-firebase-sync-dot"
-                  title={isFirebaseConnected && isOnline ? 'Sincronización activa en tiempo real con Firebase' : 'Sin conexión con Firebase'}
-                  className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white shadow-xs transition-all duration-300 ${
-                    isFirebaseConnected && isOnline
-                      ? 'bg-emerald-500 sync-dot-pulse-green'
-                      : 'bg-red-500 sync-dot-pulse-red'
-                  }`}
-                />
-              </div>
-              {!sidebarCollapsed && <span className="truncate">Ingreso Silos</span>}
+              <Warehouse className={`w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                activeView === 'silos' ? 'text-[#00603C]' : 'text-[#C9922E]'
+              }`} />
+              {!sidebarCollapsed && <span className="truncate">Silos Clasificadora</span>}
             </div>
-
-            {!sidebarCollapsed && tieneAlertaSilo95 && (
-              <span className="flex items-center gap-1 shrink-0">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                </span>
-                <span className="bg-red-600 text-white text-[8px] font-black px-1.5 py-0.2 rounded-full border border-red-300">
-                  95%+
-                </span>
+            {!sidebarCollapsed && (
+              <span className="text-[8.5px] px-1.5 py-0.5 bg-emerald-400/20 text-emerald-200 border border-emerald-400/30 rounded font-mono font-bold">
+                6 Silos
               </span>
             )}
           </button>
@@ -2103,6 +2411,30 @@ export default function App() {
             )}
           </button>
 
+          {/* Tab 6.b: Producción (Dashboard de Producción & Stock) */}
+          <button
+            id="nav-tab-produccion"
+            onClick={() => navigateTo('produccion')}
+            className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+              sidebarCollapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'
+            } ${
+              activeView === 'produccion'
+                ? 'bg-[#F6EFDC] text-[#00603C] shadow-sm font-bold ring-1.5 ring-[#C9922E]/60'
+                : 'text-white hover:bg-white/10'
+            }`}
+            title="Dashboard de Producción: Kilos y Bolsas Producidos vs Stock y Análisis de Tratamiento"
+          >
+            <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5 truncate'}`}>
+              <BarChart3 className="w-5 h-5 shrink-0 text-[#C9922E]" />
+              {!sidebarCollapsed && <span className="truncate">Producción</span>}
+            </div>
+            {!sidebarCollapsed && (
+              <span className="text-[8.5px] px-1.5 py-0.5 bg-[#C9922E]/20 text-[#F6EFDC] border border-[#C9922E]/30 rounded font-mono font-bold">
+                Dash
+              </span>
+            )}
+          </button>
+
           {/* Tab 7: Generar Lote */}
           <button
             id="nav-tab-generar-lote"
@@ -2137,7 +2469,7 @@ export default function App() {
             {!sidebarCollapsed && <span className="truncate">Despachos</span>}
           </button>
 
-          {/* Tab 9: Historial Salidas */}
+          {/* Tab 9: Salidas */}
           <button
             id="nav-tab-historial-salidas"
             onClick={() => navigateTo('salidas-registradas')}
@@ -2148,10 +2480,10 @@ export default function App() {
                 ? 'bg-[#F6EFDC] text-[#00603C] shadow-sm font-bold ring-1.5 ring-[#C9922E]/60'
                 : 'text-white hover:bg-white/10'
             }`}
-            title="Historial de Salidas Registradas"
+            title="Salidas Registradas"
           >
             <History className="w-5 h-5 shrink-0" />
-            {!sidebarCollapsed && <span className="truncate">Historial Salidas</span>}
+            {!sidebarCollapsed && <span className="truncate">Salidas</span>}
           </button>
 
           {/* Separador de Sección: Datos & Sistema */}
@@ -2172,7 +2504,7 @@ export default function App() {
                 ? 'bg-[#F6EFDC] text-[#00603C] shadow-sm font-bold ring-1.5 ring-[#C9922E]/60'
                 : 'text-white hover:bg-white/10'
             }`}
-            title="Bases de Datos: Choferes, Camiones y Bolsones"
+            title="Bases de Datos: Catálogos y Maestros de Planta"
           >
             <Database className="w-5 h-5 shrink-0 text-[#C9922E]" />
             {!sidebarCollapsed && <span className="truncate">Data Bases</span>}
@@ -2348,50 +2680,24 @@ export default function App() {
               </div>
 
               <button
+                id="nav-tab-mobile-silos"
                 onClick={() => {
-                  navigateTo('ordenes-proceso');
-                  setMobileNavOpen(false);
-                }}
-                className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
-                  activeView === 'ordenes-proceso'
-                    ? 'bg-[#F6EFDC] text-[#00603C] font-bold'
-                    : 'text-white hover:bg-white/10'
-                }`}
-              >
-                <ClipboardList className="w-4 h-4" />
-                <span>Órdenes de Proceso</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  navigateTo('ingreso-silos');
+                  navigateTo('silos');
                   setMobileNavOpen(false);
                 }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
-                  activeView === 'ingreso-silos'
+                  activeView === 'silos'
                     ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-xs'
                     : 'text-white hover:bg-white/10'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <div className="relative inline-flex items-center justify-center shrink-0">
-                    <SiloIcon size={24} color={activeView === 'ingreso-silos' ? '#00603C' : '#C9922E'} className="silo-icon-institucional shrink-0" />
-                    <span
-                      title={isFirebaseConnected && isOnline ? 'Sincronizado con Firebase' : 'Sin conexión con Firebase'}
-                      className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white shadow-xs transition-all duration-300 ${
-                        isFirebaseConnected && isOnline
-                          ? 'bg-emerald-500 sync-dot-pulse-green'
-                          : 'bg-red-500 sync-dot-pulse-red'
-                      }`}
-                    />
-                  </div>
-                  <span>Ingreso a Silos</span>
+                  <Warehouse className={`w-4 h-4 ${activeView === 'silos' ? 'text-[#00603C]' : 'text-[#C9922E]'}`} />
+                  <span>Silos Clasificadora</span>
                 </div>
-                {tieneAlertaSilo95 && (
-                  <span className="bg-red-600 text-white text-[8px] font-black px-1.5 py-0.2 rounded-full">
-                    95%+
-                  </span>
-                )}
+                <span className="text-[9px] px-1.5 py-0.5 bg-[#C9922E]/20 text-[#F6EFDC] rounded font-mono font-bold">
+                  6 Silos
+                </span>
               </button>
 
               <button
@@ -2442,6 +2748,27 @@ export default function App() {
               </button>
 
               <button
+                id="nav-tab-mobile-produccion"
+                onClick={() => {
+                  navigateTo('produccion');
+                  setMobileNavOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
+                  activeView === 'produccion'
+                    ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-xs'
+                    : 'text-white hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <BarChart3 className="w-4 h-4 text-[#C9922E]" />
+                  <span>Producción</span>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 bg-[#C9922E]/20 text-[#F6EFDC] rounded font-mono font-bold">
+                  Kilos & Stock
+                </span>
+              </button>
+
+              <button
                 onClick={() => {
                   navigateTo('generar-lote');
                   setMobileNavOpen(false);
@@ -2483,7 +2810,7 @@ export default function App() {
                 }`}
               >
                 <History className="w-4 h-4" />
-                <span>Historial Salidas</span>
+                <span>Salidas</span>
               </button>
 
               {/* Separador de Sección: Datos & Sistema */}
@@ -2602,16 +2929,18 @@ export default function App() {
       <main className={`flex-grow pt-14 md:pt-6 pb-16 px-3 sm:px-4 md:px-6 w-full relative z-10 print:pt-2 print:pb-2 print:px-0 transition-all duration-300 ${
         sidebarCollapsed ? 'md:pl-24' : 'md:pl-68'
       }`}>
-        <div className="max-w-7xl mx-auto">
+        <div className={(activeView === 'despachos' || activeView === 'lotes' || activeView === 'produccion') ? 'w-full max-w-[1850px] mx-auto' : 'max-w-7xl mx-auto'}>
         
         {/* RUTA DE COMPONENTES SEGÚN VISTA ACTIVA */}
         {loteSeleccionado ? (
           <LoteDetail
             lote={loteSeleccionado}
             readOnly={!isLoggedIn}
-            ordenesProceso={ordenesProcesoConHechos}
             movimientosSilo={movimientosSilo}
-            onBack={() => setLoteSeleccionado(null)}
+            onBack={() => {
+              setLoteSeleccionado(null);
+              navigateTo(loteDetailSourceView);
+            }}
             onUpdateLoteStock={handleUpdateLoteStock}
             onRegistrarSalida={isLoggedIn ? (id) => {
               setPreselectedLoteId(id);
@@ -2619,127 +2948,96 @@ export default function App() {
               setActiveView('registrar-salida');
             } : undefined}
             onUpdateLoteLocation={isLoggedIn ? handleUpdateLoteLocation : undefined}
-            onNavigateToOrdenesProceso={isLoggedIn ? () => {
-              setLoteSeleccionado(null);
-              navigateTo('ordenes-proceso');
-            } : undefined}
-            onNavigateToSilos={isLoggedIn ? () => {
-              setLoteSeleccionado(null);
-              navigateTo('ingreso-silos');
-            } : undefined}
+            onUpdateLoteInase={isLoggedIn ? handleUpdateLoteInase : undefined}
           />
-        ) : activeView === 'calculo-bolsas' ? (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            <CalculoBolsasDashboard
-              siloStocks={siloStocks}
-              movimientosSilo={movimientosSilo}
-              clientes={clientes}
-              especies={especies}
-              onAplicarAPrecarga={(config) => {
-                navigateTo('generar-lote');
-                showNotification(`Configuración transferida. Redirigiendo a Generar Lote en Precarga...`);
-              }}
-              onCerrar={() => navigateTo('lotes')}
-            />
-          </div>
-        ) : activeView === 'generar-lote' ? (
-          <GenerarLoteView
-            lotes={lotes}
-            ordenesProceso={ordenesProcesoConHechos}
-            clientes={clientes}
-            especies={especies}
-            plantaConfig={plantaConfig}
-            loteLimits={loteLimits}
-            siloStocks={siloStocks}
-            movimientosSilo={movimientosSilo}
-            onSaveLote={handleSaveLote}
-            onNavigateToLotes={() => navigateTo('lotes')}
-          />
-        ) : activeView === 'ordenes-proceso' ? (
-          <OrdenesProcesoView
-            ordenes={filteredOrdenesProcesoByCampania}
-            lotes={filteredLotesByCampania}
-            activeCampaniaId={activeCampaniaId}
-            siloStocks={siloStocks}
-            movimientosSilo={movimientosSilo}
-            onSaveOrden={handleSaveOrdenProceso}
-            onDeleteOrden={handleDeleteOrdenProceso}
-            onUpdateEstadoOrden={handleUpdateEstadoOrdenProceso}
-            onSelectLote={(l) => setLoteSeleccionado(l)}
-            onNavigateToAltaLote={() => navigateTo('generar-lote')}
-          />
-        ) : activeView === 'ingreso-silos' ? (
-          <IngresoSilosView
-            movimientosSilo={movimientosSilo}
-            siloStocks={siloStocks}
-            clientes={clientes}
-            especies={especies}
-            plantaConfig={plantaConfig}
-            currentUser={currentUser}
-            choferes={choferes}
-            bolsones={bolsones}
-            silosEstadoManual={silosEstadoManual}
-            onUpdateSiloEstadoManual={handleUpdateSiloEstadoManual}
-            onRegistrarIngreso={handleRegistrarIngresoSilo}
-            onRegistrarIngresosMultiple={handleRegistrarIngresosMultipleSilo}
-            onRegistrarSalidaManual={handleRegistrarSalidaManualSilo}
-            onSaveChofer={handleSaveChofer}
-            onImportChoferes={handleImportChoferes}
-            onPonerSiloEnCero={handlePonerSiloEnCero}
-            onEditarMovimientoSilo={handleEditarMovimientoSilo}
-            onEliminarMovimientoSilo={handleEliminarMovimientoSilo}
-            onReordenarMovimientosSilo={handleReordenarMovimientosSilo}
-          />
-        ) : activeView === 'lotes' ? (
-          loteAEditar ? (
-            <LoteForm
-              existingLotes={lotes}
-              ordenesProceso={ordenesProcesoConHechos}
-              movimientosSilo={movimientosSilo}
-              bolsones={bolsones}
-              clientes={clientes}
-              especies={especies}
-              plantaConfig={plantaConfig}
-              loteAEditar={loteAEditar}
-              loteLimits={loteLimits}
-              activeCampaniaId={activeCampaniaId}
-              siloStocks={siloStocks}
-              onSave={handleSaveLote}
-              onCancel={() => setLoteAEditar(null)}
-              onCreateOrdenProcesoClick={() => navigateTo('ordenes-proceso')}
-            />
-          ) : (
-            <LotesView
-              lotes={filteredLotesByCampania}
-              ordenesProceso={ordenesProcesoConHechos}
-              movimientosSilo={movimientosSilo}
-              siloStocks={siloStocks}
-              bolsones={bolsones}
-              clientes={clientes}
-              especies={especies}
-              plantaConfig={plantaConfig}
-              loteLimits={loteLimits}
-              onUpdateLoteLimits={(newLimits) => setLoteLimits(newLimits)}
-              onSelectLote={(l) => setLoteSeleccionado(l)}
-              onEditLote={(l) => setLoteAEditar(l)}
-              onAddLote={() => navigateTo('generar-lote')}
-              onRegistrarSalidaLote={(l) => {
-                setPreselectedLoteId(l.id);
-                setActiveView('registrar-salida');
-              }}
-              onDeleteLote={handleDeleteLote}
-              onDeleteMultipleLotes={handleDeleteMultipleLotes}
-              currentUser={currentUser}
-              onWipeStocks={handleWipeStocks}
-              onSaveLote={handleSaveLote}
-              onBatchUpdateLotes={handleBatchUpdateLotes}
-              onRefresh={handleRefreshData}
-            />
-          )
-        ) : activeView === 'alta-lote' ? (
+        ) : (
+          <>
+            {/* VISTAS PERSISTENTES: LOTES Y PRODUCCIÓN (PRESERVAN ESTADO, SELECCIÓN Y EVITAN RECARGAS) */}
+            <div
+              id="view-container-lotes"
+              className={activeView === 'lotes' ? 'block' : 'hidden'}
+            >
+              <LotesView
+                lotes={filteredLotesByCampania}
+                movimientosSilo={movimientosSilo}
+                siloStocks={siloStocks}
+                bolsones={bolsones}
+                clientes={clientes}
+                especies={especies}
+                plantaConfig={plantaConfig}
+                loteLimits={loteLimits}
+                onUpdateLoteLimits={(newLimits) => setLoteLimits(newLimits)}
+                onSelectLote={(l) => {
+                  setLoteSeleccionado(l);
+                  setLoteDetailSourceView('lotes');
+                }}
+                onEditLote={(l) => {
+                  // Editado en la misma vista de tabla (LotesView maneja edición directa de Nombre, Bolsas, Estado y Tipo)
+                }}
+                onAddLote={() => navigateTo('generar-lote')}
+                onRegistrarSalidaLote={(l) => {
+                  setPreselectedLoteId(l.id);
+                  setActiveView('registrar-salida');
+                }}
+                onDeleteLote={handleDeleteLote}
+                onDeleteMultipleLotes={handleDeleteMultipleLotes}
+                currentUser={currentUser}
+                onWipeStocks={handleWipeStocks}
+                onSaveLote={handleSaveLote}
+                onBatchUpdateLotes={handleBatchUpdateLotes}
+                onRefresh={handleRefreshData}
+              />
+            </div>
+
+            <div
+              id="view-container-produccion"
+              className={activeView === 'produccion' ? 'block' : 'hidden'}
+            >
+              <DashboardProduccion
+                lotes={filteredLotesByCampania}
+                salidas={filteredSalidasByCampania}
+                movimientosSilo={movimientosSilo}
+                siloStocks={siloStocks}
+                plantaConfig={plantaConfig}
+                clientes={clientes}
+                especies={especies}
+                onSelectLote={(l) => {
+                  setLoteSeleccionado(l);
+                  setLoteDetailSourceView('produccion');
+                }}
+                onNavigateToLotes={() => navigateTo('lotes')}
+              />
+            </div>
+
+            {activeView === 'calculo-bolsas' ? (
+              <div className="space-y-6 animate-in fade-in duration-300">
+                <CalculoBolsasDashboard
+                  siloStocks={siloStocks}
+                  movimientosSilo={movimientosSilo}
+                  clientes={clientes}
+                  especies={especies}
+                  onAplicarAPrecarga={(config) => {
+                    navigateTo('generar-lote');
+                    showNotification(`Configuración transferida. Redirigiendo a Generar Lote en Precarga...`);
+                  }}
+                  onCerrar={() => navigateTo('lotes')}
+                />
+              </div>
+            ) : activeView === 'generar-lote' ? (
+              <GenerarLoteView
+                lotes={lotes}
+                clientes={clientes}
+                especies={especies}
+                plantaConfig={plantaConfig}
+                loteLimits={loteLimits}
+                siloStocks={siloStocks}
+                movimientosSilo={movimientosSilo}
+                onSaveLote={handleSaveLote}
+                onNavigateToLotes={() => navigateTo('lotes')}
+              />
+            ) : activeView === 'alta-lote' ? (
           <LoteForm
             existingLotes={lotes}
-            ordenesProceso={ordenesProcesoConHechos}
             movimientosSilo={movimientosSilo}
             bolsones={bolsones}
             clientes={clientes}
@@ -2751,7 +3049,6 @@ export default function App() {
             siloStocks={siloStocks}
             onSave={handleSaveLote}
             onCancel={() => navigateTo('lotes')}
-            onCreateOrdenProcesoClick={() => navigateTo('ordenes-proceso')}
           />
         ) : activeView === 'importar' ? (
           <ImportarStock
@@ -2791,6 +3088,8 @@ export default function App() {
             onUpdateOrdenStatus={handleUpdateOrdenStatus}
             onDespacharStock={handleDespacharStock}
             onDeleteOrden={handleDeleteOrden}
+            onDeleteMultipleOrdenes={handleDeleteMultipleOrdenes}
+            onRefresh={handleRefreshData}
           />
         ) : activeView === 'modo-planta' ? (
           <ModoPlantaMobileView
@@ -2822,8 +3121,35 @@ export default function App() {
             salidas={filteredSalidasByCampania}
             lotes={filteredLotesByCampania}
             choferes={choferes}
+            ordenes={filteredOrdenesByCampania}
+            plantaConfig={plantaConfig}
+            onDeleteDespacho={handleDeleteDespacho}
+            onDeleteMultipleDespachos={handleDeleteMultipleDespachos}
+          />
+        ) : activeView === 'silos' ? (
+          <IngresoSilosView
+            movimientosSilo={movimientosSilo}
+            siloStocks={siloStocks}
+            clientes={clientes}
+            especies={especies}
+            plantaConfig={plantaConfig}
+            currentUser={currentUser}
+            choferes={choferes}
+            bolsones={bolsones}
+            silosEstadoManual={silosEstadoManual}
+            onRegistrarIngresoSilo={handleRegistrarIngresoSilo}
+            onRegistrarIngresosMultipleSilo={handleRegistrarIngresosMultipleSilo}
+            onRegistrarSalidaManualSilo={handleRegistrarSalidaManualSilo}
+            onPonerSiloEnCero={handlePonerSiloEnCero}
+            onEditarMovimientoSilo={handleEditarMovimientoSilo}
+            onEliminarMovimientoSilo={handleEliminarMovimientoSilo}
+            onReordenarMovimientosSilo={handleReordenarMovimientosSilo}
+            onUpdateSiloEstadoManual={handleUpdateSiloEstadoManual}
+            onNavigateToPlanta={() => navigateTo('modo-planta')}
           />
         ) : null}
+          </>
+        )}
 
         </div>
       </main>

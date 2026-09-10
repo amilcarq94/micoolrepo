@@ -4,13 +4,12 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Lote, OrdenProceso, TipoLoteType, CategoriaType, TratamientoType, LoteLimitsConfig, MovimientoStock, SiloId, MovimientoSilo, PlantaConfig, getVariedadesVisibles, getVariedadesPorEspecie } from '../types';
+import { Lote, TipoLoteType, CategoriaType, TratamientoType, LoteLimitsConfig, MovimientoStock, SiloId, MovimientoSilo, PlantaConfig, getVariedadesVisibles, getVariedadesPorEspecie } from '../types';
 import { formatKg } from '../utils/formatters';
 import { validateLoteLimits, getLoteLimits } from '../utils/loteLimits';
 import { getCampaniaIdFromDate } from '../utils/campanias';
 import { generarLoteId } from '../utils/loteId';
 import { CalculoBolsasDashboard } from './CalculoBolsasDashboard';
-import { PrecargaMovimientosTab } from './PrecargaMovimientosTab';
 import { CategoriaEnvaseKg, LoteDesgloseItem } from '../utils/calculoBolsas';
 import {
   PackagePlus,
@@ -28,8 +27,7 @@ import {
   FlaskConical,
   X,
   Calculator,
-  FileText,
-  ArrowRightLeft
+  FileText
 } from 'lucide-react';
 
 const TIPOS_LOTE: TipoLoteType[] = ['Intermedio', 'Final'];
@@ -46,7 +44,6 @@ export interface LoteDraftItem {
 
 interface GenerarLoteViewProps {
   lotes: Lote[];
-  ordenesProceso: OrdenProceso[];
   clientes?: string[];
   especies?: string[];
   plantaConfig?: PlantaConfig;
@@ -59,7 +56,6 @@ interface GenerarLoteViewProps {
 
 export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
   lotes = [],
-  ordenesProceso = [],
   clientes = ['San Diego Semillas', 'Eco Rural', 'Pampa', 'Stine', 'Elementa Foods'],
   especies = ['Soja', 'Trigo', 'Maíz', 'Cebada', 'Girasol', 'Sorgo', 'Garbanzo', 'Arveja'],
   plantaConfig,
@@ -78,8 +74,8 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
 }) => {
   const activeLimits = loteLimits || getLoteLimits();
 
-  // Submódulo activo: 'precarga-produccion' (reemplaza a Precarga de Lotes) | 'precarga-movimientos' | 'calculo-bolsas'
-  const [activeSubModule, setActiveSubModule] = useState<'precarga-produccion' | 'precarga-movimientos' | 'calculo-bolsas'>('precarga-produccion');
+  // Submódulo activo: 'precarga-produccion' (reemplaza a Precarga de Lotes) | 'calculo-bolsas'
+  const [activeSubModule, setActiveSubModule] = useState<'precarga-produccion' | 'calculo-bolsas'>('precarga-produccion');
 
   // Helper para buscar el mayor número correlativo
   const getNextLoteNumber = (offset = 0, currentList: LoteDraftItem[] = []) => {
@@ -96,20 +92,10 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
     return `L-${maxNum + 1 + offset}`;
   };
 
-  // Filter Órdenes de Proceso en estado "EN_CURSO"
-  const ordenesEnCurso = useMemo(() => {
-    return ordenesProceso.filter(o => {
-      const estNorm = (o.estado || '').toLowerCase().replace(/[\s_]+/g, '');
-      return estNorm === 'encurso';
-    });
-  }, [ordenesProceso]);
-
   // General configuration state (shared across the batch)
   const [cliente, setCliente] = useState('San Diego Semillas');
   const [especie, setEspecie] = useState('Soja');
   const [variedad, setVariedad] = useState('');
-  const [ordenProcesoId, setOrdenProcesoId] = useState('');
-  const [numeroOrdenMovimiento, setNumeroOrdenMovimiento] = useState('');
   const [ala, setAla] = useState('A');
   const [sector, setSector] = useState('1');
   const [observaciones, setObservaciones] = useState('');
@@ -249,16 +235,6 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
       setErrorMsg('El campo Variedad es obligatorio.');
       return;
     }
-    if (!ordenProcesoId) {
-      setErrorMsg('Debe seleccionar una Orden de Proceso "En Curso".');
-      return;
-    }
-
-    const selectedOp = ordenesEnCurso.find(o => o.id === ordenProcesoId);
-    if (selectedOp && selectedOp.tipoOrden === 'MOVIMIENTO' && !numeroOrdenMovimiento.trim()) {
-      setErrorMsg('La Orden de Proceso seleccionada es de MOVIMIENTO. Debe indicar el N° de Orden de Movimiento.');
-      return;
-    }
 
     if (draftLotes.length === 0) {
       setErrorMsg('Debe ingresar al menos un lote para dar de alta.');
@@ -318,7 +294,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             cantidadBolsas: addBolsas,
             kgPorBolsa: Number(draft.kgPorBolsa),
             cantidadKg: addKg,
-            detalle: `Precarga de stock - OP #${ordenProcesoId}`
+            detalle: `Precarga de stock`
           };
 
           loteToSave = {
@@ -335,8 +311,6 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             ala: ala || existingLote.ala,
             sector: sector || existingLote.sector,
             ubicacionAcopio: ubicacionStr,
-            ordenProcesoId,
-            numeroOrdenMovimiento: selectedOp?.tipoOrden === 'MOVIMIENTO' ? numeroOrdenMovimiento.trim() : undefined,
             observaciones: observaciones.trim() || existingLote.observaciones,
             historial: [nuevoMov, ...(existingLote.historial || [])]
           };
@@ -350,7 +324,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             cantidadBolsas: Number(draft.stockBolsas),
             kgPorBolsa: Number(draft.kgPorBolsa),
             cantidadKg: stockKgCalculado,
-            detalle: `Alta inicial en Precarga - OP #${ordenProcesoId}`
+            detalle: `Alta inicial en Precarga`
           };
 
           loteToSave = {
@@ -375,8 +349,6 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             sectorBolsonOrigen: '',
             fechaIngreso: fechaActual,
             campaniaId: getCampaniaIdFromDate(fechaActual),
-            ordenProcesoId,
-            numeroOrdenMovimiento: selectedOp?.tipoOrden === 'MOVIMIENTO' ? numeroOrdenMovimiento.trim() : undefined,
             ala,
             sector,
             ubicacionAcopio: ubicacionStr,
@@ -461,8 +433,8 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
       <div className="bg-gradient-to-r from-emerald-950 via-[#00603C] to-slate-900 text-white rounded-2xl p-6 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="p-3 bg-amber-500/20 rounded-2xl border border-amber-400/40 text-amber-300 shrink-0">
-            {activeSubModule === 'precarga-movimientos' ? (
-              <ArrowRightLeft className="w-8 h-8" />
+            {activeSubModule === 'calculo-bolsas' ? (
+              <Calculator className="w-8 h-8" />
             ) : (
               <PackagePlus className="w-8 h-8" />
             )}
@@ -470,8 +442,8 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono font-bold tracking-widest text-amber-300 uppercase bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/20">
-                {activeSubModule === 'precarga-movimientos'
-                  ? 'Sección: Precarga de Movimientos'
+                {activeSubModule === 'calculo-bolsas'
+                  ? 'Módulo de Ingeniería'
                   : 'Sección: Precarga de Producción'}
               </span>
               <span className="text-[10px] font-bold text-emerald-200 bg-emerald-800/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
@@ -481,45 +453,39 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             <h2 className="font-serif text-2xl md:text-3xl font-bold mt-1">
               {activeSubModule === 'precarga-produccion'
                 ? 'Precarga de Producción'
-                : activeSubModule === 'precarga-movimientos'
-                ? 'Precarga de Movimientos'
                 : 'Dashboard: Cálculo de Bolsas'}
             </h2>
             <p className="text-xs text-emerald-100 max-w-2xl mt-1">
               {activeSubModule === 'precarga-produccion'
                 ? 'Alta rápida individual o múltiple de lotes de producción (reemplaza a precarga de lotes). Precargado con 35 bolsas x 800 kg y tratamiento Sin tratar por defecto.'
-                : activeSubModule === 'precarga-movimientos'
-                ? 'Filtre lotes en stock, seleccione orden de movimiento y transforme lotes (Intermedio a Final, Final Tratado) generando lotes MOV y descontando stock inicial.'
-                : 'Estimación matemática según stock bruto en silos, % merma y envases (25, 40, 800 kg), o consolidación de ingresos.'}
+                : 'Estimación matemática según stock en silos con kilos cargados manualmente, % merma y envases (25, 40, 800 kg).'}
             </p>
           </div>
         </div>
 
         {/* Action buttons: Sub-navigation & Volver */}
         <div className="flex flex-wrap items-center gap-2.5 shrink-0 w-full sm:w-auto">
-          {activeSubModule !== 'precarga-movimientos' && (
-            <button
-              type="button"
-              onClick={() => setActiveSubModule(activeSubModule === 'precarga-produccion' ? 'calculo-bolsas' : 'precarga-produccion')}
-              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-wider transition cursor-pointer shadow-sm ${
-                activeSubModule === 'calculo-bolsas'
-                  ? 'bg-white text-emerald-950 hover:bg-slate-100'
-                  : 'bg-amber-400 text-slate-950 hover:bg-amber-300'
-              }`}
-            >
-              {activeSubModule === 'precarga-produccion' ? (
-                <>
-                  <Calculator className="w-4 h-4 text-slate-950" />
-                  <span>Abrir Cálculo de Bolsas</span>
-                </>
-              ) : (
-                <>
-                  <FileText className="w-4 h-4 text-emerald-950" />
-                  <span>Ir a Precarga de Producción</span>
-                </>
-              )}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setActiveSubModule(activeSubModule === 'precarga-produccion' ? 'calculo-bolsas' : 'precarga-produccion')}
+            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-wider transition cursor-pointer shadow-sm ${
+              activeSubModule === 'calculo-bolsas'
+                ? 'bg-white text-emerald-950 hover:bg-slate-100'
+                : 'bg-amber-400 text-slate-950 hover:bg-amber-300'
+            }`}
+          >
+            {activeSubModule === 'precarga-produccion' ? (
+              <>
+                <Calculator className="w-4 h-4 text-slate-950" />
+                <span>Abrir Cálculo de Bolsas</span>
+              </>
+            ) : (
+              <>
+                <FileText className="w-4 h-4 text-emerald-950" />
+                <span>Ir a Precarga de Producción</span>
+              </>
+            )}
+          </button>
 
           <button
             type="button"
@@ -532,55 +498,8 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
         </div>
       </div>
 
-      {/* Selector de Submódulo: 2 OPCIONES DISPONIBLES EN EL SECTOR:
-          1 PRECARGA DE PRODUCCION (REEMPLAZA A PRECARGA DE LOTES)
-          2 PRECARGA DE MOVIMIENTOS */}
-      <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
-        <button
-          type="button"
-          id="btn-tab-precarga-produccion"
-          onClick={() => setActiveSubModule('precarga-produccion')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-            activeSubModule === 'precarga-produccion' || activeSubModule === 'calculo-bolsas'
-              ? 'bg-white text-[#00603C] shadow-md font-black border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-          }`}
-        >
-          <FileText className="w-4 h-4 text-emerald-700" />
-          <span>1. Precarga de Producción ({draftLotes.length} Lote{draftLotes.length !== 1 ? 's' : ''})</span>
-        </button>
-
-        <button
-          type="button"
-          id="btn-tab-precarga-movimientos"
-          onClick={() => setActiveSubModule('precarga-movimientos')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-            activeSubModule === 'precarga-movimientos'
-              ? 'bg-blue-600 text-white shadow-md font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-          }`}
-        >
-          <ArrowRightLeft className="w-4 h-4 text-blue-200" />
-          <span>2. Precarga de Movimientos</span>
-          <span className={`text-[10px] font-mono font-black px-2 py-0.5 rounded-full ${
-            activeSubModule === 'precarga-movimientos' ? 'bg-blue-800 text-white' : 'bg-blue-100 text-blue-900'
-          }`}>
-            Stock &rarr; MOV
-          </span>
-        </button>
-      </div>
-
       {/* RENDERIZADO SEGÚN SUBMÓDULO ACTIVO */}
-      {activeSubModule === 'precarga-movimientos' ? (
-        <PrecargaMovimientosTab
-          lotes={lotes}
-          ordenesProceso={ordenesProceso}
-          clientes={clientes}
-          especies={especies}
-          onSaveLote={onSaveLote}
-          onNavigateToLotes={onNavigateToLotes}
-        />
-      ) : activeSubModule === 'calculo-bolsas' ? (
+      {activeSubModule === 'calculo-bolsas' ? (
         <CalculoBolsasDashboard
           siloStocks={siloStocks}
           movimientosSilo={movimientosSilo}
@@ -735,84 +654,39 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             </div>
           </div>
 
+          {/* Ubicación Galpón */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-            {/* Orden de Proceso (Filtrada por "En Curso") */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Orden de Proceso / Movimiento (En Curso) *
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                Ala de Acopio *
               </label>
               <select
-                value={ordenProcesoId}
-                onChange={(e) => setOrdenProcesoId(e.target.value)}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-[#00603C]"
-                required
+                value={ala}
+                onChange={(e) => setAla(e.target.value)}
+                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
               >
-                <option value="">-- Seleccionar Orden de Proceso --</option>
-                {ordenesEnCurso.map(op => (
-                  <option key={op.id} value={op.id}>
-                    OP #{op.id} — {op.cliente} ({op.especie} {op.variedad || ''}) [{op.tipoOrden || 'PROCESO'}]
-                  </option>
-                ))}
+                <option value="A">Ala A</option>
+                <option value="B">Ala B</option>
+                <option value="C">Ala C</option>
+                <option value="D">Ala D</option>
               </select>
-
-              {ordenesEnCurso.length === 0 && (
-                <p className="text-[10px] text-amber-700 mt-1 italic">
-                  No hay Órdenes de Proceso con estado "En Curso". Puede crear una en la pestaña Órdenes de Proceso.
-                </p>
-              )}
             </div>
 
-            {/* Ubicación Galpón */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Ala de Acopio *
-                </label>
-                <select
-                  value={ala}
-                  onChange={(e) => setAla(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
-                >
-                  <option value="A">Ala A</option>
-                  <option value="B">Ala B</option>
-                  <option value="C">Ala C</option>
-                  <option value="D">Ala D</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Sector de Acopio *
-                </label>
-                <select
-                  value={sector}
-                  onChange={(e) => setSector(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
-                >
-                  <option value="1">Sector 1</option>
-                  <option value="2">Sector 2</option>
-                  <option value="3">Sector 3</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                Sector de Acopio *
+              </label>
+              <select
+                value={sector}
+                onChange={(e) => setSector(e.target.value)}
+                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
+              >
+                <option value="1">Sector 1</option>
+                <option value="2">Sector 2</option>
+                <option value="3">Sector 3</option>
+              </select>
             </div>
           </div>
-
-          {/* Si la OP seleccionada es de Movimiento */}
-          {ordenProcesoId && ordenesEnCurso.find(o => o.id === ordenProcesoId)?.tipoOrden === 'MOVIMIENTO' && (
-            <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200">
-              <label className="block text-xs font-bold text-amber-900 uppercase tracking-wider mb-1">
-                N° de Orden de Movimiento *
-              </label>
-              <input
-                type="text"
-                value={numeroOrdenMovimiento}
-                onChange={(e) => setNumeroOrdenMovimiento(e.target.value)}
-                placeholder="Indique el número de orden de movimiento..."
-                className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-xs font-bold text-slate-900"
-                required
-              />
-            </div>
-          )}
         </div>
 
         {/* Sección 2: Alta Múltiple de Lotes (Generación rápida) */}

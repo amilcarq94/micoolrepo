@@ -8,8 +8,9 @@ import { SiloId, MovimientoSilo } from '../types';
 export type CategoriaEnvaseKg = 25 | 40 | 800;
 
 export interface CalculoBolsasInput {
-  silosSeleccionados: (SiloId | 'TODOS')[];
-  siloStocks: Record<SiloId, number>;
+  silosSeleccionados?: (SiloId | 'TODOS')[];
+  siloStocks?: Record<SiloId, number>;
+  kilosBrutosManuales?: number;
   porcentajeMerma: number; // 0 - 100
   pesoEnvaseKg: CategoriaEnvaseKg;
 }
@@ -69,20 +70,23 @@ export interface ResumenConsolidadoIngresos {
  * 3. Cantidad de Lotes = Cantidad de Bolsas / 35
  */
 export function calcularBolsasYLotes(input: CalculoBolsasInput): CalculoBolsasResult {
-  const { silosSeleccionados, siloStocks, porcentajeMerma, pesoEnvaseKg } = input;
+  const { silosSeleccionados, siloStocks, kilosBrutosManuales, porcentajeMerma, pesoEnvaseKg } = input;
 
-  // 1. Determinar Silos a Sumar
+  // 1. Determinar Kilos Brutos a Procesar
   let stockBruto = 0;
-  const isTodos = silosSeleccionados.includes('TODOS') || silosSeleccionados.length === 0;
-
-  if (isTodos) {
-    stockBruto = Object.values(siloStocks).reduce((acc, curr) => acc + (Number(curr) || 0), 0);
-  } else {
-    silosSeleccionados.forEach((silo) => {
-      if (silo !== 'TODOS' && siloStocks[silo]) {
-        stockBruto += Number(siloStocks[silo]) || 0;
-      }
-    });
+  if (typeof kilosBrutosManuales === 'number') {
+    stockBruto = Math.max(0, kilosBrutosManuales);
+  } else if (silosSeleccionados && siloStocks) {
+    const isTodos = silosSeleccionados.includes('TODOS') || silosSeleccionados.length === 0;
+    if (isTodos) {
+      stockBruto = Object.values(siloStocks).reduce((acc, curr) => acc + (Number(curr) || 0), 0);
+    } else {
+      silosSeleccionados.forEach((silo) => {
+        if (silo !== 'TODOS' && siloStocks[silo]) {
+          stockBruto += Number(siloStocks[silo]) || 0;
+        }
+      });
+    }
   }
 
   // 2. Descuento por Merma

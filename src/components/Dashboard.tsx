@@ -34,8 +34,11 @@ import {
   CheckCircle2,
   AlertCircle,
   DollarSign,
-  Coins
+  Coins,
+  Download,
+  Loader2
 } from 'lucide-react';
+import { exportElementAsJpg } from '../utils/exportImage';
 import {
   ResponsiveContainer,
   PieChart,
@@ -67,7 +70,7 @@ interface DashboardProps {
   siloStocks?: Record<SiloId, number>;
   movimientosSilo?: MovimientoSilo[];
   onUpdateThresholds: (newThresholds: Record<string, number>, email: string) => void;
-  onNavigate: (view: 'lotes' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'ingreso-silos' | 'modo-planta') => void;
+  onNavigate: (view: 'lotes' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'modo-planta') => void;
   onSelectLote?: (lote: Lote) => void;
 }
 
@@ -168,7 +171,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [subView, setSubView] = useState<'operativo' | 'analitico' | 'configuracion'>('operativo');
   const [searchQuery, setSearchQuery] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isExportingJpgSilos, setIsExportingJpgSilos] = useState(false);
   const searchContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const handleDescargarJpgSilosSummary = async () => {
+    setIsExportingJpgSilos(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      await exportElementAsJpg('dashboard-silos-summary', `Estado_Actual_Silos_Planta_${today}.jpg`, {
+        backgroundColor: '#ffffff',
+        quality: 0.95,
+        pixelRatio: 2,
+      });
+    } catch (err) {
+      console.error('Error al exportar silos summary a JPG:', err);
+    } finally {
+      setIsExportingJpgSilos(false);
+    }
+  };
 
   // Close dropdown when clicking outside
   React.useEffect(() => {
@@ -763,11 +783,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* KPI 2: Stock Actual en Silos (Ingreso - Egreso) */}
         <div 
           id="kpi-stock-silos" 
-          onClick={() => onNavigate('ingreso-silos')}
-          className="bg-gradient-to-br from-amber-50/80 to-white p-5 rounded-2xl border border-amber-200/80 shadow-md hover:shadow-lg transition-all duration-300 relative overflow-hidden flex flex-col justify-between cursor-pointer group"
+          className="bg-gradient-to-br from-amber-50/80 to-white p-5 rounded-2xl border border-amber-200/80 shadow-md relative overflow-hidden flex flex-col justify-between"
         >
           <div className="flex justify-between items-start mb-3">
-            <div className="p-2 bg-amber-100 text-amber-800 rounded-xl group-hover:scale-105 transition-transform">
+            <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
               <Warehouse className="w-5 h-5" />
             </div>
             <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider bg-amber-200/60 px-2 py-0.5 rounded-full">
@@ -876,11 +895,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <button
-            onClick={() => onNavigate('ingreso-silos')}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#00603C] hover:bg-[#004D30] text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer shrink-0"
+            type="button"
+            id="btn-descargar-jpg-silos-summary"
+            onClick={handleDescargarJpgSilosSummary}
+            disabled={isExportingJpgSilos}
+            className="no-export flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-amber-400 to-[#C9922E] hover:from-amber-300 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs transition shadow-sm border border-amber-300 disabled:opacity-50 cursor-pointer"
+            title="Descargar este resumen de Silos en formato JPG de alta resolución"
           >
-            <span>Gestión Completa de Silos</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            {isExportingJpgSilos ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                <span>Generando JPG...</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 text-slate-950" />
+                <span>Descargar JPG</span>
+              </>
+            )}
           </button>
         </div>
 
@@ -921,13 +953,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
             return (
               <div 
                 key={siloId}
-                onClick={() => onNavigate('ingreso-silos')}
-                className={`p-4 rounded-xl border transition-all cursor-pointer hover:shadow-md flex flex-col justify-between gap-3 ${
+                className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 ${
                   isFullAlert 
-                    ? 'bg-red-50/60 border-red-200 hover:border-red-300' 
+                    ? 'bg-red-50/60 border-red-200' 
                     : stockSiloKg > 0 
-                      ? 'bg-amber-50/30 border-amber-200/60 hover:border-amber-300' 
-                      : 'bg-gray-50/50 border-gray-200/60 hover:border-gray-300'
+                      ? 'bg-amber-50/30 border-amber-200/60' 
+                      : 'bg-gray-50/50 border-gray-200/60'
                 }`}
               >
                 <div>

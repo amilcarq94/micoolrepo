@@ -928,7 +928,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                     <span>Base de Datos de Variedades (Especies_DB × Clientes_DB)</span>
                   </h4>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Catálogo oficial de variedades disponibles para la <strong className="text-slate-700">Precarga de Lotes</strong> e <strong className="text-slate-700">Ingreso a Silos</strong>.
+                    Catálogo oficial de variedades disponibles para la <strong className="text-slate-700">Precarga de Lotes</strong> y gestión de stocks.
                   </p>
                 </div>
 

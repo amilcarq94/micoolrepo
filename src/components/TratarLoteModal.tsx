@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Lote, OrdenProceso, TratamientoType, MovimientoStock } from '../types';
+import { Lote, TratamientoType, MovimientoStock } from '../types';
 import { formatNumberArg, formatKg } from '../utils/formatters';
 import {
   FlaskConical,
@@ -25,13 +25,11 @@ interface TratarLoteModalProps {
   isOpen?: boolean;
   lote: Lote;
   allLotes: Lote[];
-  ordenesProceso?: OrdenProceso[];
   onClose: () => void;
   onConfirmTratamiento: (params: {
     loteOriginal: Lote;
     bolsasACurar: number;
     fechaTratamiento: string;
-    numeroOrdenMovimiento: string;
     productoQuimico: string;
     loteExistenteT?: Lote;
   }) => void;
@@ -41,7 +39,6 @@ export const TratarLoteModal: React.FC<TratarLoteModalProps> = ({
   isOpen = true,
   lote,
   allLotes,
-  ordenesProceso = [],
   onClose,
   onConfirmTratamiento
 }) => {
@@ -49,7 +46,6 @@ export const TratarLoteModal: React.FC<TratarLoteModalProps> = ({
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [fechaTratamiento, setFechaTratamiento] = useState<string>(todayStr);
   const [bolsasACurar, setBolsasACurar] = useState<number>(lote.stockBolsas || 1);
-  const [numeroOrdenMovimiento, setNumeroOrdenMovimiento] = useState<string>('');
   const [productoQuimico, setProductoQuimico] = useState<string>(lote.producto || 'Maxim Quattro + Inoculante');
   const [errorMsg, setErrorMsg] = useState<string>('');
 
@@ -62,11 +58,6 @@ export const TratarLoteModal: React.FC<TratarLoteModalProps> = ({
        l.loteNro?.toUpperCase() === `${lote.loteNro}-T`.toUpperCase())
     );
   }, [allLotes, lote, nombreLoteT]);
-
-  // 3. Órdenes de movimiento disponibles
-  const ordenesMovimientoDisponibles = useMemo(() => {
-    return ordenesProceso.filter(o => o.tipoOrden === 'MOVIMIENTO');
-  }, [ordenesProceso]);
 
   // Cálculos derivados
   const maxBolsas = lote.stockBolsas || 0;
@@ -84,11 +75,6 @@ export const TratarLoteModal: React.FC<TratarLoteModalProps> = ({
       return;
     }
 
-    if (!numeroOrdenMovimiento.trim()) {
-      setErrorMsg('Debe ingresar o seleccionar la Orden de Movimiento vinculada.');
-      return;
-    }
-
     if (bolsasACurar <= 0 || bolsasACurar > maxBolsas) {
       setErrorMsg(`La cantidad de bolsas a curar debe ser entre 1 y ${maxBolsas}.`);
       return;
@@ -98,7 +84,6 @@ export const TratarLoteModal: React.FC<TratarLoteModalProps> = ({
       loteOriginal: lote,
       bolsasACurar,
       fechaTratamiento,
-      numeroOrdenMovimiento: numeroOrdenMovimiento.trim(),
       productoQuimico: productoQuimico.trim(),
       loteExistenteT
     });
@@ -212,47 +197,6 @@ export const TratarLoteModal: React.FC<TratarLoteModalProps> = ({
                 required
                 className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-[#00603C]"
               />
-            </div>
-
-            {/* Orden de Movimiento */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1">
-                <FileText className="w-3.5 h-3.5 text-[#C9922E]" />
-                Orden de Movimiento *
-              </label>
-
-              {ordenesMovimientoDisponibles.length > 0 ? (
-                <div className="space-y-1.5">
-                  <select
-                    value={numeroOrdenMovimiento}
-                    onChange={(e) => setNumeroOrdenMovimiento(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-[#00603C]"
-                  >
-                    <option value="">-- Seleccionar o escribir --</option>
-                    {ordenesMovimientoDisponibles.map(om => (
-                      <option key={om.id} value={om.numeroOrdenMovimiento || `OM-${om.numeroOrden}`}>
-                        {om.numeroOrdenMovimiento || `OM-${om.numeroOrden}`} - {om.tratamiento || 'Movimiento Semilla'}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="O escribir N° Orden Movimiento..."
-                    value={numeroOrdenMovimiento}
-                    onChange={(e) => setNumeroOrdenMovimiento(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800"
-                  />
-                </div>
-              ) : (
-                <input
-                  type="text"
-                  placeholder="Ej: OM-2026-001"
-                  value={numeroOrdenMovimiento}
-                  onChange={(e) => setNumeroOrdenMovimiento(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-[#00603C]"
-                />
-              )}
             </div>
 
           </div>

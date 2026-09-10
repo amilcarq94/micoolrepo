@@ -105,7 +105,7 @@ export const FichaBolsonA4: React.FC<FichaBolsonA4Props> = ({
           </div>
           <div>
             <h3 className="font-bold text-sm tracking-wide uppercase text-white">
-              Ficha Técnica de Lote — Hoja A4
+              Ficha Técnica — Hoja A4
             </h3>
             <p className="text-xs text-slate-300">
               Formato oficial A4 (210mm x 297mm) con tablas a borde completo y control de stock.
