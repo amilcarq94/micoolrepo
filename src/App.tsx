@@ -1669,18 +1669,37 @@ export default function App() {
       const docRef = doc(db, 'movimientos_silo', movimiento.id);
       await setDoc(docRef, mapMovimientoSiloToFirestore(movimiento));
 
-      // Si viene vinculado a un bolsón de campo, descontar el stock del bolsón en Firestore
-      const targetBolson = (movimiento.bolsonOrigenId ? bolsones.find(b => b.id === movimiento.bolsonOrigenId) : null)
-        || (movimiento.bolsonOrigenNro ? bolsones.find(b => b.numeroBolson.toLowerCase().trim() === movimiento.bolsonOrigenNro.toLowerCase().trim()) : null);
+      // Si viene vinculado a uno o varios bolsones de campo, descontar el stock en Firestore
+      if (movimiento.origenes && movimiento.origenes.length > 0) {
+        const kgPorOrigen = Math.round(movimiento.kg / movimiento.origenes.length);
+        for (const orig of movimiento.origenes) {
+          if (!orig.bolsonOrigenNro) continue;
+          const target = bolsones.find(
+            b => b.numeroBolson.toLowerCase().trim() === orig.bolsonOrigenNro.toLowerCase().trim()
+          );
+          if (target) {
+            const nuevasSalidas = (target.salidasKg || 0) + kgPorOrigen;
+            const nuevoStock = Math.max(0, (target.entradasKg || 0) - nuevasSalidas);
+            const bolsonRef = doc(db, 'bolsones_campo', target.id);
+            await updateDoc(bolsonRef, {
+              salidasKg: nuevasSalidas,
+              stockKg: nuevoStock
+            });
+          }
+        }
+      } else {
+        const targetBolson = (movimiento.bolsonOrigenId ? bolsones.find(b => b.id === movimiento.bolsonOrigenId) : null)
+          || (movimiento.bolsonOrigenNro ? bolsones.find(b => b.numeroBolson.toLowerCase().trim() === movimiento.bolsonOrigenNro.toLowerCase().trim()) : null);
 
-      if (targetBolson) {
-        const nuevasSalidas = (targetBolson.salidasKg || 0) + movimiento.kg;
-        const nuevoStock = Math.max(0, (targetBolson.entradasKg || 0) - nuevasSalidas);
-        const bolsonRef = doc(db, 'bolsones_campo', targetBolson.id);
-        await updateDoc(bolsonRef, {
-          salidasKg: nuevasSalidas,
-          stockKg: nuevoStock
-        });
+        if (targetBolson) {
+          const nuevasSalidas = (targetBolson.salidasKg || 0) + movimiento.kg;
+          const nuevoStock = Math.max(0, (targetBolson.entradasKg || 0) - nuevasSalidas);
+          const bolsonRef = doc(db, 'bolsones_campo', targetBolson.id);
+          await updateDoc(bolsonRef, {
+            salidasKg: nuevasSalidas,
+            stockKg: nuevoStock
+          });
+        }
       }
 
       showNotification(`Ingreso de ${movimiento.kg.toLocaleString('es-AR')} kg a ${movimiento.siloId} registrado correctamente.`);
@@ -1785,11 +1804,13 @@ export default function App() {
     }
   };
 
-  const handlePonerSiloEnCero = async (siloId: SiloId, fecha: string, usuario: string, motivo: string, kgAnterior: number) => {
+  const handlePonerSiloEnCero = async (siloId: SiloId, fecha: string, usuario: string, motivo: string, kgAnterior: number, hora?: string) => {
     try {
       const timestamp = new Date().toISOString();
-      // Si el motivo es "Limpieza Varietal", usamos EGRESO_MANUAL con flag descontaminacionVarietal
-      const esLimpiezaVarietal = motivo === 'Limpieza Varietal';
+      const now = new Date();
+      const horaEfectiva = hora || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      // Si el motivo es "Limpieza Varietal" o "Descontaminación Varietal", usamos EGRESO_MANUAL con flag descontaminacionVarietal
+      const esLimpiezaVarietal = motivo === 'Limpieza Varietal' || motivo === 'Descontaminación Varietal' || motivo === 'Descontaminación varietal';
       const tipoMovimiento: TipoMovimientoSilo = esLimpiezaVarietal ? 'EGRESO_MANUAL' : 'AJUSTE_ZERO';
       const id = `${esLimpiezaVarietal ? 'CLEAN' : 'ZERO'}-${siloId.replace(/\s+/g, '')}-${Date.now()}`;
 
@@ -1797,6 +1818,7 @@ export default function App() {
         id,
         siloId,
         fecha,
+        hora: horaEfectiva,
         tipo: tipoMovimiento,
         kg: kgAnterior,
         usuario: usuario,
@@ -1823,7 +1845,7 @@ export default function App() {
         await handleUpdateSiloEstadoManual(siloId, 'VACIO_LIMPIO');
       }
 
-      showNotification(`${siloId} puesto en 0 kg correctamente (${esLimpiezaVarietal ? 'Limpieza Varietal' : 'Ajuste a Cero'}).`);
+      showNotification(`${siloId} puesto en 0 kg correctamente (${esLimpiezaVarietal ? 'Descontaminación Varietal' : 'Ajuste a Cero'}).`);
     } catch (e) {
       console.error('Error al poner silo en cero:', e);
       showNotification('Error al poner el silo en cero.');

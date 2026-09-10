@@ -32,6 +32,7 @@ import {
   RotateCcw,
   History,
   Calendar,
+  Clock,
   ArrowUpRight,
   ArrowDownRight,
   AlertTriangle,
@@ -50,6 +51,7 @@ import {
   Building2,
   Scale,
   Layers,
+  Tag,
   Sparkles,
   ChevronDown,
   RefreshCw,
@@ -95,13 +97,19 @@ interface IngresoSilosViewProps {
   onRegistrarSalidaManualSilo?: (movimiento: MovimientoSilo) => void;
   onSaveChofer?: (chofer: Chofer) => void;
   onImportChoferes?: (choferes: Chofer[]) => void;
-  onPonerEnCero?: (siloId: SiloId, fecha: string, usuario: string, motivo: string, kgAnterior: number) => void;
-  onPonerSiloEnCero?: (siloId: SiloId, fecha: string, usuario: string, motivo: string, kgAnterior: number) => void;
+  onPonerEnCero?: (siloId: SiloId, fecha: string, usuario: string, motivo: string, kgAnterior: number, hora?: string) => void;
+  onPonerSiloEnCero?: (siloId: SiloId, fecha: string, usuario: string, motivo: string, kgAnterior: number, hora?: string) => void;
   onEditarMovimientoSilo?: (movimiento: MovimientoSilo) => void;
   onEliminarMovimientoSilo?: (movimientoId: string, siloId: SiloId) => void;
   onReordenarMovimientosSilo?: (movimientos: MovimientoSilo[]) => void;
   onNavigateToPlanta?: () => void;
   lotes?: Lote[];
+}
+
+export interface OrigenCargaSiloItem {
+  id: string;
+  bolsonOrigenNro: string;
+  depositoOrigen: string;
 }
 
 export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
@@ -110,6 +118,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
   especies = ['Soja', 'Trigo', 'Maíz', 'Arveja', 'Cebada', 'Girasol'],
   plantaConfig,
   currentUser,
+  bolsones = [],
   silosEstadoManual = SILOS_ESTADO_DEFAULT,
   onUpdateSiloEstadoManual,
   onRegistrarIngreso,
@@ -139,10 +148,22 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
   const [fraseConfirmacionEliminar, setFraseConfirmacionEliminar] = useState('');
   const [errorFraseEliminar, setErrorFraseEliminar] = useState('');
 
-  // Salida manual de kilos
+  // Helper para obtener hora actual en formato HH:MM
+  const getHoraActual = () => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  // Salida manual de kilos (con fecha y hora)
   const [kgSalidaManual, setKgSalidaManual] = useState<number | ''>('');
   const [motivoSalidaManual, setMotivoSalidaManual] = useState<MotivoSalidaManual>('Consumo a granel');
   const [observacionesSalidaManual, setObservacionesSalidaManual] = useState('');
+  const [fechaSalidaManual, setFechaSalidaManual] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [horaSalidaManual, setHoraSalidaManual] = useState<string>(getHoraActual);
+
+  // Descontaminación varietal (con fecha y hora)
+  const [fechaDescontaminacion, setFechaDescontaminacion] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [horaDescontaminacion, setHoraDescontaminacion] = useState<string>(getHoraActual);
 
   // Notificaciones de usuario
   const [formSuccess, setFormSuccess] = useState<string>('');
@@ -153,7 +174,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
   const [historicoBusqueda, setHistoricoBusqueda] = useState<string>('');
 
   // =========================================================================
-  // ESTADO DE CARGA MANUAL A SILO
+  // ESTADO DE CARGA MANUAL A SILO (con fecha y hora)
   // =========================================================================
   const [kilosManual, setKilosManual] = useState<string>('28000');
   const [humedadManual, setHumedadManual] = useState<string>('12.5');
@@ -161,8 +182,95 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
   const [variedadManual, setVariedadManual] = useState<string>('');
   const [especieManual, setEspecieManual] = useState<string>('Soja');
   const [fechaManual, setFechaManual] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [horaManual, setHoraManual] = useState<string>(getHoraActual);
   const [observacionesManual, setObservacionesManual] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Bolsa de Origen y Depósito Origen dinámicos (con botón + para cargar más de una bolsa con su depósito)
+  const [origenesCarga, setOrigenesCarga] = useState<OrigenCargaSiloItem[]>([
+    { id: 'orig-1', bolsonOrigenNro: '', depositoOrigen: 'Depósito Central' }
+  ]);
+
+  // Depósitos disponibles sugeridos
+  const depositosDisponibles = useMemo(() => {
+    const setDeps = new Set<string>([
+      'Depósito Central',
+      'Depósito Norte',
+      'Depósito Sur',
+      'Depósito Este',
+      'Depósito Oeste',
+      'Lote 20',
+      'Lote 10AB',
+    ]);
+    (bolsones || []).forEach((b) => {
+      if (b.deposito && b.deposito.trim()) setDeps.add(b.deposito.trim());
+    });
+    return Array.from(setDeps);
+  }, [bolsones]);
+
+  // Bolsas en campo sugeridas para autocompletado
+  const bolsasSugeridas = useMemo(() => {
+    return (bolsones || [])
+      .filter((b) => b.numeroBolson && b.numeroBolson.trim() !== '')
+      .map((b) => ({
+        numero: b.numeroBolson.trim(),
+        deposito: b.deposito || 'Depósito Central',
+        cliente: b.cliente || '',
+        variedad: b.variedad || '',
+      }));
+  }, [bolsones]);
+
+  const handleUpdateOrigenCarga = (idx: number, field: 'bolsonOrigenNro' | 'depositoOrigen', val: string) => {
+    setOrigenesCarga((prev) => {
+      const next = [...prev];
+      const current = { ...next[idx], [field]: val };
+
+      // Si se escribe una bolsa que coincide con un bolsón registrado, auto-completar su depósito
+      if (field === 'bolsonOrigenNro' && val.trim()) {
+        const match = (bolsones || []).find(
+          (b) => b.numeroBolson.toLowerCase().trim() === val.toLowerCase().trim()
+        );
+        if (match && match.deposito) {
+          current.depositoOrigen = match.deposito;
+        }
+      }
+
+      next[idx] = current;
+      return next;
+    });
+  };
+
+  const handleAddOrigenCarga = () => {
+    const lastDep = origenesCarga[origenesCarga.length - 1]?.depositoOrigen || 'Depósito Central';
+    setOrigenesCarga((prev) => [
+      ...prev,
+      {
+        id: `orig-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        bolsonOrigenNro: '',
+        depositoOrigen: lastDep,
+      },
+    ]);
+  };
+
+  const handleRemoveOrigenCarga = (idx: number) => {
+    if (origenesCarga.length <= 1) return;
+    setOrigenesCarga((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  // Handlers para abrir modales asegurando fecha y hora frescas
+  const handleAbrirModalDescontaminacion = () => {
+    setFechaDescontaminacion(new Date().toISOString().split('T')[0]);
+    setHoraDescontaminacion(getHoraActual());
+    setShowModalDescontaminacion(true);
+  };
+
+  const handleAbrirModalSalidaManual = () => {
+    setFechaSalidaManual(new Date().toISOString().split('T')[0]);
+    setHoraSalidaManual(getHoraActual());
+    setKgSalidaManual('');
+    setObservacionesSalidaManual('');
+    setShowModalSalidaManual(true);
+  };
 
   // Función unificada para registrar ingreso
   const handleRegistrar = onRegistrarIngresoSilo || onRegistrarIngreso;
@@ -307,16 +415,37 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
 
     setIsSubmitting(true);
     try {
+      const origenesValidos = origenesCarga.filter(
+        (o) => o.bolsonOrigenNro.trim() !== '' || o.depositoOrigen.trim() !== ''
+      );
+
+      const bolsasConcatenadas = origenesValidos
+        .map((o) => o.bolsonOrigenNro.trim())
+        .filter(Boolean)
+        .join(', ');
+
+      const depositosConcatenados = Array.from(
+        new Set(origenesValidos.map((o) => o.depositoOrigen.trim()).filter(Boolean))
+      ).join(', ');
+
       const nuevoMov: MovimientoSilo = {
         id: `MANUAL-${activeSilo.replace(/\s+/g, '')}-${Date.now()}`,
         siloId: activeSilo,
         fecha: fechaManual || new Date().toISOString().split('T')[0],
-        hora: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+        hora: horaManual || getHoraActual(),
         tipo: 'INGRESO',
         kg: kgNum,
         cliente: clienteManual,
         variedad: variedadManual,
         especie: especieManual || 'Soja',
+        bolsonOrigenNro: bolsasConcatenadas || undefined,
+        depositoOrigen: depositosConcatenados || undefined,
+        origenes: origenesValidos.length > 0 ? origenesValidos.map((o) => ({
+          id: o.id,
+          bolsonOrigenNro: o.bolsonOrigenNro.trim(),
+          bolsonOrigenSector: '',
+          depositoOrigen: o.depositoOrigen.trim(),
+        })) : undefined,
         humedad: humNum,
         usuario: currentUser.nombre || 'Operador',
         observaciones: observacionesManual.trim() || 'Carga manual de kilos',
@@ -333,10 +462,13 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
       }
 
       setFormSuccess(
-        `Carga manual de ${formatKg(kgNum)} kg registrada con éxito en ${activeSilo} (${clienteManual} · ${variedadManual} · ${humNum ? `${humNum}% Hum` : 'Sin humedad'}).`
+        `Carga manual de ${formatKg(kgNum)} kg registrada con éxito en ${activeSilo} (${clienteManual} · ${variedadManual} · ${humNum ? `${humNum}% Hum` : 'Sin humedad'}${bolsasConcatenadas ? ` · Bolsas: ${bolsasConcatenadas}` : ''}).`
       );
       setKilosManual('');
       setObservacionesManual('');
+      setOrigenesCarga([
+        { id: `orig-${Date.now()}`, bolsonOrigenNro: '', depositoOrigen: 'Depósito Central' }
+      ]);
     } catch (err) {
       console.error('Error al registrar carga manual a silo:', err);
       setFormError('Ocurrió un error al registrar la carga manual en la base de datos.');
@@ -350,17 +482,19 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
   // =========================================================================
   const handleConfirmarDescontaminacion = async () => {
     const stockActual = silosStocksMap[activeSilo] || 0;
-    const fechaHoy = new Date().toISOString().split('T')[0];
+    const fechaEfectiva = fechaDescontaminacion || new Date().toISOString().split('T')[0];
+    const horaEfectiva = horaDescontaminacion || getHoraActual();
     const usuario = currentUser.nombre || 'Operador';
 
     try {
       if (handlePonerEnCeroUnified) {
         await handlePonerEnCeroUnified(
           activeSilo,
-          fechaHoy,
+          fechaEfectiva,
           usuario,
           'Descontaminación Varietal',
-          stockActual
+          stockActual,
+          horaEfectiva
         );
       }
 
@@ -375,7 +509,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
       setShowModalDescontaminacion(false);
 
       setFormSuccess(
-        `Descontaminación varietal completada en ${activeSilo}. Silo en 0 kg (Vacío Limpio) y listo para una nueva carga.`
+        `Descontaminación varietal completada en ${activeSilo} (${fechaEfectiva} a las ${horaEfectiva} hs). Silo en 0 kg (Vacío Limpio) y listo para una nueva carga.`
       );
     } catch (err) {
       console.error('Error en descontaminación varietal:', err);
@@ -401,11 +535,14 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
       return;
     }
 
+    const fechaEfectiva = fechaSalidaManual || new Date().toISOString().split('T')[0];
+    const horaEfectiva = horaSalidaManual || getHoraActual();
+
     const movSalida: MovimientoSilo = {
       id: `SALIDA-MANUAL-${activeSilo.replace(/\s+/g, '')}-${Date.now()}`,
       siloId: activeSilo,
-      fecha: new Date().toISOString().split('T')[0],
-      hora: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+      fecha: fechaEfectiva,
+      hora: horaEfectiva,
       tipo: 'EGRESO_MANUAL',
       kg: kgSalida,
       motivoManual: motivoSalidaManual,
@@ -420,7 +557,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
     setShowModalSalidaManual(false);
     setKgSalidaManual('');
     setObservacionesSalidaManual('');
-    setFormSuccess(`Salida manual de ${formatKg(kgSalida)} kg registrada correctamente en ${activeSilo}.`);
+    setFormSuccess(`Salida manual de ${formatKg(kgSalida)} kg registrada correctamente en ${activeSilo} (${fechaEfectiva} a las ${horaEfectiva} hs).`);
   };
 
   // =========================================================================
@@ -494,6 +631,8 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
       Cliente: m.cliente || '',
       Variedad: m.variedad || '',
       Especie: m.especie || '',
+      'Bolsa de Origen': m.bolsonOrigenNro || (m.origenes ? m.origenes.map(o => o.bolsonOrigenNro).filter(Boolean).join(', ') : ''),
+      'Depósito Origen': m.depositoOrigen || (m.origenes ? m.origenes.map(o => o.depositoOrigen).filter(Boolean).join(', ') : ''),
       Usuario: m.usuario || '',
       Observaciones: m.observaciones || m.motivoManual || m.motivoZero || ''
     }));
@@ -762,7 +901,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
             movimientosSilo={movimientosSilo}
             estadoManual={silosEstadoManual[activeSilo]}
             onUpdateEstado={(nuevo) => onUpdateSiloEstadoManual?.(activeSilo, nuevo)}
-            onDescontaminarVarietal={() => setShowModalDescontaminacion(true)}
+            onDescontaminarVarietal={handleAbrirModalDescontaminacion}
             onVerFichaCompleta={() => setFichaModalSilo(activeSilo)}
             onEliminarMovimiento={(mov) => {
               setMovimientoAEliminar(mov);
@@ -845,7 +984,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
             <button
               type="button"
               id="btn-descontaminacion-varietal"
-              onClick={() => setShowModalDescontaminacion(true)}
+              onClick={handleAbrirModalDescontaminacion}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 cursor-pointer border border-amber-500/50"
               title="Borra la información cargada en el silo en este momento para permitir una nueva carga inmediata"
             >
@@ -857,7 +996,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
             <button
               type="button"
               id="btn-salida-manual-silo"
-              onClick={() => setShowModalSalidaManual(true)}
+              onClick={handleAbrirModalSalidaManual}
               className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition border border-slate-300 cursor-pointer"
             >
               <ArrowDownRight className="w-4 h-4 text-slate-600" />
@@ -1088,8 +1227,137 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
             </div>
           </div>
 
-          {/* Fila Secundaria: Especie, Fecha y Observaciones */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+          {/* ===================================================================== */}
+          {/* CELDAS: BOLSA DE ORIGEN Y DEPÓSITO ORIGEN CON BOTÓN [+]               */}
+          {/* ===================================================================== */}
+          <div className="bg-slate-50/90 border border-slate-200 rounded-2xl p-3.5 sm:p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-emerald-100/80 text-emerald-800 rounded-lg shrink-0">
+                  <Layers className="w-4 h-4 text-[#00603C]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <label className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-800">
+                      Bolsa de Origen & Depósito Origen
+                    </label>
+                    {origenesCarga.length > 1 && (
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 rounded-full text-[10px] font-mono font-bold border border-emerald-300">
+                        {origenesCarga.length} bolsas
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    Indique la bolsa o bolsón de procedencia y su depósito de acopio correspondiente.
+                  </span>
+                </div>
+              </div>
+
+              {/* BOTÓN "+" PARA CARGAR MÁS DE UNA BOLSA DE ORIGEN CON SU DEPÓSITO */}
+              <button
+                type="button"
+                id="btn-add-origen-carga-silo"
+                onClick={handleAddOrigenCarga}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#00603C] hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition shadow-xs hover:shadow active:scale-95 cursor-pointer"
+                title="Cargar otra bolsa de origen y su depósito correspondiente"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Agregar Bolsa & Depósito</span>
+              </button>
+            </div>
+
+            {/* Datalists para autocompletado rápido */}
+            <datalist id="datalist-bolsas-silo">
+              {bolsasSugeridas.map((b, bi) => (
+                <option key={`opt-bolsa-${b.numero}-${bi}`} value={b.numero}>
+                  {b.cliente ? `${b.cliente} · ` : ''}{b.deposito}
+                </option>
+              ))}
+            </datalist>
+
+            <datalist id="datalist-depositos-silo">
+              {depositosDisponibles.map((dep) => (
+                <option key={`opt-dep-${dep}`} value={dep} />
+              ))}
+            </datalist>
+
+            {/* Filas de celdas Bolsa de Origen + Depósito Origen */}
+            <div className="space-y-2.5">
+              {origenesCarga.map((orig, oIdx) => (
+                <div
+                  key={orig.id}
+                  className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 p-2.5 sm:p-3 bg-white rounded-xl border border-slate-200/90 shadow-2xs hover:border-emerald-300 transition"
+                >
+                  {/* Indicador numérico */}
+                  <div className="flex items-center justify-between sm:justify-start gap-1.5 shrink-0">
+                    <span className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] font-bold font-mono flex items-center justify-center border border-emerald-200">
+                      #{oIdx + 1}
+                    </span>
+                    <span className="text-[11px] font-mono font-bold uppercase text-slate-600 sm:hidden">
+                      Bolsa #{oIdx + 1}
+                    </span>
+                  </div>
+
+                  {/* Celda: Bolsa de Origen */}
+                  <div className="flex-1 space-y-1">
+                    <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                      <Tag className="w-3 h-3 text-emerald-700" />
+                      Bolsa de Origen {origenesCarga.length > 1 ? `#${oIdx + 1}` : ''}
+                    </label>
+                    <input
+                      type="text"
+                      list="datalist-bolsas-silo"
+                      placeholder="ej: Bolsa 124, S29.2, B-101..."
+                      value={orig.bolsonOrigenNro}
+                      onChange={(e) => handleUpdateOrigenCarga(oIdx, 'bolsonOrigenNro', e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-[#00603C] focus:ring-2 focus:ring-emerald-500/20 outline-none transition"
+                    />
+                  </div>
+
+                  {/* Celda: Depósito Origen */}
+                  <div className="flex-1 space-y-1">
+                    <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                      <Warehouse className="w-3 h-3 text-slate-600" />
+                      Depósito Origen {origenesCarga.length > 1 ? `#${oIdx + 1}` : ''}
+                    </label>
+                    <input
+                      type="text"
+                      list="datalist-depositos-silo"
+                      placeholder="ej: Depósito Central, Lote 20..."
+                      value={orig.depositoOrigen}
+                      onChange={(e) => handleUpdateOrigenCarga(oIdx, 'depositoOrigen', e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-[#00603C] focus:ring-2 focus:ring-emerald-500/20 outline-none transition"
+                    />
+                  </div>
+
+                  {/* Botones de acción por fila: [+] y Quitar */}
+                  <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0 pt-1 sm:pt-4">
+                    <button
+                      type="button"
+                      onClick={handleAddOrigenCarga}
+                      className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl transition cursor-pointer"
+                      title="Agregar otra bolsa de origen y su depósito correspondiente"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                    {origenesCarga.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveOrigenCarga(oIdx)}
+                        className="p-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl transition cursor-pointer"
+                        title="Quitar esta bolsa de origen"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Fila Secundaria: Especie, Fecha, Hora y Observaciones */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 border-t border-slate-100">
             <div>
               <label className="block text-[11px] font-mono font-bold uppercase text-slate-600 mb-1">
                 Especie
@@ -1110,15 +1378,39 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
             <div>
               <label className="block text-[11px] font-mono font-bold uppercase text-slate-600 mb-1 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                Fecha de Carga
+                Fecha de Carga *
               </label>
               <input
                 type="date"
                 value={fechaManual}
                 onChange={(e) => setFechaManual(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none focus:border-[#00603C]"
                 required
               />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-mono font-bold uppercase text-slate-600 mb-1 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                Hora de Carga *
+              </label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="time"
+                  value={horaManual}
+                  onChange={(e) => setHoraManual(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none focus:border-[#00603C]"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setHoraManual(getHoraActual())}
+                  title="Establecer hora actual"
+                  className="px-2.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded-lg transition shrink-0 cursor-pointer"
+                >
+                  Ahora
+                </button>
+              </div>
             </div>
 
             <div>
@@ -1127,7 +1419,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
               </label>
               <input
                 type="text"
-                placeholder="ej: Carta de porte, lote origen o notas..."
+                placeholder="ej: Carta de porte, lote origen..."
                 value={observacionesManual}
                 onChange={(e) => setObservacionesManual(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-sans text-slate-800 outline-none"
@@ -1147,7 +1439,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setShowModalDescontaminacion(true)}
+                onClick={handleAbrirModalDescontaminacion}
                 className="px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
@@ -1238,6 +1530,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
                 <th className="py-3 px-3.5 text-center">Humedad</th>
                 <th className="py-3 px-3.5">Cliente</th>
                 <th className="py-3 px-3.5">Variedad / Grano</th>
+                <th className="py-3 px-3.5">Origen (Bolsa / Depósito)</th>
                 <th className="py-3 px-3.5">Responsable</th>
                 <th className="py-3 px-3.5">Observaciones</th>
                 <th className="py-3 px-3.5 text-center">Acciones</th>
@@ -1246,7 +1539,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
             <tbody className="divide-y divide-slate-100 bg-white">
               {movimientosHistoricosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-8 text-center text-slate-400 italic">
+                  <td colSpan={11} className="py-8 text-center text-slate-400 italic">
                     No se encontraron movimientos registrados para el filtro aplicado.
                   </td>
                 </tr>
@@ -1328,6 +1621,45 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
                             <strong className="text-emerald-950 font-bold">{m.variedad}</strong>{' '}
                             <span className="text-[10px] text-slate-500">({m.especie || 'Soja'})</span>
                           </span>
+                        ) : (
+                          <span className="text-slate-400 italic">—</span>
+                        )}
+                      </td>
+
+                      {/* Origen (Bolsa / Depósito) */}
+                      <td className="py-3 px-3.5 text-xs">
+                        {m.origenes && m.origenes.length > 0 ? (
+                          <div className="space-y-1">
+                            {m.origenes.map((orig, oi) => (
+                              <div key={orig.id || oi} className="flex flex-wrap items-center gap-1 text-[11px] font-mono">
+                                <span className="font-bold text-emerald-900 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-flex items-center gap-0.5">
+                                  <Tag className="w-2.5 h-2.5 text-emerald-700" />
+                                  {orig.bolsonOrigenNro || 'S/N'}
+                                </span>
+                                {orig.depositoOrigen && (
+                                  <span className="text-slate-500 text-[10px] inline-flex items-center gap-0.5">
+                                    <Warehouse className="w-2.5 h-2.5 text-slate-400" />
+                                    {orig.depositoOrigen}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : m.bolsonOrigenNro || m.depositoOrigen ? (
+                          <div className="text-[11px] font-mono space-y-0.5">
+                            {m.bolsonOrigenNro && (
+                              <div className="font-bold text-emerald-900 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-flex items-center gap-1">
+                                <Tag className="w-2.5 h-2.5 text-emerald-700" />
+                                <span>{m.bolsonOrigenNro}</span>
+                              </div>
+                            )}
+                            {m.depositoOrigen && (
+                              <div className="text-[10px] text-slate-500 flex items-center gap-1">
+                                <Warehouse className="w-2.5 h-2.5 text-slate-400" />
+                                <span>{m.depositoOrigen}</span>
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-slate-400 italic">—</span>
                         )}
@@ -1433,6 +1765,52 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
                 </div>
               </div>
 
+              {/* Fecha y Hora de Descontaminación Varietal */}
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-amber-700" />
+                  Fecha y Hora de la Descontaminación
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-slate-500" />
+                      Fecha *
+                    </label>
+                    <input
+                      type="date"
+                      value={fechaDescontaminacion}
+                      onChange={(e) => setFechaDescontaminacion(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl font-mono text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-amber-500/20"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-slate-500" />
+                      Hora *
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="time"
+                        value={horaDescontaminacion}
+                        onChange={(e) => setHoraDescontaminacion(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl font-mono text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-amber-500/20"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setHoraDescontaminacion(getHoraActual())}
+                        className="px-2 py-2 bg-amber-200 hover:bg-amber-300 text-amber-900 text-[10px] font-bold rounded-lg transition shrink-0 cursor-pointer"
+                        title="Usar hora actual"
+                      >
+                        Ahora
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Botones de Confirmación */}
               <div className="pt-2 flex justify-end gap-3">
                 <button
@@ -1479,6 +1857,46 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
             </div>
 
             <form onSubmit={handleRegistrarSalidaSubmit} className="p-6 space-y-4 text-xs">
+              {/* Fecha y Hora de la Salida */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wide text-[10px] flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    Fecha de Salida *
+                  </label>
+                  <input
+                    type="date"
+                    value={fechaSalidaManual}
+                    onChange={(e) => setFechaSalidaManual(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wide text-[10px] flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    Hora de Salida *
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="time"
+                      value={horaSalidaManual}
+                      onChange={(e) => setHoraSalidaManual(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setHoraSalidaManual(getHoraActual())}
+                      className="px-2 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-[10px] font-bold rounded-lg transition shrink-0 cursor-pointer"
+                      title="Usar hora actual"
+                    >
+                      Ahora
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-slate-700 font-bold mb-1">
                   Cantidad de Kilos a Descontar (kg) *
@@ -1691,8 +2109,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
       {/* ===================================================================== */}
       {fichaModalSilo && (
         <FichaTecnicaSiloModal
-          siloId={fichaModalSilo}
-          fichas={fichasSeisSilos}
+          ficha={(fichasSeisSilos.find((f) => f.siloId === fichaModalSilo) as any) || null}
           onClose={() => setFichaModalSilo(null)}
         />
       )}

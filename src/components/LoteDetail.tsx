@@ -8,7 +8,7 @@ import { Lote, MovimientoStock, EstadoLoteType, AuditLogEntry, MovimientoSilo, O
 import { getLoteAuditoria } from '../utils/audit';
 import { formatNumberArg, formatKg, formatBolsas, formatDateStr } from '../utils/formatters';
 import { LogoSiloLoose } from './Logo';
-import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, Calendar, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer } from 'lucide-react';
 import { QrCodeModal } from './QrCodeModal';
 import { BarcodeLabelModal } from './BarcodeLabelModal';
 import { FichaTecnicaOficialCard } from './FichaTecnicaOficialCard';
@@ -76,6 +76,10 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   // Modal para registrar Salida Manual de Stock
   const [showSalidaManualModal, setShowSalidaManualModal] = useState(false);
   const [fechaSalidaManual, setFechaSalidaManual] = useState(() => new Date().toISOString().split('T')[0]);
+  const [horaSalidaManual, setHoraSalidaManual] = useState(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  });
   const [bolsasSalidaManual, setBolsasSalidaManual] = useState<number>(1);
   const [kgBolsaSalidaManual, setKgBolsaSalidaManual] = useState<number>(lote.kgPorBolsa || 40);
   const [remitoClienteSalidaManual, setRemitoClienteSalidaManual] = useState('');
@@ -260,6 +264,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
     const nuevoMovimientoSalida: MovimientoStock = {
       id: `MOV-SAL-${Date.now()}`,
       fecha: fechaSalidaManual,
+      hora: horaSalidaManual || new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
       tipo: 'Salida manual',
       cantidadBolsas: bolsasSalidaManual,
       kgPorBolsa: factorKg,
@@ -288,6 +293,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
     const list: Array<{
       id: string;
       fecha: string;
+      hora?: string;
       tipoSalidaCategoria: 'movimiento' | 'despacho' | 'manual';
       tipoSalidaLabel: string;
       cantidadBolsas: number;
@@ -381,6 +387,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
       list.push({
         id: mov.id,
         fecha: mov.fecha,
+        hora: mov.hora,
         tipoSalidaCategoria: cat,
         tipoSalidaLabel: label,
         cantidadBolsas: Math.abs(mov.cantidadBolsas),
@@ -1384,7 +1391,12 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                                   <tr key={sal.id} className="hover:bg-amber-50/40 transition">
                                     {/* Fecha */}
                                     <td className="py-2.5 px-3 font-semibold text-gray-700 whitespace-nowrap">
-                                      {formatDateStr(sal.fecha)}
+                                      <span>{formatDateStr(sal.fecha)}</span>
+                                      {sal.hora && (
+                                        <span className="block text-[10px] text-gray-400 font-mono font-normal">
+                                          {sal.hora} hs
+                                        </span>
+                                      )}
                                     </td>
 
                                     {/* Salida (por movimiento o despacho) */}
@@ -1819,18 +1831,34 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
             )}
 
             <form onSubmit={handleGuardarSalidaManual} className="space-y-4 text-xs text-left">
-              {/* Fecha */}
-              <div>
-                <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
-                  Fecha de la Salida *
-                </label>
-                <input
-                  type="date"
-                  value={fechaSalidaManual}
-                  onChange={(e) => setFechaSalidaManual(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 font-medium"
-                  required
-                />
+              {/* Fecha y Hora */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px] flex items-center gap-1">
+                    <Calendar className="w-3 h-3 text-gray-400" />
+                    Fecha de la Salida *
+                  </label>
+                  <input
+                    type="date"
+                    value={fechaSalidaManual}
+                    onChange={(e) => setFechaSalidaManual(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 font-medium"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px] flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-gray-400" />
+                    Hora de la Salida *
+                  </label>
+                  <input
+                    type="time"
+                    value={horaSalidaManual}
+                    onChange={(e) => setHoraSalidaManual(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 font-medium font-mono"
+                    required
+                  />
+                </div>
               </div>
 
               {/* Cantidades */}

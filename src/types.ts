@@ -263,6 +263,7 @@ export interface OfflinePendingIngreso {
 export interface MovimientoStock {
   id: string;
   fecha: string; // Formato YYYY-MM-DD
+  hora?: string; // Formato HH:MM
   tipo: 'Entrada' | 'Salida' | 'Salida por movimiento' | 'Salida por movimientos' | 'Salida por despacho' | 'Salida manual' | 'Entrada por Excel' | 'Entrada manual' | 'Ajuste' | 'Pasado a Consumo' | string;
   cantidadBolsas: number;
   kgPorBolsa: number;
@@ -441,7 +442,7 @@ export interface MovimientoSilo {
   bolsonOrigenNro?: string;
   bolsonOrigenSector?: string;
   depositoOrigen?: string;
-  origenes?: Array<{ id?: string; bolsonOrigenNro: string; bolsonOrigenSector: string; depositoOrigen: string }>;
+  origenes?: Array<{ id?: string; bolsonOrigenNro: string; bolsonOrigenSector?: string; depositoOrigen: string }>;
   humedad?: number; // Porcentaje de humedad manual (% ej: 13.5)
   comprobanteCartaPorte?: string; // N° de comprobante / Carta de Porte / Remito
   remito?: string;
