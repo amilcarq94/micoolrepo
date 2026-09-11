@@ -7,7 +7,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Lote, EstadoLoteType, TipoLoteType, MovimientoSilo, LoteLimitsConfig, PlantaConfig, AuditLogEntry, CategoriaType, CATEGORIAS_OFICIALES } from '../types';
 import { formatNumberArg, formatKg, formatDateStr } from '../utils/formatters';
-import { Search, Grid, List, Plus, Filter, Eye, Edit2, ArrowDownRight, Trash2, QrCode, Download, Lock, ShieldAlert, KeyRound, X, Flame, Warehouse, Layers, Info, SlidersHorizontal, Check, Pin, RotateCcw, ChevronDown, Package, Sprout, Clock, CheckCircle2, BarChart2, Building2, Tag, FlaskConical, PieChart, Wheat, Sliders, PackagePlus, RefreshCw, FileText, ListFilter, Copy, Scale, FileSpreadsheet, Calendar, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Maximize2, Minimize2, ArrowRightLeft } from 'lucide-react';
+import { Search, Grid, List, Plus, Filter, Eye, Edit2, Edit3, ArrowDownRight, Trash2, QrCode, Download, Lock, ShieldAlert, KeyRound, X, Flame, Warehouse, Layers, Info, SlidersHorizontal, Check, Pin, RotateCcw, ChevronDown, Package, Sprout, Clock, CheckCircle2, BarChart2, Building2, Tag, FlaskConical, PieChart, Wheat, Sliders, PackagePlus, RefreshCw, FileText, ListFilter, Copy, Scale, FileSpreadsheet, Calendar, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Maximize2, Minimize2, ArrowRightLeft } from 'lucide-react';
 import { BatchPrintIdBolsasModal } from './BatchPrintIdBolsasModal';
 import { BatchPrintLotesModal } from './BatchPrintLotesModal';
 import { ImprimirFichaTecnica } from './ImprimirFichaTecnica';
@@ -18,6 +18,7 @@ import { MovRealizadoModal } from './MovRealizadoModal';
 import { BulkEditLotesModal } from './BulkEditLotesModal';
 import { TratarLoteModal } from './TratarLoteModal';
 import { MovimientoLoteModal, MovimientoLoteResult } from './MovimientoLoteModal';
+import { EditarMovimientoModal, EditarMovimientoResult } from './EditarMovimientoModal';
 import { PaginationControls } from './PaginationControls';
 import { SiloId, BolsonCampo } from '../types';
 import { LotesUnifiedDashboard } from './LotesUnifiedDashboard';
@@ -63,6 +64,20 @@ export function getLoteProductoTratamiento(l: Lote): string | null {
     if (chemical) return chemical.trim();
   }
   return null;
+}
+
+/**
+ * Determina si un lote es o fue originado por un movimiento
+ */
+export function isMovimientoLote(l: Lote): boolean {
+  if (!l) return false;
+  return Boolean(
+    l.esMovimiento ||
+    l.tipoMovimiento ||
+    l.loteOrigen ||
+    (l.loteNro && (l.loteNro.toUpperCase().includes('MOV') || l.loteNro.toUpperCase().includes('-FIN') || l.loteNro.toUpperCase().includes('-TRA'))) ||
+    l.fechaRealizacionMovimiento
+  );
 }
 
 interface MultiSelectDropdownProps {
@@ -287,6 +302,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
   const [loteToMovRealizado, setLoteToMovRealizado] = useState<Lote | null>(null);
   const [lotesToMovRealizadoBatch, setLotesToMovRealizadoBatch] = useState<Lote[]>([]);
   const [loteToMovimiento, setLoteToMovimiento] = useState<Lote | null>(null);
+  const [loteToEditMovimiento, setLoteToEditMovimiento] = useState<Lote | null>(null);
 
   const handleRefreshInfo = async () => {
     setIsRefreshing(true);
@@ -523,6 +539,30 @@ export const LotesView: React.FC<LotesViewProps> = ({
     } catch (err) {
       console.error('Error al registrar movimiento de lote:', err);
       alert('Error al registrar el movimiento.');
+    }
+  };
+
+  const handleConfirmEditMovimiento = async (result: EditarMovimientoResult) => {
+    try {
+      const { loteActualizado, loteOrigenActualizado, resumenCambios } = result;
+      const lotesToSave: Lote[] = [loteActualizado];
+      if (loteOrigenActualizado) {
+        lotesToSave.push(loteOrigenActualizado);
+      }
+
+      if (onBatchUpdateLotes) {
+        await onBatchUpdateLotes(lotesToSave);
+      } else if (onSaveLote) {
+        for (const l of lotesToSave) {
+          await onSaveLote(l);
+        }
+      }
+
+      setRefreshToast(`Movimiento actualizado: ${resumenCambios}`);
+      setTimeout(() => setRefreshToast(null), 4000);
+    } catch (err) {
+      console.error('Error al actualizar movimiento de lote:', err);
+      alert('Error al guardar las modificaciones del movimiento.');
     }
   };
   // Constante para almacenamiento persistente del filtro fijado
@@ -4186,6 +4226,20 @@ export const LotesView: React.FC<LotesViewProps> = ({
                           <span className="text-[10px]">Movimiento</span>
                         </button>
 
+                        {/* Botón Editor de Movimiento (cuando el lote fue originado por movimiento o posee movimiento) */}
+                        {isMovimientoLote(l) && (
+                          <button
+                            type="button"
+                            id={`btn-editar-movimiento-${l.id}`}
+                            onClick={() => setLoteToEditMovimiento(l)}
+                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-300 rounded-lg text-xs font-black shadow-2xs transition cursor-pointer flex items-center gap-1 shrink-0"
+                            title="Editor de Movimiento: Modificar cantidad de bolsas pasadas, movimiento y tratamiento utilizado"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-purple-700 stroke-[2.5]" />
+                            <span className="text-[10px]">Editar Mov.</span>
+                          </button>
+                        )}
+
                         {/* Botón Editor de Lote (Modificar manualmente cantidad de bolsas de alta, tipo, categoría, nombre) */}
                         <button
                           type="button"
@@ -4235,6 +4289,20 @@ export const LotesView: React.FC<LotesViewProps> = ({
                                 >
                                   <ArrowRightLeft className="w-4 h-4 text-indigo-600 stroke-[2.5]" />
                                   <span className="font-bold">Movimiento</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  id={`btn-dropdown-editar-movimiento-${l.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveActionDropdownId(null);
+                                    setLoteToEditMovimiento(l);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-purple-900 bg-purple-50/80 hover:bg-purple-100 transition text-left cursor-pointer border-b border-purple-100"
+                                  title="Editar cantidad de bolsas pasadas, movimiento y tratamiento utilizado"
+                                >
+                                  <Edit3 className="w-4 h-4 text-purple-700 stroke-[2.5]" />
+                                  <span className="font-bold">Editor de Movimiento</span>
                                 </button>
                                 <button
                                   type="button"
@@ -4632,6 +4700,19 @@ export const LotesView: React.FC<LotesViewProps> = ({
           currentUser={currentUser}
           onClose={() => setLoteToMovimiento(null)}
           onConfirmMovimiento={handleConfirmMovimiento}
+        />
+      )}
+
+      {/* Modal Editor de Movimiento (modificar bolsas pasadas, movimiento y tratamiento utilizado) */}
+      {loteToEditMovimiento && (
+        <EditarMovimientoModal
+          isOpen={Boolean(loteToEditMovimiento)}
+          lote={loteToEditMovimiento}
+          allLotes={lotes}
+          plantaConfig={plantaConfig}
+          currentUser={currentUser}
+          onClose={() => setLoteToEditMovimiento(null)}
+          onConfirmEditMovimiento={handleConfirmEditMovimiento}
         />
       )}
 
