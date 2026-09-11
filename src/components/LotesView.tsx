@@ -7,7 +7,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Lote, EstadoLoteType, TipoLoteType, MovimientoSilo, LoteLimitsConfig, PlantaConfig, AuditLogEntry, CategoriaType, CATEGORIAS_OFICIALES } from '../types';
 import { formatNumberArg, formatKg, formatDateStr } from '../utils/formatters';
-import { Search, Grid, List, Plus, Filter, Eye, Edit2, ArrowDownRight, Trash2, QrCode, Download, Lock, ShieldAlert, KeyRound, X, Flame, Warehouse, Layers, Info, SlidersHorizontal, Check, Pin, RotateCcw, ChevronDown, Package, Sprout, Clock, CheckCircle2, BarChart2, Building2, Tag, FlaskConical, PieChart, Wheat, Sliders, PackagePlus, RefreshCw, FileText, ListFilter, Copy, Scale, FileSpreadsheet, Calendar, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Maximize2, Minimize2 } from 'lucide-react';
+import { Search, Grid, List, Plus, Filter, Eye, Edit2, ArrowDownRight, Trash2, QrCode, Download, Lock, ShieldAlert, KeyRound, X, Flame, Warehouse, Layers, Info, SlidersHorizontal, Check, Pin, RotateCcw, ChevronDown, Package, Sprout, Clock, CheckCircle2, BarChart2, Building2, Tag, FlaskConical, PieChart, Wheat, Sliders, PackagePlus, RefreshCw, FileText, ListFilter, Copy, Scale, FileSpreadsheet, Calendar, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Maximize2, Minimize2, ArrowRightLeft } from 'lucide-react';
 import { BatchPrintIdBolsasModal } from './BatchPrintIdBolsasModal';
 import { BatchPrintLotesModal } from './BatchPrintLotesModal';
 import { ImprimirFichaTecnica } from './ImprimirFichaTecnica';
@@ -17,10 +17,53 @@ import { ProcesarLoteModal } from './ProcesarLoteModal';
 import { MovRealizadoModal } from './MovRealizadoModal';
 import { BulkEditLotesModal } from './BulkEditLotesModal';
 import { TratarLoteModal } from './TratarLoteModal';
+import { MovimientoLoteModal, MovimientoLoteResult } from './MovimientoLoteModal';
 import { PaginationControls } from './PaginationControls';
 import { SiloId, BolsonCampo } from '../types';
 import { LotesUnifiedDashboard } from './LotesUnifiedDashboard';
 import { ConfirmationDialog } from './ConfirmationDialog';
+
+/**
+ * Determina de forma unificada si un lote posee tratamiento químico aplicado
+ */
+export function isLoteTratado(l: Lote): boolean {
+  if (!l) return false;
+  const trats = Array.isArray(l.tratamiento) ? l.tratamiento : (l.tratamiento ? [l.tratamiento] : []);
+  const hasTratadoKeyword = trats.some(t => {
+    if (!t) return false;
+    const s = String(t).trim().toLowerCase();
+    return s === 'tratado' || (s !== '' && s !== 'sin tratar' && s !== 'sin tratamiento' && s !== 'ninguno');
+  });
+
+  const hasMovTratado = Boolean(l.tipoMovimiento && l.tipoMovimiento.toLowerCase().includes('tratado'));
+  const hasProductoAplicado = Boolean(
+    l.productoAplicado &&
+    l.productoAplicado.trim() !== '' &&
+    l.productoAplicado !== 'Sin Tratamiento' &&
+    l.productoAplicado !== 'Ninguno'
+  );
+  const hasProducto = Boolean(
+    l.producto &&
+    !['Ninguno', 'Sin Tratamiento', 'FINAL', 'INTERMEDIO', 'Sin Tratar', ''].includes(l.producto.trim())
+  );
+
+  return hasTratadoKeyword || hasMovTratado || hasProductoAplicado || hasProducto;
+}
+
+export function getLoteProductoTratamiento(l: Lote): string | null {
+  if (!isLoteTratado(l)) return null;
+  if (l.productoAplicado && l.productoAplicado.trim() && l.productoAplicado !== 'Sin Tratamiento' && l.productoAplicado !== 'Ninguno') {
+    return l.productoAplicado.trim();
+  }
+  if (l.producto && !['Ninguno', 'Sin Tratamiento', 'FINAL', 'INTERMEDIO', 'Sin Tratar', ''].includes(l.producto.trim())) {
+    return l.producto.trim();
+  }
+  if (Array.isArray(l.tratamiento)) {
+    const chemical = l.tratamiento.find(t => t && !['Sin Tratar', 'Tratado', 'Sin Tratamiento', 'Ninguno'].includes(t.trim()));
+    if (chemical) return chemical.trim();
+  }
+  return null;
+}
 
 interface MultiSelectDropdownProps {
   id: string;
@@ -243,6 +286,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
   const [refreshToast, setRefreshToast] = useState<string | null>(null);
   const [loteToMovRealizado, setLoteToMovRealizado] = useState<Lote | null>(null);
   const [lotesToMovRealizadoBatch, setLotesToMovRealizadoBatch] = useState<Lote[]>([]);
+  const [loteToMovimiento, setLoteToMovimiento] = useState<Lote | null>(null);
 
   const handleRefreshInfo = async () => {
     setIsRefreshing(true);
@@ -462,6 +506,25 @@ export const LotesView: React.FC<LotesViewProps> = ({
       }
     }
   };
+
+  const handleConfirmMovimiento = async (result: MovimientoLoteResult) => {
+    try {
+      const { loteOrigenActualizado, nuevoLoteGenerado, tipoMovimientoLabel } = result;
+
+      if (onBatchUpdateLotes) {
+        await onBatchUpdateLotes([loteOrigenActualizado, nuevoLoteGenerado]);
+      } else if (onSaveLote) {
+        await onSaveLote(loteOrigenActualizado);
+        await onSaveLote(nuevoLoteGenerado);
+      }
+
+      setRefreshToast(`Movimiento "${tipoMovimientoLabel}" registrado: Nuevo Lote ${nuevoLoteGenerado.loteNro} generado con éxito.`);
+      setTimeout(() => setRefreshToast(null), 4000);
+    } catch (err) {
+      console.error('Error al registrar movimiento de lote:', err);
+      alert('Error al registrar el movimiento.');
+    }
+  };
   // Constante para almacenamiento persistente del filtro fijado
   const PIN_STORAGE_KEY = 'agroabacus_pinned_lotes_filters_v2';
 
@@ -592,6 +655,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
     | 'variedad'
     | 'loteId'
     | 'tipo'
+    | 'tratamiento'
     | 'categoria'
     | 'envase'
     | 'bolsas'
@@ -618,6 +682,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
     variedad: true,
     loteId: true,
     tipo: true,
+    tratamiento: true,
     categoria: true,
     envase: true,
     bolsas: true,
@@ -1177,6 +1242,10 @@ export const LotesView: React.FC<LotesViewProps> = ({
         case 'tipo':
           aVal = (a.tipo || '').toLowerCase();
           bVal = (b.tipo || '').toLowerCase();
+          break;
+        case 'tratamiento':
+          aVal = isLoteTratado(a) ? 'tratado' : 'sin tratar';
+          bVal = isLoteTratado(b) ? 'tratado' : 'sin tratar';
           break;
         case 'categoria':
           aVal = (a.categoria || '').toLowerCase();
@@ -2798,6 +2867,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                             variedad: true,
                             loteId: true,
                             tipo: true,
+                            tratamiento: true,
                             categoria: true,
                             envase: true,
                             bolsas: true,
@@ -2817,6 +2887,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                           { key: 'variedad', label: 'Variedad' },
                           { key: 'loteId', label: 'Lote' },
                           { key: 'tipo', label: 'Tipo de lote' },
+                          { key: 'tratamiento', label: 'Tratamiento' },
                           { key: 'categoria', label: 'Categoría' },
                           { key: 'envase', label: 'Envase' },
                           { key: 'bolsas', label: 'Cantidad de bolsas' },
@@ -3766,7 +3837,25 @@ export const LotesView: React.FC<LotesViewProps> = ({
                     </th>
                   )}
 
-                  {/* 7. Categoría */}
+                  {/* 7. Tratamiento */}
+                  {visibleColumns.tratamiento && (
+                    <th
+                      onClick={() => handleToggleSort('tratamiento')}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'tratamiento' ? 'text-amber-300' : 'text-white'}`}
+                      title={`Ordenar por Tratamiento (${sortField === 'tratamiento' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                    >
+                      <div className="inline-flex items-center gap-1">
+                        <span>Tratamiento</span>
+                        {sortField === 'tratamiento' ? (
+                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* 8. Categoría */}
                   {visibleColumns.categoria && (
                     <th
                       onClick={() => handleToggleSort('categoria')}
@@ -3986,7 +4075,37 @@ export const LotesView: React.FC<LotesViewProps> = ({
                       </td>
                     )}
 
-                    {/* 7. Categoría */}
+                    {/* 7. Tratamiento (Etiqueta Roja para Tratado / Etiqueta Gris para Sin Tratar) */}
+                    {visibleColumns.tratamiento && (
+                      <td className="py-2 px-2.5 whitespace-nowrap">
+                        {isLoteTratado(l) ? (
+                          <div className="inline-flex flex-col items-start gap-0.5">
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white border border-red-700 shadow-2xs transition"
+                              title={getLoteProductoTratamiento(l) ? `Tratado con: ${getLoteProductoTratamiento(l)}` : 'Lote Tratado'}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                              <span>TRATADO</span>
+                            </span>
+                            {getLoteProductoTratamiento(l) && (
+                              <span className="text-[10px] text-slate-600 font-bold truncate max-w-[130px] px-0.5" title={getLoteProductoTratamiento(l)!}>
+                                {getLoteProductoTratamiento(l)}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black uppercase tracking-wider bg-slate-200 hover:bg-slate-300 text-slate-700 border border-slate-300 shadow-2xs transition"
+                            title="Lote Sin Tratar"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                            <span>SIN TRATAR</span>
+                          </span>
+                        )}
+                      </td>
+                    )}
+
+                    {/* 8. Categoría */}
                     {visibleColumns.categoria && (
                       <td className="py-2 px-2.5 text-xs font-semibold text-slate-800 whitespace-nowrap">
                         {l.categoria || 'Original'}
@@ -4055,6 +4174,18 @@ export const LotesView: React.FC<LotesViewProps> = ({
                           )
                         )}
 
+                        {/* Botón Movimiento de Lote */}
+                        <button
+                          type="button"
+                          id={`btn-movimiento-lote-${l.id}`}
+                          onClick={() => setLoteToMovimiento(l)}
+                          className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-300 rounded-lg text-xs font-black shadow-2xs transition cursor-pointer flex items-center gap-1 shrink-0"
+                          title="Movimiento de lote: Intermedio a Final, Intermedio a Final Tratado o Final a Final Tratado"
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-700 stroke-[2.5]" />
+                          <span className="text-[10px]">Movimiento</span>
+                        </button>
+
                         {/* Botón Editor de Lote (Modificar manualmente cantidad de bolsas de alta, tipo, categoría, nombre) */}
                         <button
                           type="button"
@@ -4093,6 +4224,18 @@ export const LotesView: React.FC<LotesViewProps> = ({
                                 }}
                               />
                               <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in-50 zoom-in-95 text-left">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveActionDropdownId(null);
+                                    setLoteToMovimiento(l);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-indigo-900 bg-indigo-50/70 hover:bg-indigo-100 transition text-left cursor-pointer border-b border-indigo-100"
+                                >
+                                  <ArrowRightLeft className="w-4 h-4 text-indigo-600 stroke-[2.5]" />
+                                  <span className="font-bold">Movimiento</span>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -4476,6 +4619,19 @@ export const LotesView: React.FC<LotesViewProps> = ({
             setLoteToTratar(null);
             handleConfirmTratamiento(params);
           }}
+        />
+      )}
+
+      {/* Modal Movimiento de Lote (1- Intermedio a Final, 2- Intermedio a Final Tratado, 3- Final a Final Tratado) */}
+      {loteToMovimiento && (
+        <MovimientoLoteModal
+          isOpen={Boolean(loteToMovimiento)}
+          lote={loteToMovimiento}
+          allLotes={lotes}
+          plantaConfig={plantaConfig}
+          currentUser={currentUser}
+          onClose={() => setLoteToMovimiento(null)}
+          onConfirmMovimiento={handleConfirmMovimiento}
         />
       )}
 
