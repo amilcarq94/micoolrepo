@@ -21,6 +21,8 @@ import {
   Info,
   Scale,
   ArrowRight,
+  Warehouse,
+  MapPin,
 } from 'lucide-react';
 
 export type TipoMovimientoId = 'intermedio_a_final' | 'intermedio_a_final_tratado' | 'final_a_final_tratado';
@@ -117,6 +119,16 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
   });
 
   const [observaciones, setObservaciones] = useState<string>('');
+  
+  // Ubicación / Sector de Acopio para el lote nuevo generado
+  const [alaNuevoLote, setAlaNuevoLote] = useState<string>(() => lote.ala || 'A');
+  const [sectorNuevoLote, setSectorNuevoLote] = useState<string>(() => lote.sector || '1');
+  const [ubicacionAcopioNuevoLote, setUbicacionAcopioNuevoLote] = useState<string>(() => {
+    if (lote.ubicacionAcopio && lote.ubicacionAcopio.trim()) return lote.ubicacionAcopio.trim();
+    if (lote.ala && lote.sector) return `Ala ${lote.ala} · Sector ${lote.sector}`;
+    return lote.ala ? `Ala ${lote.ala}` : 'Ala A · Sector 1';
+  });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
@@ -127,6 +139,25 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
     setErrorMsg('');
   };
 
+  const handleSelectAla = (newAla: string) => {
+    setAlaNuevoLote(newAla);
+    const sec = sectorNuevoLote || '1';
+    setUbicacionAcopioNuevoLote(`Ala ${newAla} · Sector ${sec}`);
+  };
+
+  const handleSelectSector = (newSector: string) => {
+    setSectorNuevoLote(newSector);
+    const al = alaNuevoLote || 'A';
+    setUbicacionAcopioNuevoLote(`Ala ${al} · Sector ${newSector}`);
+  };
+
+  const handleCopyUbicacionOrigen = () => {
+    const origUbi = lote.ubicacionAcopio || (lote.ala && lote.sector ? `Ala ${lote.ala} · Sector ${lote.sector}` : (lote.ala ? `Ala ${lote.ala}` : ''));
+    setAlaNuevoLote(lote.ala || '');
+    setSectorNuevoLote(lote.sector || '');
+    setUbicacionAcopioNuevoLote(origUbi);
+  };
+
   // Restablecer valores cuando cambia el lote
   useEffect(() => {
     if (lote) {
@@ -135,6 +166,13 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
       setCantidadBolsas(lote.stockBolsas > 0 ? lote.stockBolsas : 1);
       setNombreNuevoLote(suggestMovementLoteName(lote.loteNro, initType));
       setFechaMovimiento(new Date().toISOString().split('T')[0]);
+      setAlaNuevoLote(lote.ala || 'A');
+      setSectorNuevoLote(lote.sector || '1');
+      setUbicacionAcopioNuevoLote(
+        lote.ubicacionAcopio && lote.ubicacionAcopio.trim()
+          ? lote.ubicacionAcopio.trim()
+          : (lote.ala && lote.sector ? `Ala ${lote.ala} · Sector ${lote.sector}` : (lote.ala ? `Ala ${lote.ala}` : 'Ala A · Sector 1'))
+      );
       setObservaciones('');
       setErrorMsg('');
     }
@@ -282,13 +320,19 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
         detalle: `Alta de ${bolsasEgresadas} bolsas por movimiento (${tipoMovimientoLabel}) desde lote de origen ${lote.loteNro}`,
       };
 
+      const ubiFinalNuevoLote =
+        ubicacionAcopioNuevoLote.trim() ||
+        (alaNuevoLote && sectorNuevoLote
+          ? `Ala ${alaNuevoLote} · Sector ${sectorNuevoLote}`
+          : (alaNuevoLote ? `Ala ${alaNuevoLote}` : ''));
+
       const auditNuevoLote = {
         id: `AUD-MOV-ALTA-${Date.now()}`,
         fechaHora: new Date().toISOString(),
         tipo: 'Creación',
         usuario: currentUser.nombre,
-        descripcion: `Lote ${nombreNuevoLote.trim()} generado por movimiento (${tipoMovimientoLabel}) desde lote ${lote.loteNro}.`,
-        detalles: `Alta: ${bolsasEgresadas} bolsas (${formatKg(kgNuevoLote)} kg). Tratamiento: ${requiereTratamiento ? `Tratado (${productoFinal})` : 'Sin Tratar'}. Fecha movimiento: ${fechaMovimiento}.`,
+        descripcion: `Lote ${nombreNuevoLote.trim()} generado por movimiento (${tipoMovimientoLabel}) desde lote ${lote.loteNro}. Ubicación: ${ubiFinalNuevoLote || 'Sin asignar'}.`,
+        detalles: `Alta: ${bolsasEgresadas} bolsas (${formatKg(kgNuevoLote)} kg). Tratamiento: ${requiereTratamiento ? `Tratado (${productoFinal})` : 'Sin Tratar'}. Ubicación: ${ubiFinalNuevoLote || 'Sin asignar'}. Fecha movimiento: ${fechaMovimiento}.`,
       };
 
       const nuevoLoteGenerado: Lote = {
@@ -316,9 +360,9 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
         esMovimiento: true,
         tipoMovimiento: tipoMovimientoLabel,
         loteOrigen: lote.loteNro || lote.id,
-        ala: lote.ala || 'A',
-        sector: lote.sector || '1',
-        ubicacionAcopio: lote.ubicacionAcopio || (lote.ala && lote.sector ? `Ala ${lote.ala} · Sector ${lote.sector}` : ''),
+        ala: alaNuevoLote || '',
+        sector: sectorNuevoLote || '',
+        ubicacionAcopio: ubiFinalNuevoLote,
         humedad: lote.humedad,
         observaciones: observaciones.trim() || `Generado por movimiento (${tipoMovimientoLabel}) a partir de ${lote.loteNro}.`,
         historial: [movIngresoNuevoLote],
@@ -667,7 +711,130 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
             </div>
           )}
 
-          {/* 6. Observaciones (Opcional) */}
+          {/* 6. Selección de Sector de Acopio / Ubicación del Nuevo Lote Generado */}
+          <div className="p-3.5 bg-emerald-50/70 border border-emerald-300/80 rounded-xl space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-[11px] font-black uppercase tracking-wider text-emerald-950 flex items-center gap-1.5">
+                <Warehouse className="w-4 h-4 text-[#00603C]" />
+                Sector de Acopio / Ubicación del Nuevo Lote
+              </label>
+              <div className="flex items-center gap-1.5">
+                {lote.ubicacionAcopio || lote.ala ? (
+                  <button
+                    type="button"
+                    onClick={handleCopyUbicacionOrigen}
+                    className="px-2 py-0.5 bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded text-[10px] font-bold transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                    title="Asignar la misma ubicación del lote origen"
+                  >
+                    <ArrowRight className="w-3 h-3 text-[#00603C]" />
+                    Copiar de Origen ({lote.ubicacionAcopio || (lote.ala && lote.sector ? `Ala ${lote.ala} · Sec. ${lote.sector}` : `Ala ${lote.ala}`)})
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAlaNuevoLote('');
+                    setSectorNuevoLote('');
+                    setUbicacionAcopioNuevoLote('');
+                  }}
+                  className="px-2 py-0.5 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded text-[10px] font-medium transition cursor-pointer"
+                >
+                  Limpiar
+                </button>
+              </div>
+            </div>
+
+            {/* Input de texto para Ubicación / Sector de Acopio */}
+            <div>
+              <div className="relative">
+                <input
+                  type="text"
+                  id="input-ubicacion-nuevo-lote"
+                  value={ubicacionAcopioNuevoLote}
+                  onChange={(e) => setUbicacionAcopioNuevoLote(e.target.value)}
+                  placeholder="Ej: Ala A · Sector 1, Acopio Central, Galpón 2..."
+                  className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-xl text-slate-900 font-bold text-xs focus:ring-2 focus:ring-[#00603C] focus:border-[#00603C] transition shadow-2xs"
+                />
+              </div>
+              <span className="text-[10px] text-emerald-800 mt-1 block">
+                Especifique o seleccione la celda o sector de acopio donde se almacenará el nuevo lote.
+              </span>
+            </div>
+
+            {/* Botones de Selección Rápida: Ala y Sector */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 block mb-1">
+                  Seleccionar Ala:
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {['A', 'B', 'C', 'D'].map((a) => (
+                    <button
+                      key={a}
+                      type="button"
+                      onClick={() => handleSelectAla(a)}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-black transition cursor-pointer border ${
+                        alaNuevoLote === a
+                          ? 'bg-[#00603C] text-white border-[#00603C] shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300'
+                      }`}
+                    >
+                      Ala {a}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 block mb-1">
+                  Seleccionar Sector:
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {['1', '2', '3'].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => handleSelectSector(s)}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-black transition cursor-pointer border ${
+                        sectorNuevoLote === s
+                          ? 'bg-[#00603C] text-white border-[#00603C] shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300'
+                      }`}
+                    >
+                      Sector {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Accesos rápidos de acopios comunes */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[10px] font-semibold text-slate-500">Atajos rápidos:</span>
+              {[
+                { label: 'Ala A · Sector 1', ala: 'A', sec: '1' },
+                { label: 'Ala A · Sector 2', ala: 'A', sec: '2' },
+                { label: 'Ala B · Sector 1', ala: 'B', sec: '1' },
+                { label: 'Ala B · Sector 2', ala: 'B', sec: '2' },
+                { label: 'Acopio General', ala: '', sec: '' },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => {
+                    setAlaNuevoLote(preset.ala);
+                    setSectorNuevoLote(preset.sec);
+                    setUbicacionAcopioNuevoLote(preset.label);
+                  }}
+                  className="px-2 py-0.5 bg-white hover:bg-emerald-100 text-slate-700 hover:text-emerald-900 border border-slate-200 rounded-md text-[10px] font-medium transition cursor-pointer"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 7. Observaciones (Opcional) */}
           <div>
             <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700 mb-1.5">
               Observaciones del Movimiento (opcional)
@@ -699,6 +866,10 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                 <div className="text-slate-400">Nuevo Lote ({nombreNuevoLote || '—'}):</div>
                 <div className="font-semibold text-emerald-400">
                   Alta: +{bolsasEgresadas} bolsas ({formatKg(kgNuevoLote)} kg) · {requiereTratamiento ? `Tratado (${productoTratamiento})` : 'Sin Tratar'}
+                </div>
+                <div className="text-[10px] text-emerald-300/90 mt-0.5 flex items-center gap-1 font-mono">
+                  <Warehouse className="w-3 h-3 text-amber-300 shrink-0" />
+                  <span>Ubicación: <strong>{ubicacionAcopioNuevoLote || (alaNuevoLote && sectorNuevoLote ? `Ala ${alaNuevoLote} · Sector ${sectorNuevoLote}` : 'No asignada')}</strong></span>
                 </div>
               </div>
             </div>

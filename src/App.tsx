@@ -1602,30 +1602,48 @@ export default function App() {
     }
   };
 
-  const handleUpdateLoteLocation = async (loteId: string, ala: string, sector: string) => {
+  const handleUpdateLoteLocation = async (loteId: string, ala: string, sector: string, ubicacionAcopio?: string) => {
     try {
       const loteRef = doc(db, 'lotes', loteId);
       const loteAnterior = lotes.find(l => l.id === loteId);
       const currentAuditoria = loteAnterior?.auditoria || [];
+
+      const ubiFinal = ubicacionAcopio !== undefined
+        ? ubicacionAcopio
+        : (ala && sector ? `Ala ${ala} - Sector ${sector}` : (ala ? `Ala ${ala}` : ''));
 
       const auditEntry: AuditLogEntry = {
         id: `AUD-LOC-${Date.now()}`,
         fechaHora: new Date().toISOString(),
         tipo: 'Edición',
         usuario: currentUser?.nombre || 'Jefe de Planta',
-        descripcion: `Ubicación actualizada: ALA ${ala} / SECTOR ${sector}.`,
-        detalles: loteAnterior?.ala 
-          ? `Ubicación anterior: ALA ${loteAnterior.ala} / SECTOR ${loteAnterior.sector}.`
+        descripcion: `Ubicación actualizada: ${ubiFinal || `ALA ${ala} / SECTOR ${sector}`}.`,
+        detalles: loteAnterior?.ubicacionAcopio || (loteAnterior?.ala ? `ALA ${loteAnterior.ala} / SECTOR ${loteAnterior.sector}` : '')
+          ? `Ubicación anterior: ${loteAnterior?.ubicacionAcopio || `ALA ${loteAnterior?.ala} / SECTOR ${loteAnterior?.sector}`}.`
           : 'Ubicación asignada por primera vez.'
       };
 
       await updateDoc(loteRef, {
-        ala: ala,
-        sector: sector,
+        ala: ala || '',
+        sector: sector || '',
+        ubicacionAcopio: ubiFinal,
         auditoria: [auditEntry, ...currentAuditoria]
       });
 
-      showNotification(`Ubicación de Lote ${loteId} registrada en ALA ${ala} / SECTOR ${sector}.`);
+      setLoteSeleccionado(prev => {
+        if (prev && prev.id === loteId) {
+          return {
+            ...prev,
+            ala: ala || '',
+            sector: sector || '',
+            ubicacionAcopio: ubiFinal,
+            auditoria: [auditEntry, ...currentAuditoria]
+          };
+        }
+        return prev;
+      });
+
+      showNotification(`Ubicación de Lote ${loteId} registrada: ${ubiFinal || `ALA ${ala} / SECTOR ${sector}`}.`);
     } catch (e) {
       console.error('Error al actualizar ubicación del lote:', e);
       showNotification('Error al actualizar la ubicación en el servidor.');

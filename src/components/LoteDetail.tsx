@@ -8,7 +8,7 @@ import { Lote, MovimientoStock, EstadoLoteType, AuditLogEntry, MovimientoSilo, O
 import { getLoteAuditoria } from '../utils/audit';
 import { formatNumberArg, formatKg, formatBolsas, formatDateStr } from '../utils/formatters';
 import { LogoSiloLoose } from './Logo';
-import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, Calendar, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, CheckCircle2, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer, Settings } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, Calendar, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, CheckCircle2, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer, Settings, MapPin } from 'lucide-react';
 import { QrCodeModal } from './QrCodeModal';
 import { BarcodeLabelModal } from './BarcodeLabelModal';
 import { FichaTecnicaOficialCard } from './FichaTecnicaOficialCard';
@@ -29,7 +29,7 @@ interface LoteDetailProps {
   onSaveLote?: (lote: Lote) => Promise<void> | void;
   onUpdateLoteStock: (loteId: string, nuevosMovimientos: MovimientoStock[], nuevoStockBolsas: number, nuevoStockKg: number, nuevoEstado: EstadoLoteType) => void;
   onRegistrarSalida?: (loteId: string) => void;
-  onUpdateLoteLocation?: (loteId: string, ala: string, sector: string) => Promise<void>;
+  onUpdateLoteLocation?: (loteId: string, ala: string, sector: string, ubicacionAcopio?: string) => Promise<void>;
   onUpdateLoteInase?: (loteId: string, inaseInicio: string, inaseFinal: string) => Promise<void> | void;
   onNavigateToSilos?: (siloId?: string) => void;
 }
@@ -56,8 +56,17 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   const [inaseInicioVal, setInaseInicioVal] = useState(lote.inaseInicio || '');
   const [inaseFinalVal, setInaseFinalVal] = useState(lote.inaseFinal || '');
   const [isSavingInase, setIsSavingInase] = useState(false);
+
+  // Estados de Ubicación / Sector de Acopio
   const [selectedAla, setSelectedAla] = useState(lote.ala || '');
   const [selectedSector, setSelectedSector] = useState(lote.sector || '');
+  const [ubicacionAcopioVal, setUbicacionAcopioVal] = useState(() => {
+    if (lote.ubicacionAcopio && lote.ubicacionAcopio.trim()) return lote.ubicacionAcopio.trim();
+    if (lote.ala && lote.sector) return `Ala ${lote.ala} · Sector ${lote.sector}`;
+    return lote.ala ? `Ala ${lote.ala}` : '';
+  });
+  const [isEditingLocationInline, setIsEditingLocationInline] = useState(false);
+  const [isSavingLocation, setIsSavingLocation] = useState(false);
   const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0]);
   const [tipoMov, setTipoMov] = useState<'Pasado a Consumo' | 'Ajuste de Auditoría'>('Pasado a Consumo');
   const [bolsas, setBolsas] = useState<number>(() => Math.min(10, lote.stockBolsas || 1));
@@ -123,13 +132,63 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   const [initialFichaEditMode, setInitialFichaEditMode] = useState(false);
   const [fichaModificada, setFichaModificada] = useState(false);
 
-  // Sincronizar draft e INASE si cambia el lote original de props
+  // Sincronizar draft, ubicación e INASE si cambia el lote original de props
   useEffect(() => {
     setDraftFichaLote(lote);
     setFichaModificada(false);
     setInaseInicioVal(lote.inaseInicio || '');
     setInaseFinalVal(lote.inaseFinal || '');
+    setSelectedAla(lote.ala || '');
+    setSelectedSector(lote.sector || '');
+    setUbicacionAcopioVal(
+      lote.ubicacionAcopio && lote.ubicacionAcopio.trim()
+        ? lote.ubicacionAcopio.trim()
+        : (lote.ala && lote.sector ? `Ala ${lote.ala} · Sector ${lote.sector}` : (lote.ala ? `Ala ${lote.ala}` : ''))
+    );
   }, [lote]);
+
+  // Guardar ubicación (tanto en Firestore como en estado local)
+  const handleSaveLocation = async (newAla?: string, newSector?: string, customUbi?: string) => {
+    setIsSavingLocation(true);
+    try {
+      const targetAla = newAla !== undefined ? newAla : selectedAla;
+      const targetSector = newSector !== undefined ? newSector : selectedSector;
+      const rawUbi = customUbi !== undefined ? customUbi : ubicacionAcopioVal;
+
+      const ubiFinal =
+        rawUbi.trim() ||
+        (targetAla && targetSector
+          ? `Ala ${targetAla} · Sector ${targetSector}`
+          : (targetAla ? `Ala ${targetAla}` : ''));
+
+      if (onUpdateLoteLocation) {
+        await onUpdateLoteLocation(lote.id, targetAla, targetSector, ubiFinal);
+      } else if (onSaveLote) {
+        await onSaveLote({
+          ...lote,
+          ala: targetAla,
+          sector: targetSector,
+          ubicacionAcopio: ubiFinal,
+        });
+      }
+
+      setSelectedAla(targetAla);
+      setSelectedSector(targetSector);
+      setUbicacionAcopioVal(ubiFinal);
+      setDraftFichaLote((prev: any) => ({
+        ...prev,
+        ala: targetAla,
+        sector: targetSector,
+        ubicacionAcopio: ubiFinal,
+      }));
+      setIsEditingLocationInline(false);
+      setShowLocationModal(false);
+    } catch (err) {
+      console.error('Error al guardar ubicación de lote:', err);
+    } finally {
+      setIsSavingLocation(false);
+    }
+  };
 
   const handleUpdateDraftField = (field: string, value: any) => {
     setDraftFichaLote((prev: any) => {
@@ -1208,12 +1267,172 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               <span className="font-medium text-gray-700 block mt-0.5">{formatDateStr(lote.fechaIngreso)}</span>
             </div>
 
-            <div className="border-t border-gray-50 pt-3">
-              <span className="text-[9px] uppercase tracking-wider text-gray-400 block font-bold">Sector de Acopio / Ubicación</span>
-              <span className="font-semibold text-[#00603C] text-sm block mt-0.5 flex items-center gap-1.5">
-                <Warehouse className="w-3.5 h-3.5 text-[#C9922E]" />
-                {lote.ala && lote.sector ? `ALA: ${lote.ala} / SECTOR: ${lote.sector}` : 'No asignado'}
-              </span>
+            {/* Sección: Sector de Acopio / Ubicación */}
+            <div className="border-t border-gray-100 pt-3 mt-3 bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-200/70 text-left">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[9.5px] uppercase tracking-wider text-[#00603C] font-bold flex items-center gap-1.5">
+                  <Warehouse className="w-3.5 h-3.5 text-[#C9922E]" />
+                  Sector de Acopio / Ubicación
+                </span>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingLocationInline(!isEditingLocationInline)}
+                    className="text-[10.5px] font-bold text-[#00603C] hover:text-[#004d30] underline cursor-pointer flex items-center gap-1"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    {isEditingLocationInline ? 'Cancelar' : 'Editar'}
+                  </button>
+                )}
+              </div>
+
+              {!isEditingLocationInline ? (
+                <div className="space-y-2">
+                  <div className="bg-white p-2.5 rounded-lg border border-emerald-200/70 shadow-2xs flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="text-[9px] uppercase font-bold text-gray-400 block">Ubicación Actual</span>
+                      <span className="font-sans font-black text-sm text-[#00603C] flex items-center gap-1.5 mt-0.5 truncate">
+                        <MapPin className="w-3.5 h-3.5 text-[#00603C] shrink-0" />
+                        {lote.ubicacionAcopio || (lote.ala && lote.sector ? `ALA: ${lote.ala} / SECTOR: ${lote.sector}` : (lote.ala ? `ALA: ${lote.ala}` : 'No asignado'))}
+                      </span>
+                    </div>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => setShowLocationModal(true)}
+                        className="px-2 py-1 bg-emerald-100/80 hover:bg-emerald-200 text-[#00603C] text-[10px] font-black rounded-md transition cursor-pointer shrink-0"
+                        title="Abrir selector de celdas"
+                      >
+                        Selector Celdas
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 bg-white p-3 rounded-lg border border-emerald-300 shadow-2xs">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-700 mb-1">
+                      Texto de Ubicación / Acopio
+                    </label>
+                    <input
+                      type="text"
+                      id="input-inline-ubicacion-acopio"
+                      value={ubicacionAcopioVal}
+                      onChange={(e) => setUbicacionAcopioVal(e.target.value)}
+                      placeholder="Ej: Ala A · Sector 1, Galpón 2..."
+                      className="w-full px-2.5 py-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-[#00603C] focus:border-[#00603C]"
+                    />
+                  </div>
+
+                  {/* Selección rápida de Ala y Sector */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-[9px] font-black uppercase text-slate-500 block mb-1">Ala:</span>
+                      <div className="grid grid-cols-4 gap-1">
+                        {['A', 'B', 'C', 'D'].map((a) => (
+                          <button
+                            key={a}
+                            type="button"
+                            onClick={() => {
+                              setSelectedAla(a);
+                              const s = selectedSector || '1';
+                              setUbicacionAcopioVal(`Ala ${a} · Sector ${s}`);
+                            }}
+                            className={`py-1 text-[11px] font-black rounded border transition cursor-pointer ${
+                              selectedAla === a
+                                ? 'bg-[#00603C] text-white border-[#00603C]'
+                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50'
+                            }`}
+                          >
+                            {a}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-[9px] font-black uppercase text-slate-500 block mb-1">Sector:</span>
+                      <div className="grid grid-cols-3 gap-1">
+                        {['1', '2', '3'].map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSector(s);
+                              const a = selectedAla || 'A';
+                              setUbicacionAcopioVal(`Ala ${a} · Sector ${s}`);
+                            }}
+                            className={`py-1 text-[11px] font-black rounded border transition cursor-pointer ${
+                              selectedSector === s
+                                ? 'bg-[#00603C] text-white border-[#00603C]'
+                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50'
+                            }`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Presets rápidos */}
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { label: 'Ala A · Sector 1', a: 'A', s: '1' },
+                      { label: 'Ala A · Sector 2', a: 'A', s: '2' },
+                      { label: 'Ala B · Sector 1', a: 'B', s: '1' },
+                      { label: 'Acopio General', a: '', s: '' },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAla(preset.a);
+                          setSelectedSector(preset.s);
+                          setUbicacionAcopioVal(preset.label);
+                        }}
+                        className="px-1.5 py-0.5 bg-slate-50 hover:bg-emerald-50 text-slate-600 hover:text-emerald-900 border border-slate-200 rounded text-[9.5px] font-medium transition cursor-pointer"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Botones Guardar / Cancelar */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowLocationModal(true)}
+                      className="text-[10px] text-[#00603C] hover:underline font-bold cursor-pointer"
+                    >
+                      Selector Avanzado
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingLocationInline(false)}
+                        disabled={isSavingLocation}
+                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded transition cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveLocation()}
+                        disabled={isSavingLocation}
+                        className="px-3 py-1 bg-[#00603C] hover:bg-[#004d30] text-white text-[10px] font-black rounded shadow-xs transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        {isSavingLocation ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Check className="w-3 h-3" />
+                        )}
+                        <span>Guardar</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-gray-50 pt-3">
@@ -2320,13 +2539,31 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
             </div>
 
             {/* Contenido */}
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-5">
               <div className="text-xs text-gray-500 font-medium leading-relaxed font-sans">
-                Asigne el sector de depósito físico en la planta para el lote <strong className="font-mono text-gray-800">LOTE: {lote.loteNro}</strong>. Esto actualizará el mapa de calor y la ficha técnica oficial.
+                Asigne o modifique el sector de acopio y depósito físico para el lote <strong className="font-mono text-gray-800">LOTE: {lote.loteNro}</strong>. Esto actualizará el stock, los reportes y la ficha técnica oficial.
+              </div>
+
+              {/* Input libre: Sector de Acopio / Ubicación */}
+              <div className="space-y-1.5 bg-emerald-50/60 p-3 rounded-xl border border-emerald-200">
+                <label className="block text-xs font-black uppercase tracking-wider text-emerald-950">
+                  Sector de Acopio / Ubicación
+                </label>
+                <input
+                  type="text"
+                  id="modal-input-ubicacion-acopio"
+                  value={ubicacionAcopioVal}
+                  onChange={(e) => setUbicacionAcopioVal(e.target.value)}
+                  placeholder="Ej: Ala A · Sector 1, Galpón 2, Acopio Central..."
+                  className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-[#00603C] focus:border-[#00603C] shadow-2xs"
+                />
+                <span className="text-[10.5px] text-emerald-800 block">
+                  Puede escribir una descripción personalizada o utilizar las celdas y atajos inferiores.
+                </span>
               </div>
 
               {/* Grid de Ala */}
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
                   Seleccionar Ala (Sector Lateral)
                 </label>
@@ -2337,15 +2574,19 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                       <button
                         key={alaLetter}
                         type="button"
-                        onClick={() => setSelectedAla(alaLetter)}
-                        className={`py-3.5 px-2 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer select-none ${
+                        onClick={() => {
+                          setSelectedAla(alaLetter);
+                          const sec = selectedSector || '1';
+                          setUbicacionAcopioVal(`Ala ${alaLetter} · Sector ${sec}`);
+                        }}
+                        className={`py-3 px-2 rounded-xl border text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer select-none ${
                           isSelected
                             ? 'bg-[#E3EFE7] border-[#00603C] text-[#00603C] font-extrabold shadow-xs ring-1 ring-[#00603C]'
                             : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 font-bold'
                         }`}
                       >
                         <span className="text-[9px] text-gray-400 font-semibold tracking-wider block">ALA</span>
-                        <span className="text-xl font-mono leading-none">{alaLetter}</span>
+                        <span className="text-lg font-mono leading-none">{alaLetter}</span>
                       </button>
                     );
                   })}
@@ -2353,7 +2594,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               </div>
 
               {/* Grid de Sector */}
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
                   Seleccionar Sector (Número de Celda)
                 </label>
@@ -2364,26 +2605,60 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                       <button
                         key={sectorNum}
                         type="button"
-                        onClick={() => setSelectedSector(sectorNum)}
-                        className={`py-3.5 px-2 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer select-none ${
+                        onClick={() => {
+                          setSelectedSector(sectorNum);
+                          const ala = selectedAla || 'A';
+                          setUbicacionAcopioVal(`Ala ${ala} · Sector ${sectorNum}`);
+                        }}
+                        className={`py-3 px-2 rounded-xl border text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer select-none ${
                           isSelected
                             ? 'bg-[#F6EFDC] border-[#C9922E] text-[#C9922E] font-extrabold shadow-xs ring-1 ring-[#C9922E]'
                             : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 font-bold'
                         }`}
                       >
                         <span className="text-[9px] text-gray-400 font-semibold tracking-wider block">SECTOR</span>
-                        <span className="text-xl font-mono leading-none">{sectorNum}</span>
+                        <span className="text-lg font-mono leading-none">{sectorNum}</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
+              {/* Atajos Rápidos */}
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1.5">
+                  Atajos rápidos:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: 'Ala A · Sector 1', a: 'A', s: '1' },
+                    { label: 'Ala A · Sector 2', a: 'A', s: '2' },
+                    { label: 'Ala B · Sector 1', a: 'B', s: '1' },
+                    { label: 'Ala B · Sector 2', a: 'B', s: '2' },
+                    { label: 'Acopio General', a: '', s: '' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAla(preset.a);
+                        setSelectedSector(preset.s);
+                        setUbicacionAcopioVal(preset.label);
+                      }}
+                      className="px-2 py-1 bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-900 border border-gray-200 rounded-lg text-xs font-medium transition cursor-pointer"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Vista previa de ubicación */}
-              <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex items-center justify-between text-xs">
+              <div className="bg-emerald-50/40 rounded-xl p-3 border border-emerald-200/60 flex items-center justify-between text-xs">
                 <span className="font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Ubicación Resultante:</span>
-                <span className="font-mono font-bold text-[#00603C] text-sm">
-                  {selectedAla && selectedSector ? `ALA ${selectedAla} · SECTOR ${selectedSector}` : 'No seleccionada'}
+                <span className="font-sans font-black text-[#00603C] text-sm flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-[#00603C]" />
+                  {ubicacionAcopioVal.trim() || (selectedAla && selectedSector ? `ALA ${selectedAla} · SECTOR ${selectedSector}` : 'No seleccionada')}
                 </span>
               </div>
             </div>
@@ -2393,23 +2668,23 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               <button
                 type="button"
                 onClick={() => setShowLocationModal(false)}
+                disabled={isSavingLocation}
                 className="px-4 py-2 text-xs font-semibold font-sans uppercase tracking-wider text-gray-500 hover:bg-gray-100 rounded-lg transition cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                disabled={!selectedAla || !selectedSector}
-                onClick={async () => {
-                  if (onUpdateLoteLocation) {
-                    await onUpdateLoteLocation(lote.id, selectedAla, selectedSector);
-                  }
-                  setShowLocationModal(false);
-                }}
+                disabled={isSavingLocation || (!ubicacionAcopioVal.trim() && !selectedAla && !selectedSector)}
+                onClick={() => handleSaveLocation(selectedAla, selectedSector, ubicacionAcopioVal)}
                 className="px-5 py-2 text-xs font-semibold font-sans uppercase tracking-wider bg-[#00603C] text-white hover:bg-[#254731] rounded-lg transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
               >
-                <Warehouse className="w-4 h-4 text-[#C9922E]" />
-                <span>Asignar Ubicación</span>
+                {isSavingLocation ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Warehouse className="w-4 h-4 text-[#C9922E]" />
+                )}
+                <span>Guardar Ubicación</span>
               </button>
             </div>
           </div>
