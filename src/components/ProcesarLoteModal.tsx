@@ -111,12 +111,33 @@ export const ProcesarLoteModal: React.FC<ProcesarLoteModalProps> = ({
       const movimientoRealizacion: MovimientoStock = {
         id: `MOV-PROC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         fecha: fechaRealizacion,
-        tipo: 'Entrada manual',
+        tipo: 'Alta',
         cantidadBolsas: currentBolsas,
         kgPorBolsa: currentKgB,
         cantidadKg: currentKgTot,
-        detalle: `Pase a ${estadoResultado}${detalleOrigen} - ${fechaHoraStr}`
+        detalle: `Alta por Pase a ${estadoResultado}${detalleOrigen} - ${fechaHoraStr}`
       };
+
+      // Limpiar movimientos de precarga previos o altas iniciales para no duplicar el alta de bolsas ni el stock
+      const historialSinPrecarga = (currLote.historial || []).filter(mov => {
+        const idLower = (mov.id || '').toLowerCase();
+        const detLower = (mov.detalle || '').toLowerCase();
+        const tipoLower = (mov.tipo || '').toLowerCase();
+        const isPrecargaOrOldAlta =
+          idLower.startsWith('mov-pre') ||
+          idLower.startsWith('mov-proc') ||
+          idLower.startsWith('alta-inicial') ||
+          idLower.startsWith('alta-precarga') ||
+          tipoLower.includes('precarga') ||
+          detLower.includes('precarga') ||
+          detLower.includes('pre-carga') ||
+          detLower.includes('carga inicial') ||
+          detLower.includes('alta inicial') ||
+          detLower.includes('pase a');
+        return !isPrecargaOrOldAlta;
+      });
+
+      const nuevoHistorial = [movimientoRealizacion, ...historialSinPrecarga];
 
       return {
         ...currLote,
@@ -133,7 +154,7 @@ export const ProcesarLoteModal: React.FC<ProcesarLoteModalProps> = ({
         sector,
         ubicacionAcopio: ubicacionStr,
         observaciones: observaciones.trim() || currLote.observaciones,
-        historial: [movimientoRealizacion, ...(currLote.historial || [])]
+        historial: nuevoHistorial
       };
     });
 

@@ -22,8 +22,10 @@ import {
   AlertCircle,
   X,
   CheckCircle,
+  CheckCircle2,
   Edit3,
   Trash2,
+  Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -34,6 +36,7 @@ export interface BitacoraRegistro {
   tipoMovimiento: 'Alta' | 'Salida manual' | 'Despacho' | 'Salida por movimiento' | 'Pasado a Consumo' | 'Ajuste de Auditoría';
   cantidadBolsas: number;
   cantidadKg: number;
+  esPrecarga?: boolean; // Indica si es una precarga preliminar informativa que no suma stock
   remitoCliente?: string;
   destino?: string;
   chofer?: string;
@@ -51,6 +54,7 @@ interface BitacoraMovimientosTableProps {
     nuevoStockKg: number,
     nuevoEstado: EstadoLoteType
   ) => void;
+  onSaveLote?: (lote: Lote) => Promise<void> | void;
   readOnly?: boolean;
 }
 
@@ -73,8 +77,16 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
   lote,
   ordenesCarga,
   onUpdateLoteStock,
+  onSaveLote,
   readOnly = false,
 }) => {
+  // Estado para modal de confirmación "Pasar a Realizado (Dar de Alta Bolsas)"
+  const [showConfirmRealizadoModal, setShowConfirmRealizadoModal] = useState<boolean>(false);
+  const [fechaRealizadoConfirm, setFechaRealizadoConfirm] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [isActivatingRealizado, setIsActivatingRealizado] = useState<boolean>(false);
+
   // Estados de filtros
   const [filterDireccion, setFilterDireccion] = useState<'' | 'Entrada' | 'Salida'>('');
   const [filterTipoMov, setFilterTipoMov] = useState<string>('');
@@ -101,15 +113,20 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
   const [formDetalle, setFormDetalle] = useState<string>('');
   const [formError, setFormError] = useState<string>('');
 
+  // Estado para modal de eliminación con confirmación obligatoria (check + frase)
+  const [deletingRecord, setDeletingRecord] = useState<BitacoraRegistro | null>(null);
+  const [deleteConfirmChecked, setDeleteConfirmChecked] = useState<boolean>(false);
+  const [deleteConfirmPhrase, setDeleteConfirmPhrase] = useState<string>('');
+
   const handleAbrirNuevo = () => {
     setEditingRecord(null);
     setFormDireccion('Salida');
     setFormFecha(new Date().toISOString().split('T')[0]);
-    setFormTipoMov('Salida manual');
+    setFormTipoMov('Pasado a Consumo');
     setFormBolsas(10);
     setFormKg(10 * (lote.kgPorBolsa || 40));
     setFormRemitoCliente('');
-    setFormDestino('');
+    setFormDestino('Consumo Interno / Descarte');
     setFormChofer('');
     setFormDetalle('');
     setFormError('');
@@ -120,7 +137,7 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
     setEditingRecord(row);
     setFormDireccion(row.direccion);
     setFormFecha(row.fecha || new Date().toISOString().split('T')[0]);
-    setFormTipoMov(row.tipoMovimiento);
+    setFormTipoMov(row.tipoMovimiento === 'Salida manual' ? 'Pasado a Consumo' : row.tipoMovimiento);
     setFormBolsas(row.cantidadBolsas);
     setFormKg(row.cantidadKg);
     setFormRemitoCliente(row.remitoCliente && row.remitoCliente !== '-' ? row.remitoCliente : '');
@@ -131,16 +148,20 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
     setShowModal(true);
   };
 
+  const handleAbrirEliminar = (row: BitacoraRegistro) => {
+    setDeletingRecord(row);
+    setDeleteConfirmChecked(false);
+    setDeleteConfirmPhrase('');
+  };
+
   // Sincronizar dropdown condicionado cuando cambia Entrada / Salida
   const handleDireccionChange = (nuevaDir: 'Entrada' | 'Salida') => {
     setFormDireccion(nuevaDir);
     setFormError('');
     if (nuevaDir === 'Entrada') {
-      // Dropdown condicionado: si es Entrada, solo "Alta"
       setFormTipoMov('Alta');
     } else {
-      // Si es Salida, opciones "Salida manual", "Despacho", "Salida por movimiento"
-      setFormTipoMov('Salida manual');
+      setFormTipoMov('Pasado a Consumo');
     }
   };
 
@@ -155,56 +176,100 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
   // Construir la lista completa y unificada de la Bitácora
   const bitacoraList = useMemo(() => {
     const list: BitacoraRegistro[] = [];
+    const esLotePrecarga = lote.estadoRegistro === 'PRE-CARGA';
+
+    // Detectar si existe un movimiento formal de pase a realizado
+    const hasRealizadoMov = (lote.historial || []).some((m) => {
+      const idL = (m.id || '').toLowerCase();
+      const detL = (m.detalle || '').toLowerCase();
+      return (
+        idL.startsWith('mov-proc-') ||
+        idL.startsWith('mov-real-') ||
+        detL.includes('pase a') ||
+        detL.includes('mov realizado')
+      );
+    });
 
     // 1. Incorporar movimientos desde lote.historial
     (lote.historial || []).forEach((mov) => {
       const tipoLower = (mov.tipo || '').toLowerCase();
       const detLower = (mov.detalle || '').toLowerCase();
+      const idLower = (mov.id || '').toLowerCase();
+      const isAjuste = tipoLower.includes('ajuste') || detLower.includes('ajuste');
 
-      const esEntrada =
-        tipoLower.includes('alta') ||
-        tipoLower.includes('ingreso') ||
-        tipoLower.includes('creación') ||
-        tipoLower.includes('creacion') ||
-        tipoLower.includes('entrada') ||
-        mov.tipo === 'Reingreso';
+      const isPrecargaPlaceholder =
+        idLower.startsWith('mov-pre-') ||
+        detLower.includes('precarga') ||
+        detLower.includes('pre-carga') ||
+        tipoLower.includes('precarga') ||
+        (detLower.includes('carga inicial') && (esLotePrecarga || hasRealizadoMov));
 
-      const esSalida =
-        tipoLower.includes('salida') ||
-        tipoLower.includes('consumo') ||
-        tipoLower.includes('ajuste') ||
-        tipoLower.includes('despacho') ||
-        mov.tipoSalida !== undefined;
+      // Si el lote ya está REALIZADO y tiene un movimiento de realización,
+      // omitir el placeholder previo de precarga para no duplicar el alta ni el stock
+      if (!esLotePrecarga && hasRealizadoMov && isPrecargaPlaceholder) {
+        return;
+      }
 
       let direccion: 'Entrada' | 'Salida' = 'Salida';
-      let tipoMov: 'Alta' | 'Salida manual' | 'Despacho' | 'Salida por movimiento' | 'Pasado a Consumo' | 'Ajuste de Auditoría' = 'Salida manual';
+      let tipoMov: 'Alta' | 'Salida manual' | 'Despacho' | 'Salida por movimiento' | 'Pasado a Consumo' | 'Ajuste de Auditoría' = 'Pasado a Consumo';
+      let esPrecargaMov = false;
 
-      if (esEntrada && !esSalida) {
-        direccion = 'Entrada';
-        tipoMov = 'Alta';
+      if (isAjuste) {
+        tipoMov = 'Ajuste de Auditoría';
+        const esResta =
+          mov.cantidadBolsas < 0 ||
+          tipoLower.includes('salida') ||
+          detLower.includes('salida') ||
+          detLower.includes('resta') ||
+          detLower.includes('disminuye');
+        direccion = esResta ? 'Salida' : 'Entrada';
       } else {
-        direccion = 'Salida';
-        if (tipoLower.includes('consumo')) {
-          tipoMov = 'Pasado a Consumo';
-        } else if (tipoLower.includes('ajuste')) {
-          tipoMov = 'Ajuste de Auditoría';
-        } else if (
-          mov.tipoSalida === 'movimiento' ||
-          tipoLower.includes('movimiento') ||
-          detLower.includes('movimiento') ||
-          detLower.includes('transferencia')
-        ) {
-          tipoMov = 'Salida por movimiento';
-        } else if (
-          mov.tipoSalida === 'despacho' ||
+        const esEntrada =
+          tipoLower.includes('alta') ||
+          tipoLower.includes('ingreso') ||
+          tipoLower.includes('creación') ||
+          tipoLower.includes('creacion') ||
+          tipoLower.includes('entrada') ||
+          tipoLower.includes('precarga') ||
+          mov.tipo === 'Reingreso';
+
+        const esSalida =
+          tipoLower.includes('salida') ||
+          tipoLower.includes('consumo') ||
+          tipoLower.includes('descarte') ||
           tipoLower.includes('despacho') ||
-          detLower.includes('despacho') ||
-          detLower.includes('remito') ||
-          mov.ordenId?.startsWith('OC-')
-        ) {
-          tipoMov = 'Despacho';
+          mov.tipoSalida !== undefined;
+
+        if (esEntrada && !esSalida) {
+          direccion = 'Entrada';
+          tipoMov = 'Alta';
+          // Las bolsas se dan de alta formalmente en el lote al pasar a realizado.
+          // En estado de precarga, son informativas y no suman a ingresos comerciales.
+          if (esLotePrecarga) {
+            esPrecargaMov = true;
+          } else {
+            esPrecargaMov = false;
+          }
         } else {
-          tipoMov = 'Salida manual';
+          direccion = 'Salida';
+          if (
+            mov.tipoSalida === 'movimiento' ||
+            tipoLower.includes('movimiento') ||
+            detLower.includes('movimiento') ||
+            detLower.includes('transferencia')
+          ) {
+            tipoMov = 'Salida por movimiento';
+          } else if (
+            mov.tipoSalida === 'despacho' ||
+            tipoLower.includes('despacho') ||
+            detLower.includes('despacho') ||
+            detLower.includes('remito') ||
+            mov.ordenId?.startsWith('OC-')
+          ) {
+            tipoMov = 'Despacho';
+          } else {
+            tipoMov = 'Pasado a Consumo';
+          }
         }
       }
 
@@ -213,12 +278,15 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
         direccion,
         fecha: mov.fecha,
         tipoMovimiento: tipoMov,
+        esPrecarga: esPrecargaMov,
         cantidadBolsas: Math.abs(mov.cantidadBolsas),
         cantidadKg: Math.abs(mov.cantidadKg),
         remitoCliente: mov.remitoCliente,
         destino: mov.destino,
         chofer: mov.chofer,
-        detalle: mov.detalle,
+        detalle: esPrecargaMov && !mov.detalle?.includes('Pre-carga')
+          ? `${mov.detalle || 'Alta preliminar'} (Pre-carga informativa)`
+          : mov.detalle,
         ordenId: mov.ordenId,
       });
     });
@@ -261,22 +329,36 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
     // 3. Si no existe ningún movimiento de "Alta", sintetizar el Alta inicial del lote
     const hasAlta = list.some((m) => m.tipoMovimiento === 'Alta');
     if (!hasAlta) {
-      const totalSalidasBolsas = list
-        .filter((m) => m.direccion === 'Salida')
-        .reduce((acc, m) => acc + m.cantidadBolsas, 0);
+      if (esLotePrecarga) {
+        list.push({
+          id: `alta-precarga-${lote.id}`,
+          direccion: 'Entrada',
+          fecha: lote.fechaIngreso || new Date().toISOString().split('T')[0],
+          tipoMovimiento: 'Alta',
+          esPrecarga: true,
+          cantidadBolsas: lote.stockBolsas,
+          cantidadKg: lote.stockKg || lote.stockBolsas * (lote.kgPorBolsa || 40),
+          detalle: 'Alta preliminar en Pre-carga (Informativa - no suma a ingresos)',
+        });
+      } else {
+        const totalSalidasBolsas = list
+          .filter((m) => m.direccion === 'Salida')
+          .reduce((acc, m) => acc + m.cantidadBolsas, 0);
 
-      const bolsasIniciales = Math.max(lote.stockBolsas, lote.stockBolsas + totalSalidasBolsas);
-      const kgIniciales = bolsasIniciales * (lote.kgPorBolsa || 40);
+        const bolsasIniciales = Math.max(lote.stockBolsas, lote.stockBolsas + totalSalidasBolsas);
+        const kgIniciales = bolsasIniciales * (lote.kgPorBolsa || 40);
 
-      list.push({
-        id: `alta-inicial-${lote.id}`,
-        direccion: 'Entrada',
-        fecha: lote.fechaIngreso || new Date().toISOString().split('T')[0],
-        tipoMovimiento: 'Alta',
-        cantidadBolsas: bolsasIniciales,
-        cantidadKg: kgIniciales,
-        detalle: 'Alta inicial del lote en planta',
-      });
+        list.push({
+          id: `alta-inicial-${lote.id}`,
+          direccion: 'Entrada',
+          fecha: lote.fechaIngreso || new Date().toISOString().split('T')[0],
+          tipoMovimiento: 'Alta',
+          esPrecarga: false,
+          cantidadBolsas: bolsasIniciales,
+          cantidadKg: kgIniciales,
+          detalle: 'Alta de bolsas en planta (Lote Realizado)',
+        });
+      }
     }
 
     return list;
@@ -291,7 +373,13 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
     }
 
     if (filterTipoMov) {
-      result = result.filter((item) => item.tipoMovimiento === filterTipoMov);
+      if (filterTipoMov === 'Pasado a Consumo') {
+        result = result.filter(
+          (item) => item.tipoMovimiento === 'Pasado a Consumo' || item.tipoMovimiento === 'Salida manual'
+        );
+      } else {
+        result = result.filter((item) => item.tipoMovimiento === filterTipoMov);
+      }
     }
 
     if (searchTerm.trim()) {
@@ -317,20 +405,31 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
     return result;
   }, [bitacoraList, filterDireccion, filterTipoMov, searchTerm, sortOrder]);
 
-  // Métricas de totales de la bitácora
+  // Métricas de totales de la bitácora:
+  // - Total Egresado (Salidas): incluye Despachos, Movimientos y Pasado a Consumo / Descarte
+  // - Si el lote está en PRE-CARGA, las bolsas son sólo informativas y no suman a ingresos comerciales
+  // - Ajustes por Auditoría NO se suman a los ingresos ni egresos comerciales
   const metrics = useMemo(() => {
-    const totalEntradasBolsas = bitacoraList
-      .filter((m) => m.direccion === 'Entrada')
-      .reduce((acc, m) => acc + m.cantidadBolsas, 0);
-    const totalEntradasKg = bitacoraList
-      .filter((m) => m.direccion === 'Entrada')
-      .reduce((acc, m) => acc + m.cantidadKg, 0);
+    const esLotePrecarga = lote.estadoRegistro === 'PRE-CARGA';
+
+    const totalEntradasBolsas = esLotePrecarga
+      ? 0
+      : bitacoraList
+          .filter((m) => m.direccion === 'Entrada' && m.tipoMovimiento !== 'Ajuste de Auditoría' && !m.esPrecarga)
+          .reduce((acc, m) => acc + m.cantidadBolsas, 0);
+
+    const totalEntradasKg = esLotePrecarga
+      ? 0
+      : bitacoraList
+          .filter((m) => m.direccion === 'Entrada' && m.tipoMovimiento !== 'Ajuste de Auditoría' && !m.esPrecarga)
+          .reduce((acc, m) => acc + m.cantidadKg, 0);
 
     const totalSalidasBolsas = bitacoraList
-      .filter((m) => m.direccion === 'Salida')
+      .filter((m) => m.direccion === 'Salida' && m.tipoMovimiento !== 'Ajuste de Auditoría')
       .reduce((acc, m) => acc + m.cantidadBolsas, 0);
+
     const totalSalidasKg = bitacoraList
-      .filter((m) => m.direccion === 'Salida')
+      .filter((m) => m.direccion === 'Salida' && m.tipoMovimiento !== 'Ajuste de Auditoría')
       .reduce((acc, m) => acc + m.cantidadKg, 0);
 
     return {
@@ -339,46 +438,167 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
       salidasBolsas: totalSalidasBolsas,
       salidasKg: totalSalidasKg,
     };
-  }, [bitacoraList]);
+  }, [bitacoraList, lote.estadoRegistro]);
 
   // Helper para recalcular stock a partir del historial completo
   const recalcularStockLote = (hist: MovimientoStock[]) => {
+    // Si el lote está en PRE-CARGA, las bolsas son sólo informativas
+    if (lote.estadoRegistro === 'PRE-CARGA') {
+      return {
+        nuevoStockBolsas: lote.stockBolsas,
+        nuevoStockKg: lote.stockKg,
+        nuevoEstado: 'Disponible' as EstadoLoteType,
+      };
+    }
+
+    const hasRealizadoMov = hist.some((m) => {
+      const idL = (m.id || '').toLowerCase();
+      const detL = (m.detalle || '').toLowerCase();
+      return (
+        idL.startsWith('mov-proc-') ||
+        idL.startsWith('mov-real-') ||
+        detL.includes('pase a') ||
+        detL.includes('mov realizado')
+      );
+    });
+
+    const histFiltrado = hist.filter((m) => {
+      if (!hasRealizadoMov) return true;
+      const idL = (m.id || '').toLowerCase();
+      const detL = (m.detalle || '').toLowerCase();
+      const tipoL = (m.tipo || '').toLowerCase();
+      const isPrecargaPlaceholder =
+        idL.startsWith('mov-pre-') ||
+        detL.includes('precarga') ||
+        detL.includes('pre-carga') ||
+        detL.includes('carga inicial') ||
+        tipoL.includes('precarga');
+      return !isPrecargaPlaceholder;
+    });
+
     let entradasB = 0;
     let salidasB = 0;
     let entradasK = 0;
     let salidasK = 0;
+    let ajustesNetoB = 0;
+    let ajustesNetoK = 0;
 
-    for (const m of hist) {
+    for (const m of histFiltrado) {
       const tipoLower = (m.tipo || '').toLowerCase();
-      const isSal =
-        tipoLower.includes('salida') ||
-        tipoLower.includes('consumo') ||
-        tipoLower.includes('ajuste') ||
-        tipoLower.includes('despacho') ||
-        m.tipoSalida !== undefined ||
-        m.cantidadBolsas < 0;
+      const detLower = (m.detalle || '').toLowerCase();
+      const isAjuste = tipoLower.includes('ajuste') || detLower.includes('ajuste');
 
-      const isEnt = !isSal && (
-        tipoLower.includes('alta') ||
-        tipoLower.includes('ingreso') ||
-        tipoLower.includes('entrada') ||
-        m.tipo === 'Reingreso' ||
-        m.cantidadBolsas > 0
-      );
-
-      if (isEnt) {
-        entradasB += Math.abs(m.cantidadBolsas);
-        entradasK += Math.abs(m.cantidadKg);
+      if (isAjuste) {
+        const esResta =
+          m.cantidadBolsas < 0 ||
+          tipoLower.includes('salida') ||
+          detLower.includes('salida') ||
+          detLower.includes('resta') ||
+          detLower.includes('disminuye');
+        if (esResta) {
+          ajustesNetoB -= Math.abs(m.cantidadBolsas);
+          ajustesNetoK -= Math.abs(m.cantidadKg);
+        } else {
+          ajustesNetoB += Math.abs(m.cantidadBolsas);
+          ajustesNetoK += Math.abs(m.cantidadKg);
+        }
       } else {
-        salidasB += Math.abs(m.cantidadBolsas);
-        salidasK += Math.abs(m.cantidadKg);
+        const isSal =
+          tipoLower.includes('salida') ||
+          tipoLower.includes('consumo') ||
+          tipoLower.includes('descarte') ||
+          tipoLower.includes('despacho') ||
+          m.tipoSalida !== undefined ||
+          m.cantidadBolsas < 0;
+
+        if (isSal) {
+          salidasB += Math.abs(m.cantidadBolsas);
+          salidasK += Math.abs(m.cantidadKg);
+        } else {
+          entradasB += Math.abs(m.cantidadBolsas);
+          entradasK += Math.abs(m.cantidadKg);
+        }
       }
     }
 
-    const nuevoStockBolsas = Math.max(0, entradasB - salidasB);
-    const nuevoStockKg = Math.max(0, entradasK - salidasK);
+    if (entradasB === 0 && lote.stockBolsas > 0) {
+      entradasB = lote.stockBolsas + salidasB;
+      entradasK = lote.stockKg > 0 ? (lote.stockKg + salidasK) : (entradasB * (lote.kgPorBolsa || 40));
+    }
+
+    const nuevoStockBolsas = Math.max(0, entradasB - salidasB + ajustesNetoB);
+    const nuevoStockKg = Math.max(0, entradasK - salidasK + ajustesNetoK);
     const nuevoEstado: EstadoLoteType = nuevoStockBolsas === 0 ? 'Agotado' : 'Disponible';
     return { nuevoStockBolsas, nuevoStockKg, nuevoEstado };
+  };
+
+  // Función para confirmar y dar de alta bolsas al pasar a REALIZADO
+  const handleConfirmarRealizado = async () => {
+    setIsActivatingRealizado(true);
+    try {
+      const bolsas = lote.stockBolsas > 0 ? lote.stockBolsas : 1;
+      const kgB = lote.kgPorBolsa || 40;
+      const kgTot = lote.stockKg > 0 ? lote.stockKg : bolsas * kgB;
+      const fechaEf = fechaRealizadoConfirm || new Date().toISOString().split('T')[0];
+
+      const nuevoMov: MovimientoStock = {
+        id: `MOV-REAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        fecha: fechaEf,
+        tipo: 'Alta',
+        cantidadBolsas: bolsas,
+        kgPorBolsa: kgB,
+        cantidadKg: kgTot,
+        detalle: `Alta efectiva de bolsas (Pasado a Realizado el ${fechaEf})`,
+      };
+
+      const historialLimpio = (lote.historial || []).filter((m) => {
+        const idL = (m.id || '').toLowerCase();
+        const detL = (m.detalle || '').toLowerCase();
+        const tipoL = (m.tipo || '').toLowerCase();
+        return !(
+          idL.startsWith('mov-pre') ||
+          idL.startsWith('alta-precarga') ||
+          tipoL.includes('precarga') ||
+          detL.includes('precarga') ||
+          detL.includes('pre-carga') ||
+          detL.includes('carga inicial')
+        );
+      });
+
+      const nuevoHistorial = [nuevoMov, ...historialLimpio];
+
+      const loteRealizado: Lote = {
+        ...lote,
+        estadoRegistro: 'REALIZADO',
+        fechaIngreso: fechaEf,
+        fechaHoraProduccion: `${fechaEf}T${new Date().toTimeString().slice(0, 5)}`,
+        stockBolsas: bolsas,
+        kgPorBolsa: kgB,
+        stockKg: kgTot,
+        estado: bolsas > 0 ? 'Disponible' : 'Agotado',
+        historial: nuevoHistorial,
+        auditoria: [
+          {
+            id: `AUD-REAL-${Date.now()}`,
+            fechaHora: new Date().toISOString(),
+            tipo: 'Edición',
+            usuario: 'Operador Planta',
+            descripcion: `Lote pasado a REALIZADO: Alta efectiva de ${bolsas} bolsas (${kgTot} kg).`,
+          },
+          ...(lote.auditoria || []),
+        ],
+      };
+
+      if (onSaveLote) {
+        await onSaveLote(loteRealizado);
+      }
+      onUpdateLoteStock(lote.id, nuevoHistorial, bolsas, kgTot, 'Disponible');
+      setShowConfirmRealizadoModal(false);
+    } catch (e) {
+      console.error('Error al pasar a realizado:', e);
+    } finally {
+      setIsActivatingRealizado(false);
+    }
   };
 
   // Guardar (crear o modificar) movimiento desde el formulario modal
@@ -438,12 +658,12 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
         chofer: formChofer.trim() || undefined,
         detalle: formDetalle.trim() || `${formTipoMov} modificada en bitácora`,
         tipoSalida:
-          formDireccion === 'Salida'
+          formDireccion === 'Salida' && formTipoMov !== 'Ajuste de Auditoría'
             ? formTipoMov === 'Despacho'
               ? 'despacho'
               : formTipoMov === 'Salida por movimiento'
               ? 'movimiento'
-              : 'manual'
+              : 'consumo'
             : undefined,
       };
 
@@ -467,12 +687,12 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
         chofer: formChofer.trim() || undefined,
         detalle: formDetalle.trim() || `${formTipoMov} registrada en bitácora`,
         tipoSalida:
-          formDireccion === 'Salida'
+          formDireccion === 'Salida' && formTipoMov !== 'Ajuste de Auditoría'
             ? formTipoMov === 'Despacho'
               ? 'despacho'
               : formTipoMov === 'Salida por movimiento'
               ? 'movimiento'
-              : 'manual'
+              : 'consumo'
             : undefined,
       };
       nuevoHistorial = [nuevoMovimiento, ...baseHistory];
@@ -492,11 +712,14 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
     setFormError('');
   };
 
-  // Eliminar movimiento de la bitácora
-  const handleEliminarMovimiento = (recordId: string) => {
-    if (!window.confirm('¿Confirma la eliminación de este movimiento? El stock del lote se recalculará automáticamente.')) {
+  // Confirmar eliminación definitiva con check y frase requerida: "eliminar movimiento"
+  const handleConfirmarEliminar = () => {
+    if (!deletingRecord) return;
+    if (!deleteConfirmChecked || deleteConfirmPhrase.trim().toLowerCase() !== 'eliminar movimiento') {
       return;
     }
+
+    const recordId = deletingRecord.id;
 
     let baseHistory: MovimientoStock[] =
       lote.historial && lote.historial.length > 0
@@ -522,6 +745,10 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
     const { nuevoStockBolsas, nuevoStockKg, nuevoEstado } = recalcularStockLote(nuevoHistorial);
 
     onUpdateLoteStock(lote.id, nuevoHistorial, nuevoStockBolsas, nuevoStockKg, nuevoEstado);
+
+    setDeletingRecord(null);
+    setDeleteConfirmChecked(false);
+    setDeleteConfirmPhrase('');
   };
 
   // Exportar Bitácora a Excel
@@ -580,39 +807,86 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
           </button>
 
           {!readOnly && (
-            <button
-              type="button"
-              onClick={handleAbrirNuevo}
-              className="px-3.5 py-1.5 bg-gradient-to-r from-[#00603C] to-[#004D30] hover:from-[#004D30] hover:to-[#003822] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Registrar Movimiento</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {lote.estadoRegistro === 'PRE-CARGA' && (
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmRealizadoModal(true)}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95 border border-emerald-500"
+                  title="Pasar a Realizado: Dar de alta bolsas y sumar a movimientos de Total Ingresado (Alta)"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>Pasar a Realizado</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleAbrirNuevo}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-[#00603C] to-[#004D30] hover:from-[#004D30] hover:to-[#003822] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Registrar Movimiento</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
 
       {/* MINI TARJETAS DE BALANCE DE ENTRADAS Y SALIDAS */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="bg-[#E3EFE7]/40 border border-emerald-200/70 p-3 rounded-xl">
+        {/* Total Ingresado (Alta) */}
+        <div className={`p-3 rounded-xl border ${
+          lote.estadoRegistro === 'PRE-CARGA'
+            ? 'bg-amber-50/50 border-amber-200'
+            : 'bg-[#E3EFE7]/40 border-emerald-200/70'
+        }`}>
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#00603C] flex items-center gap-1">
+            <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+              lote.estadoRegistro === 'PRE-CARGA' ? 'text-amber-800' : 'text-[#00603C]'
+            }`}>
               <ArrowUpRight className="w-3 h-3" /> Total Ingresado (Alta)
             </span>
-            <span className="text-[10px] font-mono text-emerald-800 font-semibold bg-emerald-100 px-1.5 py-0.25 rounded">
-              Entrada
+            <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.25 rounded ${
+              lote.estadoRegistro === 'PRE-CARGA'
+                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              {lote.estadoRegistro === 'PRE-CARGA' ? 'Pre-carga (Informativo)' : 'Efectivo'}
             </span>
           </div>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="font-mono text-lg font-bold text-[#00603C]">
+            <span className={`font-mono text-lg font-bold ${
+              lote.estadoRegistro === 'PRE-CARGA' ? 'text-amber-700' : 'text-[#00603C]'
+            }`}>
               +{formatNumberArg(metrics.entradasBolsas, 0)} <span className="text-xs font-normal">bolsas</span>
             </span>
-            <span className="text-xs font-mono font-medium text-emerald-700">
+            <span className={`text-xs font-mono font-medium ${
+              lote.estadoRegistro === 'PRE-CARGA' ? 'text-amber-600' : 'text-emerald-700'
+            }`}>
               (+{formatNumberArg(metrics.entradasKg, 0)} kg)
             </span>
           </div>
+          {lote.estadoRegistro === 'PRE-CARGA' && (
+            <>
+              <p className="text-[10px] text-amber-700 font-medium mt-1">
+                Informativo: {formatNumberArg(lote.stockBolsas, 0)} b. en Pre-carga (se activan al pasar a REALIZADO)
+              </p>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmRealizadoModal(true)}
+                  className="mt-2.5 w-full py-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 border border-emerald-500"
+                  title="Pasar a Realizado: Dar de alta bolsas y sumar a Total Ingresado (Alta)"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>Pasar a Realizado (Dar de Alta Bolsas)</span>
+                </button>
+              )}
+            </>
+          )}
         </div>
 
+        {/* Total Egresado (Salidas) */}
         <div className="bg-[#F6EFDC]/40 border border-[#C9922E]/30 p-3 rounded-xl">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-[#A0522D] flex items-center gap-1">
@@ -632,13 +906,22 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200 p-3 rounded-xl shadow-2xs">
+        {/* Stock Disponible Actual */}
+        <div className={`p-3 rounded-xl border shadow-2xs ${
+          lote.estadoRegistro === 'PRE-CARGA'
+            ? 'bg-amber-50/30 border-amber-200'
+            : 'bg-white border-gray-200'
+        }`}>
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1">
               <Package className="w-3 h-3" /> Stock Disponible Actual
             </span>
-            <span className="text-[10px] font-mono text-gray-600 font-semibold bg-gray-100 px-1.5 py-0.25 rounded">
-              {lote.estado}
+            <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.25 rounded ${
+              lote.estadoRegistro === 'PRE-CARGA'
+                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              {lote.estadoRegistro === 'PRE-CARGA' ? 'PRE-CARGA' : lote.estado}
             </span>
           </div>
           <div className="mt-1 flex items-baseline gap-2">
@@ -649,6 +932,11 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
               ({formatNumberArg(lote.stockKg, 0)} kg)
             </span>
           </div>
+          {lote.estadoRegistro === 'PRE-CARGA' && (
+            <p className="text-[10px] text-amber-600 font-medium mt-1">
+              Bolsas informativas (pendientes de activar al Pasar a Realizado)
+            </p>
+          )}
         </div>
       </div>
 
@@ -703,11 +991,10 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
             >
               <option value="">Todos los Tipos de Movimiento</option>
               <option value="Alta">Alta</option>
-              <option value="Salida manual">Salida manual</option>
               <option value="Pasado a Consumo">Pasado a Consumo</option>
+              <option value="Salida por movimiento">Movimientos (Salida)</option>
+              <option value="Despacho">Despachos</option>
               <option value="Ajuste de Auditoría">Ajuste de Auditoría</option>
-              <option value="Despacho">Despacho</option>
-              <option value="Salida por movimiento">Salida por movimiento</option>
             </select>
           </div>
 
@@ -807,7 +1094,12 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                   >
                     {/* ENTRADA / SALIDA */}
                     <td className="py-3 px-3.5 whitespace-nowrap">
-                      {isEntrada ? (
+                      {row.esPrecarga ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs" title="Pre-carga informativa (no suma a stock hasta Pasar a Realizado)">
+                          <Clock className="w-3.5 h-3.5 text-amber-700" />
+                          Pre-carga
+                        </span>
+                      ) : isEntrada ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#E3EFE7] text-[#00603C] border border-[#00603C]/20 shadow-2xs">
                           <ArrowUpRight className="w-3.5 h-3.5" />
                           Entrada
@@ -827,12 +1119,17 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
 
                     {/* TIPO DE MOVIMIENTO */}
                     <td className="py-3 px-3.5 whitespace-nowrap">
-                      {row.tipoMovimiento === 'Alta' && (
+                      {row.esPrecarga ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          <Clock className="w-3 h-3 text-amber-600" />
+                          Alta (Pre-carga)
+                        </span>
+                      ) : row.tipoMovimiento === 'Alta' ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-bold bg-emerald-50 text-[#00603C] border border-emerald-200">
                           <CheckCircle className="w-3 h-3 text-[#00603C]" />
                           Alta
                         </span>
-                      )}
+                      ) : null}
                       {row.tipoMovimiento === 'Salida manual' && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200">
                           <ArrowDownRight className="w-3 h-3 text-[#A0522D]" />
@@ -867,30 +1164,42 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
 
                     {/* CANTIDAD DE BOLSAS INGRESADAS / SALIDAS */}
                     <td className="py-3 px-3.5 text-right font-mono font-bold whitespace-nowrap">
-                      <span
-                        className={
-                          isEntrada
-                            ? 'text-[#00603C] bg-emerald-50 px-2 py-0.5 rounded'
-                            : 'text-[#A0522D] bg-amber-50 px-2 py-0.5 rounded'
-                        }
-                      >
-                        {isEntrada ? '+' : '-'}
-                        {formatNumberArg(row.cantidadBolsas, 0)} b.
-                      </span>
+                      {row.esPrecarga ? (
+                        <span className="text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200" title="Bolsas preliminares no activadas">
+                          {formatNumberArg(row.cantidadBolsas, 0)} b. <span className="text-[10px] font-normal text-amber-600">(pre-carga)</span>
+                        </span>
+                      ) : (
+                        <span
+                          className={
+                            isEntrada
+                              ? 'text-[#00603C] bg-emerald-50 px-2 py-0.5 rounded'
+                              : 'text-[#A0522D] bg-amber-50 px-2 py-0.5 rounded'
+                          }
+                        >
+                          {isEntrada ? '+' : '-'}
+                          {formatNumberArg(row.cantidadBolsas, 0)} b.
+                        </span>
+                      )}
                     </td>
 
                     {/* KILOS INGRESADOS / SALIDA */}
                     <td className="py-3 px-3.5 text-right font-mono font-bold whitespace-nowrap">
-                      <span
-                        className={
-                          isEntrada
-                            ? 'text-[#00603C]'
-                            : 'text-[#A0522D]'
-                        }
-                      >
-                        {isEntrada ? '+' : '-'}
-                        {formatNumberArg(row.cantidadKg, 2)} kg
-                      </span>
+                      {row.esPrecarga ? (
+                        <span className="text-amber-700 text-xs">
+                          {formatNumberArg(row.cantidadKg, 2)} kg <span className="text-[10px] text-amber-500">(pre-carga)</span>
+                        </span>
+                      ) : (
+                        <span
+                          className={
+                            isEntrada
+                              ? 'text-[#00603C]'
+                              : 'text-[#A0522D]'
+                          }
+                        >
+                          {isEntrada ? '+' : '-'}
+                          {formatNumberArg(row.cantidadKg, 2)} kg
+                        </span>
+                      )}
                     </td>
 
                     {/* TRAZABILIDAD Y DOCUMENTACIÓN */}
@@ -934,7 +1243,7 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleEliminarMovimiento(row.id)}
+                            onClick={() => handleAbrirEliminar(row)}
                             className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition cursor-pointer"
                             title="Eliminar movimiento"
                           >
@@ -1044,26 +1353,31 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                   value={formTipoMov}
                   onChange={(e) =>
                     setFormTipoMov(
-                      e.target.value as
-                        | 'Alta'
-                        | 'Salida manual'
-                        | 'Despacho'
-                        | 'Salida por movimiento'
+                      e.target.value as any
                     )
                   }
                   required
                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#00603C] focus:bg-white"
                 >
                   {formDireccion === 'Entrada' ? (
-                    <option value="Alta">Alta</option>
+                    <>
+                      <option value="Alta">Alta</option>
+                      <option value="Ajuste de Auditoría">Ajuste de Auditoría (+)</option>
+                    </>
                   ) : (
                     <>
-                      <option value="Salida manual">Salida manual</option>
-                      <option value="Despacho">Despacho</option>
+                      <option value="Pasado a Consumo">Pasado a Consumo</option>
                       <option value="Salida por movimiento">Salida por movimiento</option>
+                      <option value="Despacho">Despacho</option>
+                      <option value="Ajuste de Auditoría">Ajuste de Auditoría (-)</option>
                     </>
                   )}
                 </select>
+                {formTipoMov === 'Ajuste de Auditoría' && (
+                  <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-relaxed">
+                    <strong>Ajuste por Auditoría:</strong> Este registro actualiza el stock disponible sin registrarse en los ingresos o egresos comerciales del lote.
+                  </div>
+                )}
               </div>
 
               {/* 4 y 5. Cantidad de bolsas (entero) y Kilos (decimal) */}
@@ -1180,6 +1494,170 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN DE ELIMINACIÓN CON CHECK Y FRASE EXACTA "eliminar movimiento" */}
+      {deletingRecord && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-red-100 overflow-hidden">
+            <div className="bg-red-600 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle className="w-5 h-5 text-white shrink-0" />
+                <h3 className="font-bold text-sm">Eliminar Movimiento de Bitácora</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeletingRecord(null);
+                  setDeleteConfirmChecked(false);
+                  setDeleteConfirmPhrase('');
+                }}
+                className="text-white/80 hover:text-white p-1 rounded-lg text-lg font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-900 space-y-1.5">
+                <p className="font-semibold">¿Está seguro de eliminar este registro?</p>
+                <div className="bg-white/90 p-2.5 rounded-lg border border-red-100 font-mono text-[11px] space-y-1">
+                  <div><strong>Tipo:</strong> {deletingRecord.tipoMovimiento} ({deletingRecord.direccion})</div>
+                  <div><strong>Fecha:</strong> {formatToDDMMAAAA(deletingRecord.fecha)}</div>
+                  <div><strong>Cantidad:</strong> {deletingRecord.cantidadBolsas} bolsas ({formatNumberArg(deletingRecord.cantidadKg, 2)} kg)</div>
+                  {deletingRecord.detalle && <div><strong>Detalle:</strong> {deletingRecord.detalle}</div>}
+                </div>
+                <p className="text-[11px] text-red-800 pt-1">
+                  Esta acción actualizará el stock disponible del lote de forma definitiva.
+                </p>
+              </div>
+
+              {/* Checkbox de confirmación */}
+              <label className="flex items-start gap-2.5 p-2.5 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-100 transition">
+                <input
+                  type="checkbox"
+                  id="check-confirmar-eliminar-movimiento"
+                  checked={deleteConfirmChecked}
+                  onChange={(e) => setDeleteConfirmChecked(e.target.checked)}
+                  className="mt-0.5 rounded text-red-600 focus:ring-red-500 w-4 h-4"
+                />
+                <span className="text-gray-700 font-medium text-[11px] leading-tight select-none">
+                  Confirmo que deseo eliminar este movimiento de la bitácora y recalcular el stock del lote.
+                </span>
+              </label>
+
+              {/* Frase exacta de confirmación */}
+              <div className="space-y-1.5">
+                <label className="block text-gray-700 font-bold uppercase tracking-wider text-[10px]">
+                  Para habilitar la eliminación, escriba la frase: <span className="text-red-600 font-mono font-extrabold select-all">eliminar movimiento</span>
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmPhrase}
+                  onChange={(e) => setDeleteConfirmPhrase(e.target.value)}
+                  placeholder="Escriba aquí: eliminar movimiento"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-mono font-bold focus:bg-white focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+                />
+              </div>
+
+              {/* Botones de acción */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeletingRecord(null);
+                    setDeleteConfirmChecked(false);
+                    setDeleteConfirmPhrase('');
+                  }}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={!deleteConfirmChecked || deleteConfirmPhrase.trim().toLowerCase() !== 'eliminar movimiento'}
+                  onClick={handleConfirmarEliminar}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Eliminar Movimiento
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL DE CONFIRMACIÓN DIRECTA "PASAR A REALIZADO" */}
+      {showConfirmRealizadoModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-200 animate-in fade-in zoom-in duration-200">
+            <div className="bg-emerald-800 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-300" />
+                <h4 className="font-serif text-sm font-bold uppercase tracking-wider">
+                  Pasar Lote a REALIZADO
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConfirmRealizadoModal(false)}
+                className="text-white/80 hover:text-white p-1 rounded-lg text-lg font-bold cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-emerald-950 space-y-2">
+                <p className="font-semibold text-emerald-900">
+                  ¿Desea activar y dar de alta las bolsas de este lote?
+                </p>
+                <div className="bg-white/95 p-3 rounded-lg border border-emerald-100 font-mono text-[11px] space-y-1.5 shadow-2xs">
+                  <div><strong>Lote:</strong> {lote.loteNro} ({lote.especie} - {lote.variedad})</div>
+                  <div><strong>Bolsas a dar de alta:</strong> <span className="text-emerald-700 font-bold font-mono">+{formatNumberArg(lote.stockBolsas, 0)} bolsas</span> ({formatNumberArg(lote.stockKg || lote.stockBolsas * (lote.kgPorBolsa || 40), 0)} kg)</div>
+                  <div><strong>Estado resultante:</strong> <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold">REALIZADO</span></div>
+                </div>
+                <p className="text-[11px] text-emerald-800 pt-1 leading-relaxed">
+                  Al confirmar, las bolsas se darán de alta formalmente en el lote y se sumarán de inmediato a los movimientos de <strong>Total Ingresado (Alta)</strong>.
+                </p>
+              </div>
+
+              {/* Selector de fecha efectiva */}
+              <div className="space-y-1.5">
+                <label className="block text-gray-700 font-bold uppercase tracking-wider text-[10px]">
+                  Fecha efectiva del alta / realización:
+                </label>
+                <input
+                  type="date"
+                  value={fechaRealizadoConfirm}
+                  onChange={(e) => setFechaRealizadoConfirm(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-mono font-bold focus:bg-white focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                />
+              </div>
+
+              {/* Botones de acción */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  disabled={isActivatingRealizado}
+                  onClick={() => setShowConfirmRealizadoModal(false)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isActivatingRealizado}
+                  onClick={handleConfirmarRealizado}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{isActivatingRealizado ? 'Dando de alta...' : 'Confirmar y Dar de Alta'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

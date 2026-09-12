@@ -41,7 +41,8 @@ import {
   CheckCircle,
   PackageCheck,
   Camera,
-  ZoomIn
+  ZoomIn,
+  MapPin
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -88,6 +89,21 @@ export interface LoteCargaSlotItem {
   bolsas: number;
   searchTerm: string;
 }
+
+export const getLoteUbicacion = (loteObj?: Lote | null, fallbackUbicacion?: string): string => {
+  if (fallbackUbicacion && fallbackUbicacion.trim()) return fallbackUbicacion.trim();
+  if (!loteObj) return 'Planta General';
+  if (loteObj.ubicacionAcopio && loteObj.ubicacionAcopio.trim()) {
+    return loteObj.ubicacionAcopio.trim();
+  }
+  if (loteObj.ala && loteObj.sector) {
+    return `Ala ${loteObj.ala} — Sector ${loteObj.sector}`;
+  }
+  if (loteObj.ala) {
+    return `Ala ${loteObj.ala}`;
+  }
+  return 'Planta General (Acopio Central)';
+};
 
 export const DespachosSection: React.FC<DespachosSectionProps> = ({
   lotes,
@@ -162,8 +178,9 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   const [genTratamiento, setGenTratamiento] = useState<'Tratado' | 'Sin Tratar'>('Sin Tratar');
 
   // Lotes agregados al dashboard de "Lote de Origen & Bolsas a Cargar"
+  // Precarga por defecto de 35 bolsas (28.000 kg) por lote
   const [lotesCarga, setLotesCarga] = useState<LoteCargaSlotItem[]>([
-    { id: 'slot-1', loteId: '', bolsas: 100, searchTerm: '' }
+    { id: 'slot-1', loteId: '', bolsas: 35, searchTerm: '' }
   ]);
 
   // Lista dinámica de Despachantes
@@ -228,6 +245,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   const [genDespachante, setGenDespachante] = useState<string>('Anibal Grandolio');
   const [genError, setGenError] = useState('');
   const [genSuccess, setGenSuccess] = useState('');
+  const [ultimaOrdenCreada, setUltimaOrdenCreada] = useState<OrdenCarga | null>(null);
 
   // Estados de datos de carga manual (Despacho: Remito, Destino, Chofer)
   const [genRemitoCliente, setGenRemitoCliente] = useState('');
@@ -369,9 +387,9 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     setGenTipo('Final');
     setGenTratamiento('Sin Tratar');
 
-    // 2. Restablecer lotes slots y datos manuales de carga
+    // 2. Restablecer lotes slots y datos manuales de carga (precarga por defecto de 35 bolsas / 28.000 kg)
     setLotesCarga([
-      { id: `slot-${Date.now()}-1`, loteId: '', bolsas: 100, searchTerm: '' }
+      { id: `slot-${Date.now()}-1`, loteId: '', bolsas: 35, searchTerm: '' }
     ]);
     setGenRemitoCliente('');
     setGenDestino('');
@@ -493,7 +511,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
           next[0] = {
             ...slot0,
             loteId: candidateLotes[0].id,
-            bolsas: slot0?.bolsas > 0 ? slot0.bolsas : Math.min(100, candidateLotes[0].stockBolsas)
+            bolsas: slot0?.bolsas > 0 ? slot0.bolsas : Math.min(35, candidateLotes[0].stockBolsas)
           };
           return next;
         }
@@ -538,7 +556,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       {
         id: newId,
         loteId: chosen?.id || '',
-        bolsas: chosen ? Math.min(50, chosen.stockBolsas) : 50,
+        bolsas: chosen ? Math.min(35, chosen.stockBolsas) : 35,
         searchTerm: ''
       }
     ]);
@@ -556,6 +574,11 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   ) => {
     setLotesCarga(prev => prev.map((slot, idx) => {
       if (idx !== slotIndex) return slot;
+      if (field === 'loteId') {
+        const targetLote = candidateLotes.find(c => c.id === value) || lotes.find(l => l.id === value);
+        const defBolsas = slot.bolsas > 0 ? slot.bolsas : (targetLote ? Math.min(35, targetLote.stockBolsas) : 35);
+        return { ...slot, loteId: value, bolsas: defBolsas };
+      }
       return { ...slot, [field]: value };
     }));
   };
@@ -623,18 +646,20 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       }
     }
 
-    // Mapear el desglose de lotes de origen
+    // Mapear el desglose de lotes de origen incluyendo su ubicación en planta
     const lotesOrigen: LoteOrigenItem[] = allSelectedSlots.map(item => ({
       loteId: item.lote.id,
       loteNro: item.lote.loteNro,
       variedad: item.lote.variedad,
       cantidadBolsas: item.bolsas,
-      kgTotales: item.kg
+      kgTotales: item.kg,
+      ubicacion: getLoteUbicacion(item.lote)
     }));
 
     const uniqueClientes = Array.from(new Set(allSelectedSlots.map(item => item.lote.cliente)));
     const clienteConsolidado = uniqueClientes.join(' / ');
     const primerLote = allSelectedSlots[0].lote;
+    const ubicacionConsolidada = lotesOrigen.map(lo => `${lo.loteNro}: ${lo.ubicacion}`).join(' | ');
 
     const fechaOrden = new Date().toISOString().split('T')[0];
     // Crear la Orden
@@ -652,16 +677,26 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       despachante: genDespachante,
       estado: 'Disponible',
       lotesOrigen: lotesOrigen,
+      ubicacionLote: ubicacionConsolidada,
       remitoCliente: genRemitoCliente.trim() || undefined,
       destino: genDestino.trim() || undefined,
       chofer: genChofer.trim() || undefined
     };
 
     onSaveOrden(nuevaOrden);
-    setGenSuccess(`Orden creada: ${nuevaOrden.id} (${clienteConsolidado} - ${totalBolsasSeleccionadas} bolsas) asignada a ${genDespachante}.`);
+    setGenSuccess('orden creada correctamente');
+    setUltimaOrdenCreada(nuevaOrden);
 
-    // Restablecer todos los filtros tras generar la orden
+    // Reestablecer los datos del dashboard para crear nueva orden
     handleResetAllFilters();
+
+    // Scroll suave hacia la leyenda para visibilidad inmediata
+    setTimeout(() => {
+      const banner = document.getElementById('banner-orden-creada-correctamente');
+      if (banner) {
+        banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 80);
   };
 
   // Apertura y guardado de edición de datos de despacho
@@ -1427,24 +1462,42 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
               )}
 
               {genSuccess && (
-                <div className="p-4 bg-emerald-50 border-2 border-[#00603C] rounded-xl text-xs text-[#00603C] flex items-center justify-between gap-3 shadow-xs animate-in fade-in">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#00603C] text-white flex items-center justify-center shrink-0 shadow-xs">
-                      <Check className="w-5 h-5" />
+                <div
+                  id="banner-orden-creada-correctamente"
+                  className="p-4 sm:p-5 bg-[#bef264]/40 backdrop-blur-md border-2 border-[#84cc16] rounded-2xl text-[#14532d] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300"
+                >
+                  <div className="flex items-start sm:items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-full bg-[#65a30d] text-white flex items-center justify-center shrink-0 shadow-sm ring-4 ring-[#bef264]/60">
+                      <Check className="w-6 h-6 stroke-[3]" />
                     </div>
                     <div>
-                      <div className="text-sm font-black tracking-wide uppercase text-[#00603C] flex items-center gap-2">
-                        <span>Orden creada</span>
-                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <div className="text-base sm:text-lg font-black tracking-wide uppercase text-[#14532d] flex items-center gap-2">
+                        <span>orden creada correctamente</span>
+                        <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#65a30d] animate-ping" />
                       </div>
-                      <div className="text-xs text-emerald-800 font-medium mt-0.5">
-                        {genSuccess}
+                      <div className="text-xs text-[#166534] font-medium mt-1">
+                        {ultimaOrdenCreada ? (
+                          <>
+                            Se registró la orden <strong className="font-mono text-[#14532d] font-bold">{ultimaOrdenCreada.id}</strong> para <strong>{ultimaOrdenCreada.cliente}</strong> ({ultimaOrdenCreada.cantidadBolsas} bolsas · {formatNumberArg(ultimaOrdenCreada.kgTotales, 0)} kg). Los datos del dashboard han sido reestablecidos para crear una nueva orden.
+                          </>
+                        ) : (
+                          'La orden fue creada exitosamente. Los datos del dashboard han sido reestablecidos para crear una nueva orden.'
+                        )}
                       </div>
                     </div>
                   </div>
-                  <span className="px-3 py-1 bg-[#00603C] text-white text-[11px] font-bold rounded-full uppercase tracking-wider shrink-0 shadow-xs">
-                    Orden creada
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGenSuccess('');
+                        setUltimaOrdenCreada(null);
+                      }}
+                      className="px-3.5 py-1.5 bg-white/90 hover:bg-white text-[#14532d] text-xs font-bold uppercase tracking-wider rounded-xl border border-[#84cc16] shadow-2xs transition cursor-pointer"
+                    >
+                      Aceptar
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1710,12 +1763,17 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                   <option value="" disabled>-- Seleccionar Lote Disponible --</option>
                                   {candidateLotes.map(lote => (
                                     <option key={lote.id} value={lote.id}>
-                                      Lote {lote.loteNro} — {lote.especie} {lote.variedad ? `(${lote.variedad})` : ''} | Stock: {lote.stockBolsas} bolsas ({lote.kgPorBolsa} kg/b) | {lote.calidad?.pureza ? `P: ${lote.calidad.pureza}%` : ''}
+                                      Lote {lote.loteNro} — {lote.especie} {lote.variedad ? `(${lote.variedad})` : ''} | Ubic: {getLoteUbicacion(lote)} | Stock: {lote.stockBolsas} b. ({lote.kgPorBolsa} kg/b)
                                     </option>
                                   ))}
                                 </select>
                                 {selectedLote && (
-                                  <div className="flex items-center gap-3 text-[10px] text-gray-500 mt-1">
+                                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-gray-600 mt-1.5">
+                                    <span className="inline-flex items-center gap-1 font-bold text-[#00603C] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                      <MapPin className="w-3 h-3 text-[#00603C]" />
+                                      Ubicación en Planta: <strong className="font-sans font-black text-xs text-[#00603C]">{getLoteUbicacion(selectedLote)}</strong>
+                                    </span>
+                                    <span>•</span>
                                     <span>Stock remanente disponible: <strong className="text-gray-800 font-mono">{selectedLote.stockBolsas} b.</strong></span>
                                     <span>•</span>
                                     <span>Envase: <strong className="text-gray-800 font-mono">{selectedLote.kgPorBolsa} kg/bolsa</strong></span>
@@ -1727,9 +1785,14 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
 
                               {/* Cantidad de Bolsas */}
                               <div className="md:col-span-3">
-                                <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
-                                  Bolsas a Cargar *
-                                </label>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="block text-[10px] font-bold text-gray-700 uppercase">
+                                    Bolsas a Cargar *
+                                  </label>
+                                  <span className="text-[9px] font-bold text-[#00603C] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                    Defecto: 35 b. (28.000 kg)
+                                  </span>
+                                </div>
                                 <div className="flex items-center gap-1.5">
                                   <input
                                     type="number"
@@ -1742,9 +1805,17 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                         ? 'border-red-400 focus:ring-red-400 text-red-700 bg-red-50'
                                         : 'border-gray-300 focus:ring-[#00603C] text-gray-900'
                                     }`}
-                                    placeholder="0"
+                                    placeholder="35"
                                     required
                                   />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateLoteSlot(slotIdx, 'bolsas', 35)}
+                                    className="px-2 h-10 bg-emerald-50 hover:bg-emerald-100 text-[#00603C] text-[10px] font-bold rounded-lg border border-emerald-200 transition cursor-pointer shrink-0"
+                                    title="Precargar valor por defecto: 35 bolsas (28.000 kg)"
+                                  >
+                                    35 b.
+                                  </button>
                                   {selectedLote && (
                                     <button
                                       type="button"
@@ -2262,18 +2333,76 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                       <span className="font-bold text-[#00603C] text-xs uppercase">{o.cliente}</span>
                                     </div>
 
+                                    {/* UBICACIÓN DE LOTES EN PLANTA - FUENTE GRANDE Y LLAMATIVA */}
+                                    <div className="col-span-2 bg-gradient-to-r from-emerald-50 via-emerald-100/60 to-emerald-50 border-2 border-[#00603C] p-3 sm:p-3.5 rounded-xl shadow-xs">
+                                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                                        <div className="flex items-center gap-1.5">
+                                          <MapPin className="w-4 h-4 text-[#00603C] shrink-0" />
+                                          <span className="text-[10px] sm:text-xs font-black text-[#00603C] uppercase tracking-wider">
+                                            UBICACIÓN DE LOTE{o.lotesOrigen && o.lotesOrigen.length > 1 ? 'S' : ''} EN PLANTA
+                                          </span>
+                                        </div>
+                                        <span className="text-[9px] font-black text-[#00603C] bg-white px-2 py-0.5 rounded-full border border-emerald-300 uppercase shadow-2xs">
+                                          Acopio / Carga
+                                        </span>
+                                      </div>
+
+                                      {o.lotesOrigen && o.lotesOrigen.length > 0 ? (
+                                        <div className="space-y-1.5">
+                                          {o.lotesOrigen.map((lo, loIdx) => {
+                                            const loteMatch = lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro);
+                                            const ubicacionTexto = getLoteUbicacion(loteMatch, lo.ubicacion);
+                                            return (
+                                              <div key={loIdx} className="bg-white p-2 sm:p-2.5 rounded-lg border border-emerald-200 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+                                                <span className="font-mono font-black text-xs sm:text-sm text-gray-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                                                  L-{lo.loteNro}
+                                                </span>
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="text-[9px] text-gray-500 font-bold uppercase">Ubicación:</span>
+                                                  <span className="font-sans font-black text-sm sm:text-base text-[#00603C] tracking-wide bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                                    📍 {ubicacionTexto}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <div className="bg-white p-2 sm:p-2.5 rounded-lg border border-emerald-200 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+                                          <span className="font-mono font-black text-xs sm:text-sm text-gray-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                                            L-{o.loteId}
+                                          </span>
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-[9px] text-gray-500 font-bold uppercase">Ubicación:</span>
+                                            <span className="font-sans font-black text-base sm:text-lg text-[#00603C] tracking-wide bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+                                              📍 {getLoteUbicacion(lote, o.ubicacionLote)}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+
                                     {o.lotesOrigen && o.lotesOrigen.length > 0 ? (
                                       <div className="col-span-2 bg-[#E3EFE7] bg-opacity-30 p-2.5 rounded-lg border border-[#00603C]/10 space-y-1.5 my-1">
-                                        <span className="text-[9px] font-bold text-[#00603C] uppercase tracking-wider block">Lotes de Origen Encontrados ({o.lotesOrigen.length})</span>
+                                        <span className="text-[9px] font-bold text-[#00603C] uppercase tracking-wider block">Desglose de Carga ({o.lotesOrigen.length} lotes)</span>
                                         <div className="space-y-1.5">
-                                          {o.lotesOrigen.map((lo, idx) => (
-                                            <div key={idx} className="flex justify-between items-center border-b border-dashed border-gray-200 pb-1 last:border-0 last:pb-0">
-                                              <span className="font-mono font-black text-sm text-gray-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
-                                                L-{lo.loteNro}
-                                              </span>
-                                              <span className="font-bold text-gray-800 text-xs">{lo.cantidadBolsas} b. / {formatNumberArg(lo.kgTotales, 0)} kg</span>
-                                            </div>
-                                          ))}
+                                          {o.lotesOrigen.map((lo, idx) => {
+                                            const loteMatch = lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro);
+                                            const ubi = getLoteUbicacion(loteMatch, lo.ubicacion);
+                                            return (
+                                              <div key={idx} className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-b border-dashed border-gray-200 pb-1 last:border-0 last:pb-0 gap-1">
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="font-mono font-black text-sm text-gray-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
+                                                    L-{lo.loteNro}
+                                                  </span>
+                                                  <span className="text-[11px] font-black text-[#00603C]">
+                                                    📍 {ubi}
+                                                  </span>
+                                                </div>
+                                                <span className="font-bold text-gray-800 text-xs">{lo.cantidadBolsas} b. / {formatNumberArg(lo.kgTotales, 0)} kg</span>
+                                              </div>
+                                            );
+                                          })}
                                         </div>
                                         <div className="flex justify-between items-center pt-1.5 border-t border-[#00603C]/10 text-[10px] font-bold text-[#00603C]">
                                           <span>TOTAL CARGA</span>
@@ -2297,6 +2426,10 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                               </span>
                                             </div>
                                           )}
+                                        </div>
+                                        <div>
+                                          <span className="text-[8px] text-gray-400 font-bold uppercase block tracking-wider">Ubicación</span>
+                                          <span className="font-sans font-black text-sm text-[#00603C] block">📍 {getLoteUbicacion(lote, o.ubicacionLote)}</span>
                                         </div>
                                         <div>
                                           <span className="text-[8px] text-gray-400 font-bold uppercase block tracking-wider">Especie</span>
@@ -2936,20 +3069,33 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                             {/* 6 - Cliente */}
                             <td className="py-3.5 px-4 font-bold text-gray-800">{o.cliente}</td>
 
-                            {/* 7 - ID Lote con tamaño aumentado */}
+                            {/* 7 - ID Lote con tamaño aumentado y Ubicación en Planta */}
                             <td className="py-3.5 px-4">
                               {o.lotesOrigen && o.lotesOrigen.length > 0 ? (
-                                <div className="flex flex-wrap gap-1.5 min-w-[120px]">
-                                  {o.lotesOrigen.map((lo, lIdx) => (
-                                    <span key={lIdx} className="font-mono font-black text-sm text-gray-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 shadow-2xs">
-                                      L-{lo.loteNro}
-                                    </span>
-                                  ))}
+                                <div className="space-y-1 min-w-[140px]">
+                                  {o.lotesOrigen.map((lo, lIdx) => {
+                                    const loteMatch = lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro);
+                                    return (
+                                      <div key={lIdx} className="flex flex-wrap items-center gap-1.5">
+                                        <span className="font-mono font-black text-sm text-gray-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 shadow-2xs">
+                                          L-{lo.loteNro}
+                                        </span>
+                                        <span className="text-[10px] font-black text-[#00603C] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                          📍 {getLoteUbicacion(loteMatch, lo.ubicacion)}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               ) : (
-                                <span className="font-mono font-black text-base text-gray-900 bg-amber-50 px-2.5 py-1 rounded border border-amber-300 shadow-2xs inline-block">
-                                  L-{o.loteId}
-                                </span>
+                                <div className="space-y-1">
+                                  <span className="font-mono font-black text-base text-gray-900 bg-amber-50 px-2.5 py-1 rounded border border-amber-300 shadow-2xs inline-block">
+                                    L-{o.loteId}
+                                  </span>
+                                  <div className="text-[10px] font-black text-[#00603C] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-flex items-center gap-1">
+                                    📍 {getLoteUbicacion(lotes.find(l => l.id === o.loteId), o.ubicacionLote)}
+                                  </div>
+                                </div>
                               )}
                             </td>
 
@@ -3159,6 +3305,14 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                     {comprobanteSeleccionado.lotesOrigen && comprobanteSeleccionado.lotesOrigen.length > 0
                       ? comprobanteSeleccionado.lotesOrigen.map(lo => lo.loteNro).join(", ")
                       : comprobanteSeleccionado.loteId}
+                  </span>
+                </p>
+                <p className="text-gray-700">
+                  Ubicación en Planta:{" "}
+                  <span className="font-sans font-black text-xs text-[#00603C]">
+                    📍 {comprobanteSeleccionado.ubicacionLote || (comprobanteSeleccionado.lotesOrigen && comprobanteSeleccionado.lotesOrigen.length > 0
+                      ? comprobanteSeleccionado.lotesOrigen.map(lo => `${lo.loteNro}: ${getLoteUbicacion(lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro), lo.ubicacion)}`).join(" | ")
+                      : getLoteUbicacion(lotes.find(l => l.id === comprobanteSeleccionado.loteId || l.loteNro === comprobanteSeleccionado.loteId)))}
                   </span>
                 </p>
                 <p className="text-gray-700">Tipo de Lote: <span className="font-semibold text-gray-800">{comprobanteSeleccionado.tipo}</span></p>

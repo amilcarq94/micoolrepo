@@ -514,6 +514,7 @@ export interface LoteOrigenItem {
   stockOriginalKg?: number;
   estadoMovimiento?: 'PRE-MOVIMIENTO' | 'REALIZADO';
   fechaRealizacion?: string; // YYYY-MM-DD
+  ubicacion?: string; // Ubicación en planta / acopio
 }
 
 export interface OrdenCarga {
@@ -533,6 +534,7 @@ export interface OrdenCarga {
   fotoRemito?: string; // Data URL de la imagen cargada
   firmaChofer?: string; // Data URL de la firma del chofer
   lotesOrigen?: LoteOrigenItem[];
+  ubicacionLote?: string; // Ubicación consolidada o del lote principal
   // Datos de carga manual / despacho (modificables en cualquier momento)
   remitoCliente?: string; // Nro de remito (cliente)
   destino?: string; // Destino

@@ -69,12 +69,34 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
       const movimientoStock: MovimientoStock = {
         id: `MOV-REAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         fecha: fechaRealizacion,
-        tipo: 'Entrada manual',
+        tipo: 'Alta',
         cantidadBolsas: currentBolsas,
         kgPorBolsa: currentKgB,
         cantidadKg: currentKgTot,
-        detalle: `MOV REALIZADO (Efectivizado el ${fechaRealizacion}) - ${detalleOrigen}`
+        detalle: `Alta efectiva (MOV REALIZADO el ${fechaRealizacion}) - ${detalleOrigen}`
       };
+
+      // Limpiar movimientos de precarga previos o altas iniciales para no duplicar el alta de bolsas ni el stock
+      const historialSinPrecarga = (currLote.historial || []).filter(mov => {
+        const idLower = (mov.id || '').toLowerCase();
+        const detLower = (mov.detalle || '').toLowerCase();
+        const tipoLower = (mov.tipo || '').toLowerCase();
+        const isPrecargaOrOldReal =
+          idLower.startsWith('mov-pre') ||
+          idLower.startsWith('mov-real') ||
+          idLower.startsWith('mov-proc') ||
+          idLower.startsWith('alta-inicial') ||
+          idLower.startsWith('alta-precarga') ||
+          tipoLower.includes('precarga') ||
+          detLower.includes('precarga') ||
+          detLower.includes('pre-carga') ||
+          detLower.includes('carga inicial') ||
+          detLower.includes('alta inicial') ||
+          detLower.includes('mov realizado');
+        return !isPrecargaOrOldReal;
+      });
+
+      const nuevoHistorial = [movimientoStock, ...historialSinPrecarga];
 
       const ubicacionStr = ala && sector ? `Ala ${ala} - Sector ${sector}` : (currLote.ubicacionAcopio || 'Sin asignar');
 
@@ -98,7 +120,7 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
         observaciones: observaciones.trim()
           ? `${currLote.observaciones ? currLote.observaciones + ' | ' : ''}Mov realizado el ${fechaRealizacion}: ${observaciones.trim()}`
           : currLote.observaciones,
-        historial: [movimientoStock, ...(currLote.historial || [])]
+        historial: nuevoHistorial
       };
     });
 

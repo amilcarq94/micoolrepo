@@ -317,6 +317,7 @@ export function mapLoteToFirestore(lote: Lote): any {
     fechaIngreso: fechaIngreso,
     campaniaId: campaniaId,
     producto: lote.producto,
+    historial: lote.historial || [],
     auditoria: lote.auditoria || [],
     observaciones: lote.observaciones || '',
     ala: lote.ala || '',

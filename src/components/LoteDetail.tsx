@@ -8,7 +8,7 @@ import { Lote, MovimientoStock, EstadoLoteType, AuditLogEntry, MovimientoSilo, O
 import { getLoteAuditoria } from '../utils/audit';
 import { formatNumberArg, formatKg, formatBolsas, formatDateStr } from '../utils/formatters';
 import { LogoSiloLoose } from './Logo';
-import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, Calendar, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, Calendar, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, CheckCircle2, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer, Settings } from 'lucide-react';
 import { QrCodeModal } from './QrCodeModal';
 import { BarcodeLabelModal } from './BarcodeLabelModal';
 import { FichaTecnicaOficialCard } from './FichaTecnicaOficialCard';
@@ -26,6 +26,7 @@ interface LoteDetailProps {
   salidas?: SalidaRegistrada[];
   readOnly?: boolean;
   onBack: () => void;
+  onSaveLote?: (lote: Lote) => Promise<void> | void;
   onUpdateLoteStock: (loteId: string, nuevosMovimientos: MovimientoStock[], nuevoStockBolsas: number, nuevoStockKg: number, nuevoEstado: EstadoLoteType) => void;
   onRegistrarSalida?: (loteId: string) => void;
   onUpdateLoteLocation?: (loteId: string, ala: string, sector: string) => Promise<void>;
@@ -40,6 +41,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   salidas = [],
   readOnly = false,
   onBack,
+  onSaveLote,
   onUpdateLoteStock,
   onRegistrarSalida,
   onUpdateLoteLocation,
@@ -57,9 +59,32 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   const [selectedAla, setSelectedAla] = useState(lote.ala || '');
   const [selectedSector, setSelectedSector] = useState(lote.sector || '');
   const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0]);
-  const [tipoMov, setTipoMov] = useState<'Entrada manual' | 'Salida manual' | 'Salida' | 'Pasado a Consumo' | 'Ajuste de Auditoría' | 'Ajuste'>('Entrada manual');
-  const [bolsas, setBolsas] = useState<number>(50);
+  const [tipoMov, setTipoMov] = useState<'Pasado a Consumo' | 'Ajuste de Auditoría'>('Pasado a Consumo');
+  const [bolsas, setBolsas] = useState<number>(() => Math.min(10, lote.stockBolsas || 1));
   const [kgBolsa, setKgBolsa] = useState<number>(lote.kgPorBolsa || 40);
+
+  // Helper para obtener el número actual de Alta de bolsas registrado en el lote
+  const getAltaBolsasActual = () => {
+    const altaMov = (lote.historial || []).find(
+      (m) =>
+        m.tipo === 'Alta' ||
+        (m.id && (m.id.toLowerCase().startsWith('alta-inicial') || m.id.toLowerCase().startsWith('mov-real') || m.id.toLowerCase().startsWith('alta-precarga'))) ||
+        m.tipo === 'Entrada manual' ||
+        (m.tipo === 'Entrada' && !(m.tipo || '').toLowerCase().includes('movimiento'))
+    );
+    if (altaMov && altaMov.cantidadBolsas > 0) {
+      return altaMov.cantidadBolsas;
+    }
+    const salidasTot = (lote.historial || [])
+      .filter((m) => {
+        const t = (m.tipo || '').toLowerCase();
+        return t.includes('salida') || t.includes('despacho') || t.includes('consumo') || m.tipoSalida !== undefined;
+      })
+      .reduce((acc, m) => acc + Math.abs(m.cantidadBolsas || 0), 0);
+    return Math.max(lote.stockBolsas, lote.stockBolsas + salidasTot);
+  };
+
+  const [altaBolsasAudit, setAltaBolsasAudit] = useState<number>(() => getAltaBolsasActual());
   const [detalle, setDetalle] = useState('');
   const [remitoClienteModal, setRemitoClienteModal] = useState('');
   const [destinoModal, setDestinoModal] = useState('');
@@ -70,7 +95,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
 
   // Subpestaña dentro de Existencias y Stock: 'salidas' o 'todos'
   const [subTabStock, setSubTabStock] = useState<'salidas' | 'todos'>('salidas');
-  const [filtroTipoSalida, setFiltroTipoSalida] = useState<'todos' | 'despacho' | 'movimiento' | 'manual'>('todos');
+  const [filtroTipoSalida, setFiltroTipoSalida] = useState<'todos' | 'despacho' | 'movimiento' | 'cconsumo'>('todos');
   const [busquedaSalidas, setBusquedaSalidas] = useState('');
 
   // Modal para registrar Salida Manual de Stock
@@ -161,83 +186,176 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
     }
   };
 
-  const handleAgregarMovimiento = (e: React.FormEvent) => {
+  const handleAgregarMovimiento = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    const cantBolsas = Number(bolsas);
-    const pesoBolsa = Number(kgBolsa);
-    if (cantBolsas <= 0 || pesoBolsa <= 0) {
-      setError('Las bolsas y el peso por bolsa deben ser valores positivos.');
+    const pesoBolsa = Number(kgBolsa) || lote.kgPorBolsa || 40;
+    if (pesoBolsa <= 0) {
+      setError('El peso por bolsa debe ser un valor positivo.');
       return;
     }
 
-    const esRestaStock =
-      tipoMov === 'Salida manual' ||
-      tipoMov === 'Salida' ||
-      tipoMov === 'Pasado a Consumo' ||
-      tipoMov === 'Ajuste de Auditoría' ||
-      tipoMov === 'Ajuste';
-
-    if (esRestaStock && cantBolsas > lote.stockBolsas) {
-      setError(`Stock insuficiente. Intenta restar ${cantBolsas} b. de un lote con sólo ${lote.stockBolsas} b. disponibles.`);
-      return;
-    }
-
-    const totalKgMov = cantBolsas * pesoBolsa;
-    
-    // Calcular nuevos valores de stock
-    let nuevoStockBolsas = lote.stockBolsas;
-    let nuevoStockKg = lote.stockKg;
-
-    if (tipoMov === 'Entrada manual') {
-      // Entrada manual (+ suma stock)= estos registros aumentan el número de bolsas ingresadas al stock del lote
-      nuevoStockBolsas += cantBolsas;
-      nuevoStockKg += totalKgMov;
-    } else {
-      // Salida manual, Pasado a consumo, Ajuste de auditoría (- resta stock)= estos registros disminuyen el stock del lote
-      nuevoStockBolsas = Math.max(0, nuevoStockBolsas - cantBolsas);
-      nuevoStockKg = Math.max(0, nuevoStockKg - totalKgMov);
-    }
-
-    // Determinar nuevo estado del lote
-    let nuevoEstado: EstadoLoteType = lote.estado;
-    if (nuevoStockBolsas === 0) {
-      if (tipoMov === 'Pasado a Consumo') {
-        nuevoEstado = 'A Consumo';
-      } else {
-        nuevoEstado = 'Agotado';
+    if (tipoMov === 'Pasado a Consumo') {
+      // Opción 1: Pasado a Consumo (dar por salidas a las bolsas seleccionadas y descontar al stock del lote)
+      const cantBolsas = Number(bolsas);
+      if (cantBolsas <= 0) {
+        setError('La cantidad de bolsas a pasar a consumo debe ser mayor a 0.');
+        return;
       }
-    } else if (lote.estado === 'Agotado' && nuevoStockBolsas > 0) {
-      nuevoEstado = 'Disponible';
+      if (cantBolsas > lote.stockBolsas) {
+        setError(`Stock insuficiente. Intenta restar ${cantBolsas} b. de un lote con sólo ${lote.stockBolsas} b. disponibles.`);
+        return;
+      }
+
+      const totalKgMov = cantBolsas * pesoBolsa;
+      const nuevoStockBolsas = Math.max(0, lote.stockBolsas - cantBolsas);
+      const nuevoStockKg = Math.max(0, lote.stockKg - totalKgMov);
+      const nuevoEstado: EstadoLoteType = nuevoStockBolsas === 0 ? 'A Consumo' : lote.estado;
+
+      const nuevoMovimiento: MovimientoStock = {
+        id: `MOV-CON-${Date.now()}`,
+        fecha,
+        tipo: 'Pasado a Consumo',
+        cantidadBolsas: cantBolsas,
+        kgPorBolsa: pesoBolsa,
+        cantidadKg: totalKgMov,
+        detalle: detalle.trim() || 'Pasado a consumo de bolsas',
+        remitoCliente: remitoClienteModal.trim() || undefined,
+        destino: destinoModal.trim() || 'Consumo',
+        chofer: choferModal.trim() || undefined,
+        tipoSalida: 'consumo',
+      };
+
+      const auditEntry: AuditLogEntry = {
+        id: `AUD-CON-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Stock',
+        usuario: 'Usuario',
+        descripcion: `Pasado a Consumo: Egreso de ${cantBolsas} bolsas (${totalKgMov} kg) descontadas del stock.`,
+        detalles: detalle.trim() || 'Ajuste general - Pasado a consumo'
+      };
+
+      const nuevoHistorial = [nuevoMovimiento, ...(lote.historial || [])];
+      onUpdateLoteStock(lote.id, nuevoHistorial, nuevoStockBolsas, nuevoStockKg, nuevoEstado);
+
+      if (onSaveLote) {
+        try {
+          await onSaveLote({
+            ...lote,
+            stockBolsas: nuevoStockBolsas,
+            stockKg: nuevoStockKg,
+            estado: nuevoEstado,
+            historial: nuevoHistorial,
+            auditoria: [auditEntry, ...(lote.auditoria || [])]
+          });
+        } catch (err) {
+          console.warn('Error guardando auditoría de consumo:', err);
+        }
+      }
+
+      setShowAddMovModal(false);
+      setBolsas(Math.min(10, nuevoStockBolsas || 1));
+      setDetalle('');
+      setRemitoClienteModal('');
+      setDestinoModal('');
+      setChoferModal('');
+    } else {
+      // Opción 2: Ajuste por Auditoría (editar el número de alta de bolsas en el lote, este movimiento solo modificará el registro de "Total Ingresado (Alta)")
+      const nuevoAltaBolsas = Number(altaBolsasAudit);
+      if (isNaN(nuevoAltaBolsas) || nuevoAltaBolsas < 0) {
+        setError('El nuevo número de alta de bolsas debe ser un número mayor o igual a 0.');
+        return;
+      }
+
+      const totalKgAlta = nuevoAltaBolsas * pesoBolsa;
+      let foundAlta = false;
+
+      const historialActualizado: MovimientoStock[] = (lote.historial || []).map((m) => {
+        const tipoL = (m.tipo || '').toLowerCase();
+        const idL = (m.id || '').toLowerCase();
+        const detL = (m.detalle || '').toLowerCase();
+        const isAlta =
+          m.tipo === 'Alta' ||
+          idL.startsWith('alta-inicial') ||
+          idL.startsWith('alta-precarga') ||
+          idL.startsWith('mov-real') ||
+          m.tipo === 'Entrada manual' ||
+          (m.tipo === 'Entrada' && !tipoL.includes('movimiento')) ||
+          detL.includes('alta inicial') ||
+          detL.includes('carga inicial') ||
+          detL.includes('alta efectiva');
+
+        if (isAlta && !foundAlta) {
+          foundAlta = true;
+          return {
+            ...m,
+            tipo: 'Alta',
+            cantidadBolsas: nuevoAltaBolsas,
+            kgPorBolsa: pesoBolsa,
+            cantidadKg: totalKgAlta,
+            detalle: m.detalle?.includes('ajustada')
+              ? m.detalle
+              : `${m.detalle || 'Alta de lote'} (Ajuste por auditoría: ${nuevoAltaBolsas} b.)`,
+          };
+        }
+        return m;
+      });
+
+      if (!foundAlta) {
+        historialActualizado.unshift({
+          id: `alta-inicial-${lote.id}`,
+          fecha: lote.fechaIngreso || lote.fechaMovimiento || fecha,
+          tipo: 'Alta',
+          cantidadBolsas: nuevoAltaBolsas,
+          kgPorBolsa: pesoBolsa,
+          cantidadKg: totalKgAlta,
+          detalle: `Alta inicial del lote ajustada por auditoría a ${nuevoAltaBolsas} bolsas`,
+        });
+      }
+
+      // Registrar movimiento de auditoría para trazabilidad
+      const movAuditoria: MovimientoStock = {
+        id: `MOV-AUD-ALTA-${Date.now()}`,
+        fecha,
+        tipo: 'Ajuste de Auditoría',
+        cantidadBolsas: nuevoAltaBolsas,
+        kgPorBolsa: pesoBolsa,
+        cantidadKg: totalKgAlta,
+        detalle: detalle.trim() || `Ajuste por Auditoría: Alta de bolsas modificada a ${nuevoAltaBolsas} b. (Total Ingresado Alta)`,
+      };
+      historialActualizado.unshift(movAuditoria);
+
+      const auditEntry: AuditLogEntry = {
+        id: `AUD-ALTA-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Edición',
+        usuario: 'Auditoría',
+        descripcion: `Ajuste por Auditoría: Total Ingresado (Alta) modificado a ${nuevoAltaBolsas} bolsas.`,
+        detalles: `Modificación exclusiva del número de alta. Motivo: ${detalle.trim() || 'Ajuste por auditoría física'}`
+      };
+
+      // No se modifica el stock ni los egresos, sólo se actualiza el historial y el registro de Alta
+      onUpdateLoteStock(lote.id, historialActualizado, lote.stockBolsas, lote.stockKg, lote.estado);
+
+      if (onSaveLote) {
+        try {
+          await onSaveLote({
+            ...lote,
+            historial: historialActualizado,
+            auditoria: [auditEntry, ...(lote.auditoria || [])]
+          });
+        } catch (err) {
+          console.warn('Error guardando auditoría de alta:', err);
+        }
+      }
+
+      setShowAddMovModal(false);
+      setDetalle('');
+      setRemitoClienteModal('');
+      setDestinoModal('');
+      setChoferModal('');
     }
-
-    // Agregar movimiento al historial
-    const nuevoMovimiento: MovimientoStock = {
-      id: `MOV-${Date.now()}`,
-      fecha,
-      tipo: tipoMov,
-      cantidadBolsas: cantBolsas,
-      kgPorBolsa: pesoBolsa,
-      cantidadKg: totalKgMov,
-      detalle: detalle.trim() || `${tipoMov} - Ajuste general de inventario`,
-      remitoCliente: remitoClienteModal.trim() || undefined,
-      destino: (tipoMov === 'Pasado a Consumo' && !destinoModal.trim()) ? 'Consumo' : (destinoModal.trim() || undefined),
-      chofer: choferModal.trim() || undefined,
-      tipoSalida: esRestaStock ? 'manual' : undefined
-    };
-
-    const nuevoHistorial = [nuevoMovimiento, ...lote.historial];
-
-    onUpdateLoteStock(lote.id, nuevoHistorial, nuevoStockBolsas, nuevoStockKg, nuevoEstado);
-    
-    // Resetear formulario
-    setShowAddMovModal(false);
-    setBolsas(50);
-    setDetalle('');
-    setRemitoClienteModal('');
-    setDestinoModal('');
-    setChoferModal('');
   };
 
   // Registrar salida manual de stock con campos completos de trazabilidad
@@ -288,13 +406,74 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
     setMotivoSalidaManual('');
   };
 
-  // Lista unificada de todas las salidas del lote (Despachos, Órdenes de Movimiento y Salidas Manuales)
+  // Pasar a Realizado directo: Dar de alta bolsas y sumar a los movimientos de Total Ingresado (Alta)
+  const handlePasarARealizadoDirecto = async () => {
+    const bolsas = lote.stockBolsas > 0 ? lote.stockBolsas : 1;
+    const kgB = lote.kgPorBolsa || 40;
+    const kgTot = lote.stockKg > 0 ? lote.stockKg : bolsas * kgB;
+    const hoy = new Date().toISOString().split('T')[0];
+
+    const movimientoAlta: MovimientoStock = {
+      id: `MOV-REAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      fecha: hoy,
+      tipo: 'Alta',
+      cantidadBolsas: bolsas,
+      kgPorBolsa: kgB,
+      cantidadKg: kgTot,
+      detalle: `Alta efectiva de bolsas (Pasado a Realizado el ${hoy})`
+    };
+
+    const historialSinPrecarga = (lote.historial || []).filter(mov => {
+      const idLower = (mov.id || '').toLowerCase();
+      const detLower = (mov.detalle || '').toLowerCase();
+      const tipoLower = (mov.tipo || '').toLowerCase();
+      return !(
+        idLower.startsWith('mov-pre') ||
+        idLower.startsWith('alta-precarga') ||
+        tipoLower.includes('precarga') ||
+        detLower.includes('precarga') ||
+        detLower.includes('pre-carga') ||
+        detLower.includes('carga inicial')
+      );
+    });
+
+    const nuevoHistorial = [movimientoAlta, ...historialSinPrecarga];
+
+    const loteRealizado: Lote = {
+      ...lote,
+      estadoRegistro: 'REALIZADO',
+      fechaIngreso: hoy,
+      fechaHoraProduccion: `${hoy}T${new Date().toTimeString().slice(0, 5)}`,
+      stockBolsas: bolsas,
+      kgPorBolsa: kgB,
+      stockKg: kgTot,
+      estado: bolsas > 0 ? 'Disponible' : 'Agotado',
+      historial: nuevoHistorial,
+      auditoria: [
+        {
+          id: `AUD-REAL-${Date.now()}`,
+          fechaHora: new Date().toISOString(),
+          tipo: 'Edición',
+          usuario: 'Operador Planta',
+          descripcion: `Lote pasado a REALIZADO: Alta efectiva de ${bolsas} bolsas (${kgTot} kg).`,
+        },
+        ...(lote.auditoria || [])
+      ]
+    };
+
+    if (onSaveLote) {
+      await onSaveLote(loteRealizado);
+    }
+    onUpdateLoteStock(lote.id, nuevoHistorial, bolsas, kgTot, 'Disponible');
+  };
+
+  // Lista unificada de todas las salidas del lote (Despachos, Órdenes de Movimiento y Salidas por Consumo)
   const salidasList = useMemo(() => {
     const list: Array<{
       id: string;
       fecha: string;
       hora?: string;
-      tipoSalidaCategoria: 'movimiento' | 'despacho' | 'manual';
+      tipoSalidaCategoria: 'movimiento' | 'despacho' | 'consumo' | 'manual';
       tipoSalidaLabel: string;
       cantidadBolsas: number;
       cantidadKg: number;
@@ -320,18 +499,22 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
 
       if (!isSalida) return;
 
-      let cat: 'movimiento' | 'despacho' | 'manual' = 'manual';
-      let label = 'Salida Manual';
+      let cat: 'movimiento' | 'despacho' | 'consumo' | 'manual' = 'consumo';
+      let label = 'Consumo';
 
       if (
         mov.tipoSalida === 'movimiento' ||
         tipoLower.includes('movimiento') ||
+        detLower.includes('movimiento') ||
         detLower.includes('transferencia') ||
+        detLower.includes('hacia nuevo lote') ||
+        detLower.includes('desdoblamiento') ||
+        detLower.includes('curado') ||
         detLower.includes('orden de movimiento') ||
         detLower.includes('precarga de movimiento')
       ) {
         cat = 'movimiento';
-        label = 'Salida por Movimiento';
+        label = 'Movimiento';
       } else if (
         mov.tipoSalida === 'despacho' ||
         tipoLower.includes('despacho') ||
@@ -341,16 +524,17 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
         mov.ordenId?.startsWith('OC-')
       ) {
         cat = 'despacho';
-        label = 'Salida por Despacho';
-      } else if (tipoLower.includes('consumo')) {
-        cat = 'manual';
-        label = 'Pasado a Consumo';
-      } else if (tipoLower.includes('ajuste')) {
-        cat = 'manual';
-        label = 'Ajuste de Auditoría';
+        label = 'Despacho';
+      } else if (
+        mov.tipoSalida === 'consumo' ||
+        tipoLower.includes('consumo') ||
+        detLower.includes('consumo')
+      ) {
+        cat = 'consumo';
+        label = 'Consumo';
       } else {
-        cat = 'manual';
-        label = 'Salida Manual';
+        cat = 'consumo';
+        label = 'Consumo';
       }
 
       let remito = mov.remitoCliente || '-';
@@ -403,7 +587,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
     // 2. Incorporar Órdenes de Carga despachadas que apliquen a este lote
     if (ordenesCarga) {
       ordenesCarga
-        .filter((o) => o.estado === 'Despachada')
+        .filter((o) => o.estado === 'Despachada' || o.stockDescontado === true)
         .forEach((o) => {
           const itemOrigen = o.lotesOrigen?.find(
             (lo) => lo.loteId === lote.id || lo.loteNro === lote.loteNro
@@ -421,7 +605,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                 id: `OC-SAL-${o.id}`,
                 fecha: o.fecha,
                 tipoSalidaCategoria: 'despacho',
-                tipoSalidaLabel: `Salida por Despacho (${o.id})`,
+                tipoSalidaLabel: 'Despacho',
                 cantidadBolsas: b,
                 cantidadKg: k,
                 remitoCliente: o.remitoCliente || '-',
@@ -435,13 +619,46 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
         });
     }
 
+    // 3. Incorporar salidas registradas directas si no están ya en la lista
+    if (salidas) {
+      salidas
+        .filter((s) => s.loteId === lote.id || (s as any).loteNro === lote.loteNro)
+        .forEach((s) => {
+          const remitoVal = s.remitoCliente || (s as any).remito || s.id;
+          const yaEnLista = list.some(
+            (item) => item.ordenId === s.id || item.id === s.id || (item.remitoCliente && item.remitoCliente === remitoVal)
+          );
+          if (!yaEnLista) {
+            const kgVal = s.totalKg || (s as any).cantidadKg || Math.abs(s.cantidadBolsas * (s.kgPorBolsa || lote.kgPorBolsa || 40));
+            list.push({
+              id: `SAL-${s.id}`,
+              fecha: s.fecha,
+              hora: (s as any).hora || '',
+              tipoSalidaCategoria: 'despacho',
+              tipoSalidaLabel: 'Despacho',
+              cantidadBolsas: Math.abs(s.cantidadBolsas),
+              cantidadKg: Math.abs(kgVal),
+              remitoCliente: remitoVal,
+              destino: s.cliente || s.destino || '-',
+              chofer: s.choferNombre,
+              detalle: `Despacho registrado a ${s.cliente || ''}`,
+              ordenId: s.id,
+            });
+          }
+        });
+    }
+
     return list.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
   }, [lote, ordenesCarga, salidas]);
 
   // Salidas filtradas por búsqueda y categoría
   const salidasFiltradas = useMemo(() => {
     return salidasList.filter((item) => {
-      if (filtroTipoSalida !== 'todos' && item.tipoSalidaCategoria !== filtroTipoSalida) {
+      if (filtroTipoSalida === 'cconsumo') {
+        if (item.tipoSalidaCategoria !== 'consumo' && item.tipoSalidaCategoria !== 'manual') {
+          return false;
+        }
+      } else if (filtroTipoSalida !== 'todos' && item.tipoSalidaCategoria !== filtroTipoSalida) {
         return false;
       }
       if (busquedaSalidas.trim()) {
@@ -870,6 +1087,19 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
 
           {/* Barra de Acciones Superior: IMPRIMIR ETIQUETAS, CODIGO INASE y IMPRIMIR FICHA TECNICA */}
           <div className="flex flex-wrap items-center gap-2.5" id="lote-detail-actions-bar">
+            {/* Botón Pasar a Realizado para lotes en PRE-CARGA */}
+            {lote.estadoRegistro === 'PRE-CARGA' && !readOnly && (
+              <button
+                id="btn-pasar-realizado-lotedetail"
+                onClick={handlePasarARealizadoDirecto}
+                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition text-xs font-black uppercase tracking-wider shadow-sm cursor-pointer active:scale-95 border border-emerald-500"
+                title="Pasar a Realizado: Dar de alta bolsas y sumar a los movimientos de Total Ingresado (Alta)"
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-200 stroke-[2.5]" />
+                <span>Pasar a Realizado (Alta Bolsas)</span>
+              </button>
+            )}
+
             {/* Botón IMPRIMIR ETIQUETAS */}
             <button
               id="btn-imprimir-etiquetas-lotedetail"
@@ -1219,26 +1449,23 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setShowSalidaManualModal(true)}
-                        className="px-3.5 py-1.5 bg-gradient-to-r from-[#A0522D] to-[#804020] hover:from-[#8C4625] hover:to-[#6E351A] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition cursor-pointer"
-                        title="Registrar una salida manual directa de este lote con Nro de remito y destino"
+                        onClick={() => {
+                          setTipoMov('Pasado a Consumo');
+                          setBolsas(Math.min(10, lote.stockBolsas || 1));
+                          setAltaBolsasAudit(getAltaBolsasActual());
+                          setShowAddMovModal(true);
+                        }}
+                        className="px-3.5 py-1.5 bg-[#00603C] hover:bg-[#254731] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+                        title="Ajuste general de inventario: Pasado a Consumo o Ajuste por Auditoría de Alta"
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>+ Registrar Salida Manual</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowAddMovModal(true)}
-                        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition cursor-pointer"
-                        title="Ajuste general o ingreso manual"
-                      >
-                        Ajuste General
+                        <Settings className="w-3.5 h-3.5" />
+                        <span>Ajuste General</span>
                       </button>
                     </div>
                   )}
                 </div>
 
-                {/* VISTA: SALIDAS DE STOCK (POR MOVIMIENTO, DESPACHO O MANUALES) */}
+                {/* VISTA: SALIDAS DE STOCK (POR MOVIMIENTO, DESPACHO O CONSUMO) */}
                 {subTabStock === 'salidas' && (
                   <div className="space-y-4">
                     {/* Tarjetas de Resumen de Salidas */}
@@ -1325,14 +1552,14 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setFiltroTipoSalida('manual')}
+                          onClick={() => setFiltroTipoSalida('cconsumo')}
                           className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                            filtroTipoSalida === 'manual'
+                            filtroTipoSalida === 'cconsumo'
                               ? 'bg-[#A0522D] text-white'
                               : 'bg-amber-50 text-amber-900 hover:bg-amber-100'
                           }`}
                         >
-                          ✍️ Manuales ({salidasList.filter(s => s.tipoSalidaCategoria === 'manual').length})
+                          📦 cconsumo ({salidasList.filter(s => s.tipoSalidaCategoria === 'consumo' || s.tipoSalidaCategoria === 'manual').length})
                         </button>
                       </div>
 
@@ -1342,7 +1569,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                           type="text"
                           value={busquedaSalidas}
                           onChange={(e) => setBusquedaSalidas(e.target.value)}
-                          placeholder="Buscar por remito, destino..."
+                          placeholder="Buscar por remito, destino, tipo..."
                           className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:bg-white focus:outline-none focus:border-[#00603C]"
                         />
                       </div>
@@ -1352,20 +1579,10 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                     {salidasFiltradas.length === 0 ? (
                       <div className="bg-white p-8 rounded-xl border border-gray-100 text-center text-gray-500 space-y-2">
                         <ArrowDownRight className="w-8 h-8 mx-auto text-gray-300" />
-                        <p className="font-semibold text-xs text-gray-700">No se encontraron salidas para este lote.</p>
+                        <p className="font-semibold text-xs text-gray-700">No se encontraron salidas para este lote con el filtro seleccionado.</p>
                         <p className="text-[11px] text-gray-400 max-w-md mx-auto">
-                          Las salidas se registran automáticamente por Despachos (Órdenes de Carga), transferencias por Orden de Movimiento (Precarga de Movimientos de Lotes) o mediante el registro de una Salida Manual.
+                          Las salidas se registran automáticamente por Despachos realizados (Órdenes de Carga), transferencias por Movimiento entre lotes o por Pasado a Consumo en Ajuste General.
                         </p>
-                        {!readOnly && (
-                          <button
-                            type="button"
-                            onClick={() => setShowSalidaManualModal(true)}
-                            className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 bg-[#A0522D] text-white rounded-lg text-xs font-bold hover:bg-[#8C4625] cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            Registrar Salida Manual
-                          </button>
-                        )}
                       </div>
                     ) : (
                       <div className="bg-white rounded-xl border border-gray-100 shadow-xs overflow-hidden">
@@ -1373,13 +1590,13 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                           <table className="w-full text-left text-xs border-collapse">
                             <thead>
                               <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
-                                <th className="py-2.5 px-3">Fecha</th>
-                                <th className="py-2.5 px-3">Salida (por movimiento o despacho)</th>
-                                <th className="py-2.5 px-3 text-right">Bolsas</th>
-                                <th className="py-2.5 px-3 text-right">Kilogramos</th>
-                                <th className="py-2.5 px-3">Nro Remito de Cliente</th>
-                                <th className="py-2.5 px-3">Destino</th>
-                                <th className="py-2.5 px-3">Detalle / Chofer</th>
+                                <th className="py-2.5 px-3 whitespace-nowrap">Fecha de salida</th>
+                                <th className="py-2.5 px-3 whitespace-nowrap">Tipo de salida</th>
+                                <th className="py-2.5 px-3 text-right whitespace-nowrap">Cantidad de bolsas salidas</th>
+                                <th className="py-2.5 px-3 text-right whitespace-nowrap">Kilogramos</th>
+                                <th className="py-2.5 px-3 whitespace-nowrap">Nro Remito de Cliente</th>
+                                <th className="py-2.5 px-3 whitespace-nowrap">Destino</th>
+                                <th className="py-2.5 px-3 whitespace-nowrap">Detalle / Chofer</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -1389,7 +1606,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
 
                                 return (
                                   <tr key={sal.id} className="hover:bg-amber-50/40 transition">
-                                    {/* Fecha */}
+                                    {/* Fecha de salida */}
                                     <td className="py-2.5 px-3 font-semibold text-gray-700 whitespace-nowrap">
                                       <span>{formatDateStr(sal.fecha)}</span>
                                       {sal.hora && (
@@ -1399,29 +1616,29 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                                       )}
                                     </td>
 
-                                    {/* Salida (por movimiento o despacho) */}
-                                    <td className="py-2.5 px-3">
+                                    {/* Tipo de salida (despacho, consumo, movimiento) */}
+                                    <td className="py-2.5 px-3 whitespace-nowrap">
                                       <div className="flex items-center gap-1.5">
                                         {isDespacho ? (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
-                                            <Truck className="w-3 h-3 text-blue-600" />
-                                            Salida por Despacho
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200 shadow-2xs">
+                                            <Truck className="w-3.5 h-3.5 text-blue-600" />
+                                            Despacho
                                           </span>
                                         ) : isMovimiento ? (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                            <ArrowRight className="w-3 h-3 text-[#00603C]" />
-                                            Salida por Movimiento
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                            <ArrowRight className="w-3.5 h-3.5 text-[#00603C]" />
+                                            Movimiento
                                           </span>
                                         ) : (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200">
-                                            <ArrowDownRight className="w-3 h-3 text-[#A0522D]" />
-                                            Salida Manual
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
+                                            <ArrowDownRight className="w-3.5 h-3.5 text-[#A0522D]" />
+                                            Consumo
                                           </span>
                                         )}
                                       </div>
                                     </td>
 
-                                    {/* Bolsas */}
+                                    {/* Cantidad de bolsas salidas */}
                                     <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-700 whitespace-nowrap">
                                       -{sal.cantidadBolsas} b.
                                     </td>
@@ -1432,35 +1649,24 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                                     </td>
 
                                     {/* Nro Remito de Cliente */}
-                                    <td className="py-2.5 px-3 font-mono text-gray-800 font-semibold whitespace-nowrap">
-                                      {sal.remitoCliente && sal.remitoCliente !== '-' ? (
-                                        <span className="bg-gray-100 text-gray-800 px-2 py-0.5 rounded border border-gray-200 font-bold">
-                                          {sal.remitoCliente}
-                                        </span>
-                                      ) : (
-                                        <span className="text-gray-400 italic font-normal">-</span>
-                                      )}
+                                    <td className="py-2.5 px-3 font-mono text-gray-900 whitespace-nowrap">
+                                      {sal.remitoCliente || '-'}
                                     </td>
 
                                     {/* Destino */}
-                                    <td className="py-2.5 px-3 text-gray-800 font-medium">
-                                      {sal.destino && sal.destino !== '-' ? (
-                                        <span className="text-[#00603C] font-semibold">{sal.destino}</span>
-                                      ) : (
-                                        <span className="text-gray-400 italic">-</span>
-                                      )}
+                                    <td className="py-2.5 px-3 font-medium text-gray-700 whitespace-nowrap">
+                                      {sal.destino || '-'}
                                     </td>
 
                                     {/* Detalle / Chofer */}
-                                    <td className="py-2.5 px-3 text-gray-600 max-w-xs">
-                                      <div className="truncate" title={sal.detalle}>
+                                    <td className="py-2.5 px-3 text-gray-500 max-w-xs">
+                                      <p className="truncate text-xs text-gray-700 font-medium" title={sal.detalle}>
                                         {sal.detalle}
-                                      </div>
+                                      </p>
                                       {sal.chofer && (
-                                        <div className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
-                                          <User className="w-3 h-3" />
-                                          <span>Chofer: {sal.chofer}</span>
-                                        </div>
+                                        <p className="text-[10px] text-gray-400 truncate mt-0.5">
+                                          Chofer: {sal.chofer}
+                                        </p>
                                       )}
                                     </td>
                                   </tr>
@@ -1480,6 +1686,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                     lote={lote}
                     ordenesCarga={ordenesCarga}
                     onUpdateLoteStock={onUpdateLoteStock}
+                    onSaveLote={onSaveLote}
                     readOnly={readOnly}
                   />
                 )}
@@ -1491,6 +1698,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                   lote={lote}
                   ordenesCarga={ordenesCarga}
                   onUpdateLoteStock={onUpdateLoteStock}
+                  onSaveLote={onSaveLote}
                   readOnly={readOnly}
                 />
 
@@ -1610,12 +1818,18 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-100 animate-in fade-in zoom-in duration-200">
             <div className="border-b border-gray-100 pb-3 mb-4 flex justify-between items-center">
-              <h5 className="font-serif text-lg font-bold text-[#1A1A1A]">
-                Ajustar Inventario Lote: {lote.id}
-              </h5>
+              <div>
+                <span className="text-[10px] font-bold text-[#00603C] uppercase tracking-wider block">
+                  Ajuste General de Inventario
+                </span>
+                <h5 className="font-serif text-lg font-bold text-[#1A1A1A]">
+                  Lote: {lote.loteNro || lote.id}
+                </h5>
+              </div>
               <button
+                type="button"
                 onClick={() => setShowAddMovModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-lg font-bold"
+                className="text-gray-400 hover:text-gray-600 text-lg font-bold cursor-pointer"
               >
                 ×
               </button>
@@ -1641,148 +1855,246 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               </div>
 
               <div>
-                <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">Tipo de Operación</label>
+                <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">
+                  Tipo de Operación Disponible (Seleccione una)
+                </label>
                 <select
                   value={tipoMov}
-                  onChange={(e) => setTipoMov(e.target.value as any)}
-                  className="w-full px-3 py-2 bg-white rounded-lg border border-gray-300 font-bold text-xs"
+                  onChange={(e) => {
+                    const val = e.target.value as 'Pasado a Consumo' | 'Ajuste de Auditoría';
+                    setTipoMov(val);
+                    if (val === 'Ajuste de Auditoría') {
+                      setAltaBolsasAudit(getAltaBolsasActual());
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-white rounded-lg border border-[#00603C]/30 font-bold text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00603C]"
                 >
-                  <option value="Entrada manual">Entrada manual (+ suma stock)</option>
-                  <option value="Salida manual">Salida manual (- resta stock)</option>
-                  <option value="Pasado a Consumo">Pasado a Consumo (- resta stock)</option>
-                  <option value="Ajuste de Auditoría">Ajuste de auditoría (- resta stock)</option>
+                  <option value="Pasado a Consumo">
+                    1. Pasado a Consumo (dar por salidas bolsas y descontar al stock)
+                  </option>
+                  <option value="Ajuste de Auditoría">
+                    2. Ajuste por Auditoría (editar número de alta de bolsas en el lote)
+                  </option>
                 </select>
               </div>
 
-              {/* Vista previa dinámica del stock resultante */}
-              {(() => {
-                const esResta = tipoMov !== 'Entrada manual';
-                const cantBolsas = Number(bolsas) || 0;
-                const totalKg = cantBolsas * (Number(kgBolsa) || 40);
-                const nuevoStockBolsas = esResta ? Math.max(0, lote.stockBolsas - cantBolsas) : lote.stockBolsas + cantBolsas;
-                const nuevoStockKg = esResta ? Math.max(0, lote.stockKg - totalKg) : lote.stockKg + totalKg;
-                const stockInsuficiente = esResta && cantBolsas > lote.stockBolsas;
+              {/* OPCIÓN 1: PASADO A CONSUMO */}
+              {tipoMov === 'Pasado a Consumo' && (
+                <>
+                  {(() => {
+                    const cantBolsas = Number(bolsas) || 0;
+                    const pesoBolsa = Number(kgBolsa) || lote.kgPorBolsa || 40;
+                    const totalKg = cantBolsas * pesoBolsa;
+                    const nuevoStockBolsas = Math.max(0, lote.stockBolsas - cantBolsas);
+                    const nuevoStockKg = Math.max(0, lote.stockKg - totalKg);
+                    const stockInsuficiente = cantBolsas > lote.stockBolsas;
 
-                return (
-                  <div className={`p-3 rounded-xl border text-xs ${
-                    stockInsuficiente ? 'bg-red-50 border-red-300 text-red-900' : 'bg-slate-50 border-slate-200 text-slate-800'
-                  }`}>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-semibold text-slate-500 uppercase text-[10px]">Impacto en el Lote:</span>
-                      <span className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
-                        esResta ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                    return (
+                      <div className={`p-3 rounded-xl border text-xs ${
+                        stockInsuficiente ? 'bg-red-50 border-red-300 text-red-900' : 'bg-amber-50/70 border-amber-200 text-amber-900'
                       }`}>
-                        {esResta ? `-${formatNumberArg(cantBolsas)} b. (-${formatNumberArg(totalKg)} kg)` : `+${formatNumberArg(cantBolsas)} b. (+${formatNumberArg(totalKg)} kg)`}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center font-mono">
-                      <span>Stock actual: <strong>{formatNumberArg(lote.stockBolsas)} b.</strong> ({formatNumberArg(lote.stockKg)} kg)</span>
-                      <span>➔</span>
-                      <span className={stockInsuficiente ? 'text-red-700 font-extrabold' : 'text-emerald-800 font-extrabold'}>
-                        Nuevo: {formatNumberArg(nuevoStockBolsas)} b. ({formatNumberArg(nuevoStockKg)} kg)
-                      </span>
-                    </div>
-                    {stockInsuficiente && (
-                      <p className="mt-1.5 text-[11px] font-bold text-red-700">
-                        ⚠️ Cantidad superior al stock disponible ({lote.stockBolsas} bolsas).
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-semibold text-gray-600 uppercase text-[10px]">Impacto de Salida por Consumo:</span>
+                          <span className="font-mono font-bold px-2 py-0.5 rounded text-[11px] bg-rose-100 text-rose-800">
+                            -{formatNumberArg(cantBolsas)} b. (-{formatNumberArg(totalKg)} kg)
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center font-mono text-[11px]">
+                          <span>Stock actual: <strong>{formatNumberArg(lote.stockBolsas)} b.</strong> ({formatNumberArg(lote.stockKg)} kg)</span>
+                          <span>➔</span>
+                          <span className={stockInsuficiente ? 'text-red-700 font-extrabold' : 'text-[#00603C] font-extrabold'}>
+                            Nuevo stock: {formatNumberArg(nuevoStockBolsas)} b. ({formatNumberArg(nuevoStockKg)} kg)
+                          </span>
+                        </div>
+                        {stockInsuficiente && (
+                          <p className="mt-1.5 text-[11px] font-bold text-red-700">
+                            ⚠️ Cantidad superior al stock disponible ({lote.stockBolsas} bolsas).
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">Bolsas</label>
-                  <input
-                    type="number"
-                    value={bolsas}
-                    onChange={(e) => setBolsas(Math.max(1, parseInt(e.target.value, 10) || 0))}
-                    className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200"
-                    min="1"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">Kg por Bolsa</label>
-                  <input
-                    type="number"
-                    value={kgBolsa}
-                    onChange={(e) => setKgBolsa(Math.max(1, parseInt(e.target.value, 10) || 0))}
-                    className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200"
-                    min="1"
-                    required
-                  />
-                </div>
-              </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">
+                        Bolsas a pasar a consumo *
+                      </label>
+                      <input
+                        type="number"
+                        value={bolsas}
+                        onChange={(e) => setBolsas(Math.max(1, parseInt(e.target.value, 10) || 0))}
+                        className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 font-bold font-mono"
+                        min="1"
+                        max={lote.stockBolsas}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">
+                        Kg por Bolsa
+                      </label>
+                      <input
+                        type="number"
+                        value={kgBolsa}
+                        onChange={(e) => setKgBolsa(Math.max(1, parseInt(e.target.value, 10) || 0))}
+                        className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 font-mono"
+                        min="1"
+                        required
+                      />
+                    </div>
+                  </div>
 
-              {/* Si es salida, solicitar Remito y Destino */}
-              {(tipoMov === 'Salida' || tipoMov === 'Salida manual' || tipoMov === 'Pasado a Consumo') && (
-                <div className="grid grid-cols-2 gap-3 p-3 bg-amber-50/60 rounded-xl border border-amber-200/70">
+                  <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200/80">
+                    <div>
+                      <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                        N° Remito de Cliente
+                      </label>
+                      <input
+                        type="text"
+                        value={remitoClienteModal}
+                        onChange={(e) => setRemitoClienteModal(e.target.value)}
+                        placeholder="Ej: R-0001-00045"
+                        className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                        Destino
+                      </label>
+                      <input
+                        type="text"
+                        value={destinoModal}
+                        onChange={(e) => setDestinoModal(e.target.value)}
+                        placeholder="Consumo interno"
+                        className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
+                        Chofer (opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={choferModal}
+                        onChange={(e) => setChoferModal(e.target.value)}
+                        placeholder="Nombre de chofer o responsable"
+                        className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs"
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
-                      N° Remito de Cliente
+                    <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">
+                      Motivo / Detalle de Pasado a Consumo *
                     </label>
                     <input
                       type="text"
-                      value={remitoClienteModal}
-                      onChange={(e) => setRemitoClienteModal(e.target.value)}
-                      placeholder="Ej: R-0001-00045"
-                      className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs"
+                      value={detalle}
+                      onChange={(e) => setDetalle(e.target.value)}
+                      className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200"
+                      placeholder="Ej: Semilla deteriorada, descarte a consumo, prueba de calidad..."
+                      required
                     />
                   </div>
-                  <div>
-                    <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
-                      Destino
-                    </label>
-                    <input
-                      type="text"
-                      value={destinoModal}
-                      onChange={(e) => setDestinoModal(e.target.value)}
-                      placeholder="Ej: Acopio San Diego"
-                      className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide text-[10px]">
-                      Chofer (opcional)
-                    </label>
-                    <input
-                      type="text"
-                      value={choferModal}
-                      onChange={(e) => setChoferModal(e.target.value)}
-                      placeholder="Ej: Juan Pérez (Transp. Norte)"
-                      className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 text-xs"
-                    />
-                  </div>
-                </div>
+                </>
               )}
 
-              <div>
-                <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">Concepto / Detalle *</label>
-                <input
-                  type="text"
-                  value={detalle}
-                  onChange={(e) => setDetalle(e.target.value)}
-                  className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200"
-                  placeholder="Ej: Ajuste por rotura, ingreso manual adicional..."
-                  required
-                />
-              </div>
+              {/* OPCIÓN 2: AJUSTE POR AUDITORÍA */}
+              {tipoMov === 'Ajuste de Auditoría' && (
+                <>
+                  {(() => {
+                    const altaActual = getAltaBolsasActual();
+                    const nuevoAlta = Number(altaBolsasAudit) || 0;
+                    const diffAlta = nuevoAlta - altaActual;
 
-              <div className="pt-4 border-t border-gray-50 flex justify-end gap-2">
+                    return (
+                      <div className="p-3 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <span className="font-semibold text-blue-800 uppercase text-[10px]">
+                            Modificación exclusiva de "Total Ingresado (Alta)":
+                          </span>
+                          <span className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
+                            diffAlta >= 0 ? 'bg-emerald-100 text-[#00603C]' : 'bg-amber-100 text-amber-900'
+                          }`}>
+                            {diffAlta >= 0 ? `+${diffAlta} b. en Alta` : `${diffAlta} b. en Alta`}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center font-mono text-[11px]">
+                          <span>Alta registrada: <strong>{altaActual} b.</strong></span>
+                          <span>➔</span>
+                          <span className="text-blue-900 font-extrabold">
+                            Nuevo Total Ingresado (Alta): {nuevoAlta} b.
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-blue-800/90 pt-1 border-t border-blue-200/60">
+                          ℹ️ Este movimiento <strong>solo modificará el registro de "Total Ingresado (Alta)"</strong> en la bitácora y trazabilidad. El stock actual de <strong>{lote.stockBolsas} b.</strong> no se descontará.
+                        </p>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">
+                        Nuevo N° de Alta de Bolsas *
+                      </label>
+                      <input
+                        type="number"
+                        value={altaBolsasAudit}
+                        onChange={(e) => setAltaBolsasAudit(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                        className="w-full px-3 py-2 bg-white rounded-lg border border-blue-300 font-bold font-mono text-blue-950 focus:ring-1 focus:ring-blue-500"
+                        min="0"
+                        required
+                      />
+                      <span className="text-[10px] text-gray-500 mt-0.5 block">
+                        Modifica el alta en planta del lote
+                      </span>
+                    </div>
+                    <div>
+                      <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">
+                        Kg por Bolsa
+                      </label>
+                      <input
+                        type="number"
+                        value={kgBolsa}
+                        onChange={(e) => setKgBolsa(Math.max(1, parseInt(e.target.value, 10) || 0))}
+                        className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 font-mono"
+                        min="1"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">
+                      Motivo del Ajuste por Auditoría *
+                    </label>
+                    <input
+                      type="text"
+                      value={detalle}
+                      onChange={(e) => setDetalle(e.target.value)}
+                      className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200"
+                      placeholder="Ej: Corrección por auditoría física de remanente de alta..."
+                      required
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="pt-4 border-t border-gray-100 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowAddMovModal(false)}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 font-semibold uppercase tracking-wider text-[10px]"
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 font-semibold uppercase tracking-wider text-[10px] cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#00603C] hover:bg-[#254731] text-white rounded-lg font-semibold uppercase tracking-wider text-[10px]"
+                  className="px-5 py-2 bg-[#00603C] hover:bg-[#254731] text-white rounded-lg font-bold uppercase tracking-wider text-[10px] cursor-pointer shadow-xs"
                 >
-                  Confirmar
+                  Confirmar Ajuste
                 </button>
               </div>
             </form>

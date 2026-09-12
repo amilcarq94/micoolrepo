@@ -1358,8 +1358,8 @@ export default function App() {
       const docRef = doc(db, 'lotes', docId);
       batch.set(docRef, mapLoteToFirestore(loteGuardar));
 
-      // Si tiene movimientos y es nuevo, persistir movimientos
-      if (!isEdit && loteGuardar.historial && loteGuardar.historial.length > 0) {
+      // Persistir movimientos en subcolección para sincronización en tiempo real
+      if (loteGuardar.historial && loteGuardar.historial.length > 0) {
         for (const mov of loteGuardar.historial) {
           const movRef = doc(collection(db, 'lotes', docId, 'movimientos'), mov.id);
           batch.set(movRef, mov);
@@ -1438,6 +1438,13 @@ export default function App() {
         const docRef = doc(db, 'lotes', loteGuardar.id);
         batch.set(docRef, mapLoteToFirestore(loteGuardar));
         idsLotesProcesados.push(loteGuardar.id);
+
+        if (loteGuardar.historial && loteGuardar.historial.length > 0) {
+          for (const mov of loteGuardar.historial) {
+            const movRef = doc(collection(db, 'lotes', loteGuardar.id, 'movimientos'), mov.id);
+            batch.set(movRef, mov);
+          }
+        }
 
         const esRealizado = loteGuardar.estadoRegistro !== 'PRE-CARGA';
 
@@ -1530,13 +1537,46 @@ export default function App() {
         };
         
         transaction.set(movRef, ultimoMov);
-        transaction.update(loteRef, {
+        const updateData: Record<string, any> = {
           stockBolsas: nuevoStockBolsas,
+          stockKg: nuevoStockKg,
           stockKgTotal: nuevoStockKg,
           estado: nuevoEstado,
+          historial: nuevosMovimientos,
           auditoria: [nuevoEvento, ...currentAuditoria]
-        });
+        };
+        if (data.estadoRegistro === 'PRE-CARGA' || ultimoMov.tipo === 'Alta') {
+          updateData.estadoRegistro = 'REALIZADO';
+        }
+        transaction.update(loteRef, updateData);
       });
+
+      // Actualizar estado local inmediatamente para refrescar la UI al instante
+      setLotes((prev) =>
+        prev.map((l) =>
+          l.id === loteId
+            ? {
+                ...l,
+                stockBolsas: nuevoStockBolsas,
+                stockKg: nuevoStockKg,
+                estado: nuevoEstado,
+                historial: nuevosMovimientos,
+              }
+            : l
+        )
+      );
+
+      setLoteSeleccionado((prev) =>
+        prev && prev.id === loteId
+          ? {
+              ...prev,
+              stockBolsas: nuevoStockBolsas,
+              stockKg: nuevoStockKg,
+              estado: nuevoEstado,
+              historial: nuevosMovimientos,
+            }
+          : prev
+      );
 
       // Email notification trigger if needed
       const updatedLoteObj = lotes.find(l => l.id === loteId);
@@ -2959,10 +2999,13 @@ export default function App() {
             lote={loteSeleccionado}
             readOnly={!isLoggedIn}
             movimientosSilo={movimientosSilo}
+            ordenesCarga={ordenesCarga}
+            salidas={salidas}
             onBack={() => {
               setLoteSeleccionado(null);
               navigateTo(loteDetailSourceView);
             }}
+            onSaveLote={handleSaveLote}
             onUpdateLoteStock={handleUpdateLoteStock}
             onRegistrarSalida={isLoggedIn ? (id) => {
               setPreselectedLoteId(id);
