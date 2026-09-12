@@ -1414,6 +1414,8 @@ export default function App() {
         return exists ? prev.map(l => l.id === docId ? loteGuardar : l) : [loteGuardar, ...prev];
       });
 
+      setLoteSeleccionado(prev => prev && prev.id === docId ? loteGuardar : prev);
+
       setMovimientosSilo(prev => {
         const sinAnteriores = prev.filter(m => m.loteResultanteId !== docId);
         return [...sinAnteriores, ...nuevosMovsSiloLote];
@@ -1421,7 +1423,9 @@ export default function App() {
 
       showNotification(`Lote ${docId} guardado correctamente.`);
       setLoteAEditar(null);
-      setActiveView('lotes');
+      if (!loteSeleccionado) {
+        setActiveView('lotes');
+      }
     } catch (e) {
       console.error('Error al guardar lote en Firestore:', e);
       showNotification('Error al registrar el lote.');

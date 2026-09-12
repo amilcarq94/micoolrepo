@@ -8,7 +8,9 @@ import { Lote, MovimientoStock, EstadoLoteType, AuditLogEntry, MovimientoSilo, O
 import { getLoteAuditoria } from '../utils/audit';
 import { formatNumberArg, formatKg, formatBolsas, formatDateStr } from '../utils/formatters';
 import { LogoSiloLoose } from './Logo';
-import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, Calendar, User, Edit2, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, CheckCircle2, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer, Settings, MapPin } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, Calendar, User, Edit2, Edit3, KeyRound, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, CheckCircle2, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer, Settings, MapPin } from 'lucide-react';
+import { db, mapLoteToFirestore, sanitizeForFirestore } from '../lib/firebase';
+import { collection, doc, writeBatch } from 'firebase/firestore';
 import { QrCodeModal } from './QrCodeModal';
 import { BarcodeLabelModal } from './BarcodeLabelModal';
 import { FichaTecnicaOficialCard } from './FichaTecnicaOficialCard';
@@ -94,6 +96,8 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   };
 
   const [altaBolsasAudit, setAltaBolsasAudit] = useState<number>(() => getAltaBolsasActual());
+  const [confirmPhraseAlta, setConfirmPhraseAlta] = useState('');
+  const [isSavingAlta, setIsSavingAlta] = useState(false);
   const [detalle, setDetalle] = useState('');
   const [remitoClienteModal, setRemitoClienteModal] = useState('');
   const [destinoModal, setDestinoModal] = useState('');
@@ -321,6 +325,11 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
       setChoferModal('');
     } else {
       // Opción 2: Ajuste por Auditoría (editar el número de alta de bolsas en el lote, este movimiento solo modificará el registro de "Total Ingresado (Alta)")
+      if (confirmPhraseAlta.trim().toLowerCase() !== 'editar alta') {
+        setError('Para autorizar la modificación del alta y guardar en la base de datos, debe escribir exactamente "editar alta".');
+        return;
+      }
+
       const nuevoAltaBolsas = Number(altaBolsasAudit);
       if (isNaN(nuevoAltaBolsas) || nuevoAltaBolsas < 0) {
         setError('El nuevo número de alta de bolsas debe ser un número mayor o igual a 0.');
@@ -394,26 +403,55 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
         detalles: `Modificación exclusiva del número de alta. Motivo: ${detalle.trim() || 'Ajuste por auditoría física'}`
       };
 
-      // No se modifica el stock ni los egresos, sólo se actualiza el historial y el registro de Alta
-      onUpdateLoteStock(lote.id, historialActualizado, lote.stockBolsas, lote.stockKg, lote.estado);
+      setIsSavingAlta(true);
+      try {
+        // 1. Guardar de forma directa y atómica en Firestore para garantizar persistencia inmediata
+        const batch = writeBatch(db);
+        const loteRef = doc(db, 'lotes', lote.id);
+        const movRef = doc(collection(db, 'lotes', lote.id, 'movimientos'), movAuditoria.id);
+        const loteActualizado: Lote = {
+          ...lote,
+          historial: historialActualizado,
+          auditoria: [auditEntry, ...(lote.auditoria || [])]
+        };
+        batch.set(loteRef, mapLoteToFirestore(loteActualizado));
+        batch.set(movRef, sanitizeForFirestore(movAuditoria));
+        await batch.commit();
 
-      if (onSaveLote) {
-        try {
-          await onSaveLote({
-            ...lote,
-            historial: historialActualizado,
-            auditoria: [auditEntry, ...(lote.auditoria || [])]
-          });
-        } catch (err) {
-          console.warn('Error guardando auditoría de alta:', err);
+        // 2. Actualizar estado en memoria y notificar al estado global
+        onUpdateLoteStock(lote.id, historialActualizado, lote.stockBolsas, lote.stockKg, lote.estado);
+
+        if (onSaveLote) {
+          await onSaveLote(loteActualizado);
         }
-      }
 
-      setShowAddMovModal(false);
-      setDetalle('');
-      setRemitoClienteModal('');
-      setDestinoModal('');
-      setChoferModal('');
+        setShowAddMovModal(false);
+        setConfirmPhraseAlta('');
+        setDetalle('');
+        setRemitoClienteModal('');
+        setDestinoModal('');
+        setChoferModal('');
+      } catch (err) {
+        console.error('Error al guardar alta de lote en base de datos:', err);
+        // Respaldo de sincronización local y estado superior
+        onUpdateLoteStock(lote.id, historialActualizado, lote.stockBolsas, lote.stockKg, lote.estado);
+        if (onSaveLote) {
+          try {
+            await onSaveLote({
+              ...lote,
+              historial: historialActualizado,
+              auditoria: [auditEntry, ...(lote.auditoria || [])]
+            });
+          } catch (saveErr) {
+            console.warn('Error en fallback onSaveLote:', saveErr);
+          }
+        }
+        setShowAddMovModal(false);
+        setConfirmPhraseAlta('');
+        setDetalle('');
+      } finally {
+        setIsSavingAlta(false);
+      }
     }
   };
 
@@ -1159,6 +1197,26 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               </button>
             )}
 
+            {/* Botón EDITAR ALTA DE LOTE */}
+            {!readOnly && (
+              <button
+                id="btn-editar-alta-lotedetail"
+                onClick={() => {
+                  setTipoMov('Ajuste de Auditoría');
+                  setAltaBolsasAudit(getAltaBolsasActual());
+                  setKgBolsa(lote.kgPorBolsa || 40);
+                  setConfirmPhraseAlta('');
+                  setError('');
+                  setShowAddMovModal(true);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-900 rounded-xl transition text-xs font-black uppercase tracking-wider shadow-xs cursor-pointer active:scale-95 border border-blue-200"
+                title="Editar datos de alta de lote y guardar en base de datos (requiere confirmación 'editar alta')"
+              >
+                <Edit3 className="w-4 h-4 text-blue-700 stroke-[2.5]" />
+                <span>Editar Alta</span>
+              </button>
+            )}
+
             {/* Botón IMPRIMIR ETIQUETAS */}
             <button
               id="btn-imprimir-etiquetas-lotedetail"
@@ -1669,9 +1727,27 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          setTipoMov('Ajuste de Auditoría');
+                          setAltaBolsasAudit(getAltaBolsasActual());
+                          setKgBolsa(lote.kgPorBolsa || 40);
+                          setConfirmPhraseAlta('');
+                          setError('');
+                          setShowAddMovModal(true);
+                        }}
+                        className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-bold rounded-lg shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                        title="Editar datos de alta del lote y guardar en base de datos (requiere confirmación 'editar alta')"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-blue-700" />
+                        <span>Editar Alta</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
                           setTipoMov('Pasado a Consumo');
                           setBolsas(Math.min(10, lote.stockBolsas || 1));
                           setAltaBolsasAudit(getAltaBolsasActual());
+                          setConfirmPhraseAlta('');
+                          setError('');
                           setShowAddMovModal(true);
                         }}
                         className="px-3.5 py-1.5 bg-[#00603C] hover:bg-[#254731] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition cursor-pointer"
@@ -2082,8 +2158,11 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                   onChange={(e) => {
                     const val = e.target.value as 'Pasado a Consumo' | 'Ajuste de Auditoría';
                     setTipoMov(val);
+                    setConfirmPhraseAlta('');
+                    setError('');
                     if (val === 'Ajuste de Auditoría') {
                       setAltaBolsasAudit(getAltaBolsasActual());
+                      setKgBolsa(lote.kgPorBolsa || 40);
                     }
                   }}
                   className="w-full px-3 py-2 bg-white rounded-lg border border-[#00603C]/30 font-bold text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00603C]"
@@ -2219,19 +2298,20 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                 </>
               )}
 
-              {/* OPCIÓN 2: AJUSTE POR AUDITORÍA */}
+              {/* OPCIÓN 2: AJUSTE POR AUDITORÍA / EDICIÓN DE ALTA */}
               {tipoMov === 'Ajuste de Auditoría' && (
                 <>
                   {(() => {
                     const altaActual = getAltaBolsasActual();
                     const nuevoAlta = Number(altaBolsasAudit) || 0;
                     const diffAlta = nuevoAlta - altaActual;
+                    const nuevoTotalKg = nuevoAlta * (Number(kgBolsa) || 40);
 
                     return (
-                      <div className="p-3 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1.5">
+                      <div className="p-3 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-950 space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="font-semibold text-blue-800 uppercase text-[10px]">
-                            Modificación exclusiva de "Total Ingresado (Alta)":
+                            Modificación de "Total Ingresado (Alta)":
                           </span>
                           <span className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
                             diffAlta >= 0 ? 'bg-emerald-100 text-[#00603C]' : 'bg-amber-100 text-amber-900'
@@ -2239,21 +2319,25 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                             {diffAlta >= 0 ? `+${diffAlta} b. en Alta` : `${diffAlta} b. en Alta`}
                           </span>
                         </div>
-                        <div className="flex justify-between items-center font-mono text-[11px]">
-                          <span>Alta registrada: <strong>{altaActual} b.</strong></span>
+                        <div className="flex justify-between items-center font-mono text-[11px] bg-white/80 p-2 rounded-lg border border-blue-100">
+                          <div>
+                            <span className="text-gray-500 block text-[9px] uppercase">Alta Registrada</span>
+                            <strong>{altaActual} b.</strong>
+                          </div>
                           <span>➔</span>
-                          <span className="text-blue-900 font-extrabold">
-                            Nuevo Total Ingresado (Alta): {nuevoAlta} b.
-                          </span>
+                          <div>
+                            <span className="text-blue-600 block text-[9px] uppercase font-bold">Nuevo Total Alta</span>
+                            <span className="text-blue-950 font-extrabold">{nuevoAlta} b. ({formatNumberArg(nuevoTotalKg, 0)} kg)</span>
+                          </div>
                         </div>
                         <p className="text-[11px] text-blue-800/90 pt-1 border-t border-blue-200/60">
-                          ℹ️ Este movimiento <strong>solo modificará el registro de "Total Ingresado (Alta)"</strong> en la bitácora y trazabilidad. El stock actual de <strong>{lote.stockBolsas} b.</strong> no se descontará.
+                          ℹ️ Este movimiento modificará el registro de <strong>"Total Ingresado (Alta)"</strong> en la bitácora, trazabilidad y base de datos. El stock físico actual de <strong>{lote.stockBolsas} b.</strong> no se alterará.
                         </p>
                       </div>
                     );
                   })()}
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">
                         Nuevo N° de Alta de Bolsas *
@@ -2267,21 +2351,39 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                         required
                       />
                       <span className="text-[10px] text-gray-500 mt-0.5 block">
-                        Modifica el alta en planta del lote
+                        Modifica el volumen de alta inicial del lote
                       </span>
                     </div>
+
                     <div>
                       <label className="block text-gray-700 font-bold mb-1 uppercase tracking-wide">
-                        Kg por Bolsa
+                        Kg / Bolsa (3 Opciones) *
                       </label>
-                      <input
-                        type="number"
+                      <div className="flex gap-1.5 mb-1.5">
+                        {[25, 40, 800].map((kgOption) => (
+                          <button
+                            key={kgOption}
+                            type="button"
+                            onClick={() => setKgBolsa(kgOption)}
+                            className={`flex-1 py-1 px-1.5 text-[11px] font-bold rounded-md border transition cursor-pointer ${
+                              kgBolsa === kgOption
+                                ? 'bg-[#00603C] text-white border-[#00603C]'
+                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            {kgOption} kg
+                          </button>
+                        ))}
+                      </div>
+                      <select
                         value={kgBolsa}
-                        onChange={(e) => setKgBolsa(Math.max(1, parseInt(e.target.value, 10) || 0))}
-                        className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 font-mono"
-                        min="1"
-                        required
-                      />
+                        onChange={(e) => setKgBolsa(Number(e.target.value) || 40)}
+                        className="w-full px-3 py-1.5 bg-white rounded-lg border border-gray-200 font-mono font-bold text-xs"
+                      >
+                        <option value={25}>25 kg / bolsa</option>
+                        <option value={40}>40 kg / bolsa</option>
+                        <option value={800}>800 kg / bolsón (Big Bag)</option>
+                      </select>
                     </div>
                   </div>
 
@@ -2298,22 +2400,91 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                       required
                     />
                   </div>
+
+                  {/* CAMPO DE CONFIRMACIÓN OBLIGATORIA ESCRITA "editar alta" */}
+                  <div className="bg-amber-50/80 border-2 border-amber-300/80 rounded-xl p-3.5 space-y-2.5 shadow-2xs">
+                    <div className="flex items-start gap-2">
+                      <div className="p-1.5 bg-amber-100 rounded-lg text-amber-800 shrink-0 mt-0.5">
+                        <KeyRound className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h6 className="text-[11px] font-black uppercase tracking-wider text-amber-950">
+                          Confirmación Requerida para Guardar
+                        </h6>
+                        <p className="text-[11px] text-amber-900 leading-snug mt-0.5">
+                          Para autorizar la modificación del alta y habilitar el guardado definitivo en la base de datos, escriba explícitamente{' '}
+                          <span className="font-mono font-bold bg-amber-200/80 px-1.5 py-0.5 rounded text-amber-950 select-all">
+                            editar alta
+                          </span>{' '}
+                          a continuación:
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={confirmPhraseAlta}
+                        onChange={(e) => setConfirmPhraseAlta(e.target.value)}
+                        placeholder='Escriba exactamente "editar alta"'
+                        autoComplete="off"
+                        className={`w-full px-3 py-2 bg-white rounded-lg border font-mono text-xs font-bold transition focus:outline-none ${
+                          confirmPhraseAlta.trim().toLowerCase() === 'editar alta'
+                            ? 'border-emerald-500 ring-2 ring-emerald-500/20 text-emerald-950 bg-emerald-50/30'
+                            : 'border-amber-300 focus:border-amber-500 text-slate-900'
+                        }`}
+                      />
+                      {confirmPhraseAlta.trim().toLowerCase() === 'editar alta' && (
+                        <span className="absolute right-2.5 top-2 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                          Confirmación Válida
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </>
               )}
 
               <div className="pt-4 border-t border-gray-100 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowAddMovModal(false)}
+                  onClick={() => {
+                    setShowAddMovModal(false);
+                    setConfirmPhraseAlta('');
+                    setError('');
+                  }}
                   className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 font-semibold uppercase tracking-wider text-[10px] cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#00603C] hover:bg-[#254731] text-white rounded-lg font-bold uppercase tracking-wider text-[10px] cursor-pointer shadow-xs"
+                  disabled={
+                    tipoMov === 'Ajuste de Auditoría'
+                      ? confirmPhraseAlta.trim().toLowerCase() !== 'editar alta' || isSavingAlta
+                      : false
+                  }
+                  className={`px-5 py-2.5 rounded-lg font-bold uppercase tracking-wider text-[10px] cursor-pointer shadow-xs transition flex items-center gap-1.5 ${
+                    tipoMov === 'Ajuste de Auditoría'
+                      ? confirmPhraseAlta.trim().toLowerCase() === 'editar alta' && !isSavingAlta
+                        ? 'bg-[#00603C] hover:bg-[#004D30] text-white'
+                        : 'bg-gray-200 text-gray-400 border border-gray-300 cursor-not-allowed shadow-none'
+                      : 'bg-[#00603C] hover:bg-[#254731] text-white'
+                  }`}
                 >
-                  Confirmar Ajuste
+                  {isSavingAlta ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Guardando en BD...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>
+                        {tipoMov === 'Ajuste de Auditoría' ? 'Guardar Alta en BD' : 'Confirmar Ajuste'}
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

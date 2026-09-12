@@ -4,8 +4,10 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Lote, MovimientoStock, EstadoLoteType, OrdenCarga } from '../types';
+import { Lote, MovimientoStock, EstadoLoteType, OrdenCarga, AuditLogEntry } from '../types';
 import { formatNumberArg, formatDateStr } from '../utils/formatters';
+import { db, mapLoteToFirestore, sanitizeForFirestore } from '../lib/firebase';
+import { collection, doc, writeBatch } from 'firebase/firestore';
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -26,6 +28,10 @@ import {
   Edit3,
   Trash2,
   Clock,
+  KeyRound,
+  ShieldCheck,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -118,6 +124,74 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
   const [deleteConfirmChecked, setDeleteConfirmChecked] = useState<boolean>(false);
   const [deleteConfirmPhrase, setDeleteConfirmPhrase] = useState<string>('');
 
+  // Estados para Modal "Edición de Alta de Lote y Guardado en Base de Datos"
+  const [showModalEditarAlta, setShowModalEditarAlta] = useState<boolean>(false);
+  const [altaFecha, setAltaFecha] = useState<string>(
+    lote.fechaIngreso || new Date().toISOString().split('T')[0]
+  );
+  const [altaBolsas, setAltaBolsas] = useState<number>(lote.stockBolsas || 35);
+  const [altaKgPorBolsa, setAltaKgPorBolsa] = useState<number>(lote.kgPorBolsa || 40);
+  const [altaKg, setAltaKg] = useState<number>(
+    lote.stockKg || (lote.stockBolsas || 35) * (lote.kgPorBolsa || 40)
+  );
+  const [altaRemito, setAltaRemito] = useState<string>((lote as any).remitoCliente || '');
+  const [altaChofer, setAltaChofer] = useState<string>('');
+  const [altaDestino, setAltaDestino] = useState<string>(
+    lote.ubicacionAcopio || (lote.ala && lote.sector ? `Ala ${lote.ala} - Sector ${lote.sector}` : '')
+  );
+  const [altaDetalle, setAltaDetalle] = useState<string>('');
+  const [confirmPhraseAlta, setConfirmPhraseAlta] = useState<string>('');
+  const [isSavingAlta, setIsSavingAlta] = useState<boolean>(false);
+  const [altaError, setAltaError] = useState<string>('');
+  const [altaSuccessMsg, setAltaSuccessMsg] = useState<string>('');
+
+  // Apertura del modal de Edición de Alta
+  const handleAbrirEditarAlta = (row?: BitacoraRegistro) => {
+    const altaRow = row || bitacoraList.find((m) => m.tipoMovimiento === 'Alta' || m.esPrecarga);
+    const rawKgB = (altaRow && (altaRow as any).kgPorBolsa) || lote.kgPorBolsa || 40;
+    const kgB = [25, 40, 800].includes(rawKgB) ? rawKgB : (rawKgB >= 500 ? 800 : rawKgB <= 30 ? 25 : 40);
+    const initialBolsas = altaRow ? altaRow.cantidadBolsas : (lote.stockBolsas || 35);
+    const initialKg = altaRow ? altaRow.cantidadKg : (lote.stockKg || initialBolsas * kgB);
+    const initialFecha = (altaRow && altaRow.fecha) || lote.fechaIngreso || new Date().toISOString().split('T')[0];
+    const initialRemito =
+      altaRow && altaRow.remitoCliente && altaRow.remitoCliente !== '—' && altaRow.remitoCliente !== '-'
+        ? altaRow.remitoCliente
+        : (lote as any).remitoCliente || '';
+    const initialChofer =
+      altaRow && altaRow.chofer && altaRow.chofer !== '—' && altaRow.chofer !== '-' ? altaRow.chofer : '';
+    const initialDestino =
+      altaRow && altaRow.destino && altaRow.destino !== '—' && altaRow.destino !== '-'
+        ? altaRow.destino
+        : lote.ubicacionAcopio || (lote.ala && lote.sector ? `Ala ${lote.ala} - Sector ${lote.sector}` : '');
+    const initialDetalle =
+      altaRow && altaRow.detalle && altaRow.detalle !== '—' && altaRow.detalle !== '-' ? altaRow.detalle : '';
+
+    setAltaFecha(initialFecha);
+    setAltaBolsas(initialBolsas);
+    setAltaKgPorBolsa(kgB);
+    setAltaKg(initialKg);
+    setAltaRemito(initialRemito);
+    setAltaChofer(initialChofer);
+    setAltaDestino(initialDestino);
+    setAltaDetalle(initialDetalle);
+    setConfirmPhraseAlta('');
+    setAltaError('');
+    setAltaSuccessMsg('');
+    setShowModalEditarAlta(true);
+  };
+
+  const handleAltaBolsasChange = (val: number) => {
+    const bolsasVal = Math.max(1, Math.round(val));
+    setAltaBolsas(bolsasVal);
+    setAltaKg(Math.round(bolsasVal * altaKgPorBolsa * 100) / 100);
+  };
+
+  const handleAltaKgPorBolsaChange = (val: number) => {
+    const kgBVal = [25, 40, 800].includes(val) ? val : 40;
+    setAltaKgPorBolsa(kgBVal);
+    setAltaKg(Math.round(altaBolsas * kgBVal * 100) / 100);
+  };
+
   const handleAbrirNuevo = () => {
     setEditingRecord(null);
     setFormDireccion('Salida');
@@ -134,6 +208,10 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
   };
 
   const handleAbrirEditar = (row: BitacoraRegistro) => {
+    if (row.tipoMovimiento === 'Alta' || row.esPrecarga) {
+      handleAbrirEditarAlta(row);
+      return;
+    }
     setEditingRecord(row);
     setFormDireccion(row.direccion);
     setFormFecha(row.fecha || new Date().toISOString().split('T')[0]);
@@ -601,6 +679,184 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
     }
   };
 
+  // Previsualización y balance dinámico en tiempo real del saldo resultante al editar el Alta
+  const previewStockAlta = useMemo(() => {
+    const bolsas = Math.max(0, Math.round(Number(altaBolsas)) || 0);
+    const kg = Math.max(0, Number(altaKg) || 0);
+
+    const salidasBolsas = bitacoraList
+      .filter((m) => m.direccion === 'Salida' && m.tipoMovimiento !== 'Ajuste de Auditoría')
+      .reduce((acc, m) => acc + m.cantidadBolsas, 0);
+
+    const salidasKg = bitacoraList
+      .filter((m) => m.direccion === 'Salida' && m.tipoMovimiento !== 'Ajuste de Auditoría')
+      .reduce((acc, m) => acc + m.cantidadKg, 0);
+
+    let ajustesNetoB = 0;
+    let ajustesNetoK = 0;
+    bitacoraList
+      .filter((m) => m.tipoMovimiento === 'Ajuste de Auditoría')
+      .forEach((m) => {
+        if (m.direccion === 'Entrada') {
+          ajustesNetoB += m.cantidadBolsas;
+          ajustesNetoK += m.cantidadKg;
+        } else {
+          ajustesNetoB -= m.cantidadBolsas;
+          ajustesNetoK -= m.cantidadKg;
+        }
+      });
+
+    let resultanteBolsas = 0;
+    let resultanteKg = 0;
+
+    if (lote.estadoRegistro === 'PRE-CARGA') {
+      resultanteBolsas = bolsas;
+      resultanteKg = kg;
+    } else {
+      resultanteBolsas = Math.max(0, bolsas - salidasBolsas + ajustesNetoB);
+      resultanteKg = Math.max(0, kg - salidasKg + ajustesNetoK);
+    }
+
+    return {
+      bolsasAlta: bolsas,
+      kgAlta: kg,
+      salidasBolsas,
+      salidasKg,
+      ajustesNetoB,
+      ajustesNetoK,
+      resultanteBolsas,
+      resultanteKg,
+      resultanteEstado: resultanteBolsas === 0 ? 'Agotado' : 'Disponible',
+    };
+  }, [altaBolsas, altaKg, bitacoraList, lote.estadoRegistro]);
+
+  // Guardado de la edición de Alta de lote en base de datos con confirmación obligatoria "editar alta"
+  const handleGuardarAltaLote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAltaError('');
+    setAltaSuccessMsg('');
+
+    if (confirmPhraseAlta.trim().toLowerCase() !== 'editar alta') {
+      setAltaError('Para confirmar debe escribir exactamente "editar alta".');
+      return;
+    }
+
+    if (altaBolsas <= 0 || !Number.isInteger(altaBolsas)) {
+      setAltaError('La cantidad de bolsas debe ser un número entero mayor a 0.');
+      return;
+    }
+
+    if (altaKg <= 0 || isNaN(altaKg)) {
+      setAltaError('Los kilos totales deben ser mayores a 0.');
+      return;
+    }
+
+    setIsSavingAlta(true);
+
+    try {
+      const bolsasAlta = Math.round(altaBolsas);
+      const kgAlta = Number(altaKg);
+      const kgPorBolsaAlta =
+        Number(altaKgPorBolsa) || (bolsasAlta > 0 ? Math.round((kgAlta / bolsasAlta) * 100) / 100 : 40);
+      const fechaEf = altaFecha || new Date().toISOString().split('T')[0];
+
+      const nuevoStockBolsas = previewStockAlta.resultanteBolsas;
+      const nuevoStockKg = previewStockAlta.resultanteKg;
+      const nuevoEstado: EstadoLoteType = previewStockAlta.resultanteEstado as EstadoLoteType;
+
+      const movAltaId = `MOV-ALTA-${lote.id}`;
+      const nuevoMovAlta: MovimientoStock = {
+        id: movAltaId,
+        fecha: fechaEf,
+        tipo: 'Alta',
+        cantidadBolsas: bolsasAlta,
+        kgPorBolsa: kgPorBolsaAlta,
+        cantidadKg: kgAlta,
+        remitoCliente: altaRemito.trim() || '',
+        destino: altaDestino.trim() || '',
+        chofer: altaChofer.trim() || '',
+        detalle: altaDetalle.trim() || `Alta de lote editada (${bolsasAlta} b. / ${formatNumberArg(kgAlta, 2)} kg)`,
+      };
+
+      // Limpiar movimientos antiguos de Alta o placeholders de precarga
+      const historialSinAlta = (lote.historial || []).filter((m) => {
+        const idL = (m.id || '').toLowerCase();
+        const detL = (m.detalle || '').toLowerCase();
+        const tipoL = (m.tipo || '').toLowerCase();
+        return !(
+          tipoL === 'alta' ||
+          idL.startsWith('alta-') ||
+          idL.startsWith('mov-alta') ||
+          idL.startsWith('mov-pre-') ||
+          detL.includes('alta de lote') ||
+          detL.includes('alta inicial') ||
+          detL.includes('alta preliminar')
+        );
+      });
+
+      const nuevoHistorial: MovimientoStock[] = [nuevoMovAlta, ...historialSinAlta];
+
+      const usuarioActual = (() => {
+        try {
+          const userStr = sessionStorage.getItem('agro_abacus_user');
+          if (userStr) {
+            const parsed = JSON.parse(userStr);
+            if (parsed.nombre) return parsed.nombre;
+          }
+        } catch {}
+        return 'Jefe de Planta';
+      })();
+
+      const auditEntry: AuditLogEntry = {
+        id: `AUD-ALTA-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Edición',
+        usuario: usuarioActual,
+        descripcion: `Edición de Alta de Lote guardada en base de datos: ${bolsasAlta} bolsas (${formatNumberArg(kgAlta, 2)} kg) con fecha ${formatToDDMMAAAA(fechaEf)}.`,
+        detalles: `Confirmación escrita verificada: 'editar alta'. Stock disponible resultante recalculado: ${nuevoStockBolsas} b. (${formatNumberArg(nuevoStockKg, 2)} kg).`,
+      };
+
+      const loteActualizado: Lote = {
+        ...lote,
+        fechaIngreso: fechaEf,
+        stockBolsas: nuevoStockBolsas,
+        kgPorBolsa: kgPorBolsaAlta,
+        stockKg: nuevoStockKg,
+        estado: nuevoEstado,
+        historial: nuevoHistorial,
+        auditoria: [auditEntry, ...(lote.auditoria || [])],
+        ...(altaRemito.trim() ? { remitoCliente: altaRemito.trim() } : {}),
+        ...(altaDestino.trim() ? { ubicacionAcopio: altaDestino.trim() } : {}),
+      };
+
+      // 1. Guardar en Base de Datos de Firestore
+      const batch = writeBatch(db);
+      const loteRef = doc(db, 'lotes', lote.id);
+      const movRef = doc(collection(db, 'lotes', lote.id, 'movimientos'), movAltaId);
+      batch.set(loteRef, mapLoteToFirestore(loteActualizado));
+      batch.set(movRef, sanitizeForFirestore(nuevoMovAlta));
+      await batch.commit();
+
+      // 2. Notificar callbacks de React
+      if (onSaveLote) {
+        await onSaveLote(loteActualizado);
+      }
+      onUpdateLoteStock(lote.id, nuevoHistorial, nuevoStockBolsas, nuevoStockKg, nuevoEstado);
+
+      setAltaSuccessMsg('¡Alta de lote editada y guardada correctamente en la base de datos!');
+      setTimeout(() => {
+        setShowModalEditarAlta(false);
+        setConfirmPhraseAlta('');
+        setAltaSuccessMsg('');
+      }, 1000);
+    } catch (err) {
+      console.error('Error al guardar alta de lote en base de datos:', err);
+      setAltaError('Error al guardar en la base de datos. Intente nuevamente.');
+    } finally {
+      setIsSavingAlta(false);
+    }
+  };
+
   // Guardar (crear o modificar) movimiento desde el formulario modal
   const handleGuardarMovimiento = (e: React.FormEvent) => {
     e.preventDefault();
@@ -808,6 +1064,15 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
 
           {!readOnly && (
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleAbrirEditarAlta()}
+                className="px-3 py-1.5 bg-[#E3EFE7] hover:bg-[#d4e6db] text-[#00603C] border border-[#00603C]/30 text-xs font-bold rounded-lg shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                title="Editar alta de lote y guardado en base de datos (requiere confirmación escrita 'editar alta')"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-[#00603C]" />
+                <span>Editar Alta</span>
+              </button>
               {lote.estadoRegistro === 'PRE-CARGA' && (
                 <button
                   type="button"
@@ -846,13 +1111,26 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
             }`}>
               <ArrowUpRight className="w-3 h-3" /> Total Ingresado (Alta)
             </span>
-            <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.25 rounded ${
-              lote.estadoRegistro === 'PRE-CARGA'
-                ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                : 'bg-emerald-100 text-emerald-800'
-            }`}>
-              {lote.estadoRegistro === 'PRE-CARGA' ? 'Pre-carga (Informativo)' : 'Efectivo'}
-            </span>
+            <div className="flex items-center gap-1.5">
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => handleAbrirEditarAlta()}
+                  className="text-[10px] font-bold text-[#00603C] hover:underline flex items-center gap-0.5 cursor-pointer bg-white/70 px-1.5 py-0.5 rounded border border-[#00603C]/20 shadow-2xs"
+                  title="Editar alta de lote"
+                >
+                  <Edit3 className="w-2.5 h-2.5" />
+                  <span>Editar</span>
+                </button>
+              )}
+              <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.25 rounded ${
+                lote.estadoRegistro === 'PRE-CARGA'
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                  : 'bg-emerald-100 text-emerald-800'
+              }`}>
+                {lote.estadoRegistro === 'PRE-CARGA' ? 'Pre-carga (Informativo)' : 'Efectivo'}
+              </span>
+            </div>
           </div>
           <div className="mt-1 flex items-baseline gap-2">
             <span className={`font-mono text-lg font-bold ${
@@ -1658,6 +1936,300 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDICIÓN DE ALTA DE LOTE Y GUARDADO EN BASE DE DATOS (CON CONFIRMACIÓN ESCRITA "editar alta") */}
+      {showModalEditarAlta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-gray-100 max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
+            {/* Header del Modal */}
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-[#00603C] uppercase tracking-wider bg-[#E3EFE7] px-2 py-0.5 rounded">
+                    Auditoría y Trazabilidad de Lote
+                  </span>
+                  <span className="text-xs text-gray-500 font-mono">
+                    Lote #{lote.loteNro} · {lote.cliente}
+                  </span>
+                </div>
+                <h3 className="font-serif text-lg font-bold text-gray-900 mt-1 flex items-center gap-2">
+                  <Edit3 className="w-5 h-5 text-[#00603C]" />
+                  Edición de Alta de Lote y Guardado en BD
+                </h3>
+              </div>
+              <button
+                type="button"
+                disabled={isSavingAlta}
+                onClick={() => setShowModalEditarAlta(false)}
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Alerta de impacto en trazabilidad */}
+            <div className="mt-4 p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex items-start gap-2.5 text-xs text-amber-900">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+              <div>
+                <strong className="font-bold">Modificación del punto de origen del lote:</strong>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  Editar el alta inicial recalcula automáticamente el saldo disponible y la bitácora histórica, y se sincroniza directamente en la base de datos de Firestore.
+                </p>
+              </div>
+            </div>
+
+            {altaError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <span>{altaError}</span>
+              </div>
+            )}
+
+            {altaSuccessMsg && (
+              <div className="mt-3 p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs flex items-center gap-2 font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{altaSuccessMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleGuardarAltaLote} className="space-y-4 mt-4">
+              {/* Campos del Alta */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Fecha de Ingreso / Alta <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Calendar className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="date"
+                      required
+                      value={altaFecha}
+                      onChange={(e) => setAltaFecha(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#00603C]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    N° Remito Cliente / Ingreso
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. R-0001-0004589"
+                    value={altaRemito}
+                    onChange={(e) => setAltaRemito(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-mono focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#00603C]"
+                  />
+                </div>
+              </div>
+
+              {/* Cantidades: Bolsas, Kg/bolsa y Kilos Totales */}
+              <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-200 space-y-3">
+                <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider block">
+                  Volumen del Alta Inicial
+                </span>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Bolsas de Alta <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      required
+                      value={altaBolsas}
+                      onChange={(e) => handleAltaBolsasChange(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-mono font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00603C]"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-gray-700">
+                        Kg / Bolsa <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-[10px] text-[#00603C] font-semibold bg-[#E3EFE7] px-1.5 py-0.5 rounded">
+                        Solo 3 opciones
+                      </span>
+                    </div>
+                    <select
+                      value={altaKgPorBolsa}
+                      onChange={(e) => handleAltaKgPorBolsaChange(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-xs font-mono font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00603C] cursor-pointer"
+                    >
+                      <option value={25}>25 kg (Bolsa chica)</option>
+                      <option value={40}>40 kg (Bolsa estándar)</option>
+                      <option value={800}>800 kg (Big Bag)</option>
+                    </select>
+                    <div className="grid grid-cols-3 gap-1 mt-1.5">
+                      {[25, 40, 800].map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => handleAltaKgPorBolsaChange(opt)}
+                          className={`py-1 text-[11px] font-bold rounded-lg transition cursor-pointer border text-center ${
+                            altaKgPorBolsa === opt
+                              ? 'bg-[#00603C] text-white border-[#00603C] shadow-2xs'
+                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          {opt} kg
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Kilos Totales <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      required
+                      value={altaKg}
+                      onChange={(e) => setAltaKg(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-mono font-bold text-emerald-800 focus:outline-none focus:ring-1 focus:ring-[#00603C]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Ubicación / Chofer / Detalle */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Sector de Acopio / Ubicación
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Ala Sur - Sector B2"
+                    value={altaDestino}
+                    onChange={(e) => setAltaDestino(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#00603C]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Chofer / Transportista
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Juan Pérez"
+                    value={altaChofer}
+                    onChange={(e) => setAltaChofer(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#00603C]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Detalle / Motivo de la Edición
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej. Corrección por ajuste de pesaje en báscula de ingreso"
+                  value={altaDetalle}
+                  onChange={(e) => setAltaDetalle(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#00603C]"
+                />
+              </div>
+
+              {/* Previsualización del Saldo Resultante */}
+              <div className="bg-[#E3EFE7]/40 border border-[#00603C]/30 rounded-xl p-3.5 space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#00603C] flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Previsualización del Balance de Stock Resultante
+                </span>
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="bg-white p-2 rounded-lg border border-emerald-100 shadow-2xs">
+                    <span className="text-[10px] text-gray-500 block">Nuevo Alta</span>
+                    <strong className="font-mono text-[#00603C]">+{previewStockAlta.bolsasAlta} b.</strong>
+                    <span className="text-[10px] text-gray-400 block font-mono">({formatNumberArg(previewStockAlta.kgAlta, 0)} kg)</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-emerald-100 shadow-2xs">
+                    <span className="text-[10px] text-gray-500 block">Egresos Registrados</span>
+                    <strong className="font-mono text-[#A0522D]">-{previewStockAlta.salidasBolsas} b.</strong>
+                    <span className="text-[10px] text-gray-400 block font-mono">(-{formatNumberArg(previewStockAlta.salidasKg, 0)} kg)</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-emerald-200 shadow-2xs">
+                    <span className="text-[10px] text-gray-500 block">Saldo Disponible Final</span>
+                    <strong className="font-mono text-emerald-800 text-sm">{previewStockAlta.resultanteBolsas} b.</strong>
+                    <span className="text-[10px] text-emerald-700 block font-mono">({formatNumberArg(previewStockAlta.resultanteKg, 0)} kg)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECCIÓN DE CONFIRMACIÓN OBLIGATORIA ESCRITA "editar alta" */}
+              <div className="bg-red-50/70 border-2 border-red-200 rounded-xl p-4 space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-red-600" />
+                  <span className="text-xs font-bold text-red-900">
+                    Confirmación de Seguridad Requerida
+                  </span>
+                </div>
+                <p className="text-xs text-red-800 leading-relaxed">
+                  Para autorizar la modificación del alta y guardar en la base de datos, escriba exactamente{' '}
+                  <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border border-red-300 text-red-700 shadow-2xs">
+                    editar alta
+                  </span>
+                </p>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={confirmPhraseAlta}
+                    onChange={(e) => setConfirmPhraseAlta(e.target.value)}
+                    placeholder='Escriba exactamente "editar alta"'
+                    className="w-full px-3 py-2 bg-white border border-red-300 rounded-xl text-xs font-mono font-bold text-red-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                  {confirmPhraseAlta.trim().toLowerCase() === 'editar alta' && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-emerald-600 text-xs font-bold">
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Confirmación Válida</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Acciones del Modal */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  disabled={isSavingAlta}
+                  onClick={() => setShowModalEditarAlta(false)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={confirmPhraseAlta.trim().toLowerCase() !== 'editar alta' || isSavingAlta}
+                  className="px-4 py-2 bg-[#00603C] hover:bg-[#004D30] disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isSavingAlta ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Guardando en BD...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Guardar Alta en Base de Datos</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
