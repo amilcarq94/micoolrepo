@@ -319,7 +319,7 @@ export default function App() {
   // 'modo-planta' | 'silos' | 'mapa-calor' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'
   const [activeView, setActiveView] = useState<'modo-planta' | 'silos' | 'mapa-calor' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'>('modo-planta');
   const [loteSeleccionado, setLoteSeleccionado] = useState<Lote | null>(null);
-  const [loteDetailSourceView, setLoteDetailSourceView] = useState<'lotes' | 'produccion'>('lotes');
+  const [loteDetailSourceView, setLoteDetailSourceView] = useState<'lotes' | 'produccion' | 'mapa-calor'>('lotes');
   const [loteAEditar, setLoteAEditar] = useState<Lote | null>(null);
   const [preselectedLoteId, setPreselectedLoteId] = useState<string | undefined>(undefined);
   const [publicLote, setPublicLote] = useState<Lote | null>(null);
@@ -1435,7 +1435,9 @@ export default function App() {
       showNotification(`Lote ${docId} guardado correctamente.`);
       setLoteAEditar(null);
       if (!loteSeleccionado) {
-        setActiveView('lotes');
+        if (activeView === 'alta-lote' || activeView === 'generar-lote') {
+          setActiveView('lotes');
+        }
       }
     } catch (e) {
       console.error('Error al guardar lote en Firestore:', e);
@@ -3117,7 +3119,7 @@ export default function App() {
                   onSaveLote={handleSaveLote}
                   onSelectLote={(l) => {
                     setLoteSeleccionado(l);
-                    setLoteDetailSourceView('lotes');
+                    setLoteDetailSourceView('mapa-calor');
                   }}
                   onNavigateToLotes={() => navigateTo('lotes')}
                 />

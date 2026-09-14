@@ -100,19 +100,151 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
     }
   }, [capacidades]);
 
+  // Constante para persistir estado y filtros de Mapa de Calor
+  const STORAGE_KEY_MAPA_CALOR_STATE = 'agroabacus_mapa_calor_persistent_state_v3';
+
+  const initialMapaCalorState = useMemo(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_MAPA_CALOR_STATE);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          selectedSectorKey: parsed.selectedSectorKey || null,
+          globalClienteFilter: parsed.globalClienteFilter || 'TODOS',
+          globalEspecieFilter: parsed.globalEspecieFilter || 'TODAS',
+          globalSearch: parsed.globalSearch || '',
+          sectorClienteFilter: parsed.sectorClienteFilter || 'TODOS',
+          sortField: parsed.sortField || 'stockBolsas',
+          sortOrder: parsed.sortOrder || 'desc',
+          groupBy: parsed.groupBy || 'none',
+        };
+      }
+    } catch (e) {
+      console.error('Error al cargar filtros de Mapa de Calor:', e);
+    }
+    return {
+      selectedSectorKey: null,
+      globalClienteFilter: 'TODOS',
+      globalEspecieFilter: 'TODAS',
+      globalSearch: '',
+      sectorClienteFilter: 'TODOS',
+      sortField: 'stockBolsas' as const,
+      sortOrder: 'desc' as const,
+      groupBy: 'none' as const,
+    };
+  }, []);
+
   // 2. Estado de Sector Seleccionado (ej: 'A-1')
-  const [selectedSectorKey, setSelectedSectorKey] = useState<string | null>(null);
+  const [selectedSectorKey, setSelectedSectorKey] = useState<string | null>(initialMapaCalorState.selectedSectorKey);
 
   // 3. Filtros Globales de Visualización en el Mapa
-  const [globalClienteFilter, setGlobalClienteFilter] = useState<string>('TODOS');
-  const [globalEspecieFilter, setGlobalEspecieFilter] = useState<string>('TODAS');
-  const [globalSearch, setGlobalSearch] = useState<string>('');
+  const [globalClienteFilter, setGlobalClienteFilter] = useState<string>(initialMapaCalorState.globalClienteFilter);
+  const [globalEspecieFilter, setGlobalEspecieFilter] = useState<string>(initialMapaCalorState.globalEspecieFilter);
+  const [globalSearch, setGlobalSearch] = useState<string>(initialMapaCalorState.globalSearch);
 
   // 4. Filtros y Configuración para la "Vista de Tabla" del Sector Seleccionado
-  const [sectorClienteFilter, setSectorClienteFilter] = useState<string>('TODOS');
-  const [sortField, setSortField] = useState<'loteNro' | 'stockBolsas' | 'stockKg' | 'fechaIngreso' | 'cliente' | 'variedad'>('stockBolsas');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [groupBy, setGroupBy] = useState<'none' | 'variedad' | 'fecha' | 'cliente'>('none');
+  const [sectorClienteFilter, setSectorClienteFilter] = useState<string>(initialMapaCalorState.sectorClienteFilter);
+  const [sortField, setSortField] = useState<'loteNro' | 'stockBolsas' | 'stockKg' | 'fechaIngreso' | 'cliente' | 'variedad'>(initialMapaCalorState.sortField);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(initialMapaCalorState.sortOrder);
+  const [groupBy, setGroupBy] = useState<'none' | 'variedad' | 'fecha' | 'cliente'>(initialMapaCalorState.groupBy);
+
+  // Persistir filtros, sector activo y orden en localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY_MAPA_CALOR_STATE,
+        JSON.stringify({
+          selectedSectorKey,
+          globalClienteFilter,
+          globalEspecieFilter,
+          globalSearch,
+          sectorClienteFilter,
+          sortField,
+          sortOrder,
+          groupBy,
+        })
+      );
+    } catch {
+      // LocalStorage no disponible
+    }
+  }, [
+    selectedSectorKey,
+    globalClienteFilter,
+    globalEspecieFilter,
+    globalSearch,
+    sectorClienteFilter,
+    sortField,
+    sortOrder,
+    groupBy,
+  ]);
+
+  // Estado para Modal de Edición de Lote directo en Mapa de Calor
+  const [loteToEditInModal, setLoteToEditInModal] = useState<Lote | null>(null);
+  const [editFormData, setEditFormData] = useState<{
+    loteNro: string;
+    stockBolsas: number;
+    stockKg: number;
+    variedad: string;
+    categoria: string;
+    estado: string;
+  }>({
+    loteNro: '',
+    stockBolsas: 0,
+    stockKg: 0,
+    variedad: '',
+    categoria: 'Original',
+    estado: 'Disponible',
+  });
+  const [isSavingEditModal, setIsSavingEditModal] = useState(false);
+
+  const handleStartEditLoteInModal = (lote: Lote) => {
+    setLoteToEditInModal(lote);
+    setEditFormData({
+      loteNro: lote.loteNro || '',
+      stockBolsas: Number(lote.stockBolsas) || 0,
+      stockKg: Number(lote.stockKg) || 0,
+      variedad: lote.variedad || '',
+      categoria: lote.categoria || 'Original',
+      estado: lote.estado || 'Disponible',
+    });
+  };
+
+  const handleSaveEditLoteModal = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!loteToEditInModal) return;
+
+    try {
+      setIsSavingEditModal(true);
+      const auditEntry: AuditLogEntry = {
+        id: `AUD-MC-EDIT-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Edición',
+        usuario: 'Operador Galpón',
+        descripcion: `Edición de lote ${editFormData.loteNro} desde Mapa de Calor`,
+        detalles: `Bolsas: ${editFormData.stockBolsas}, Variedad: ${editFormData.variedad}, Estado: ${editFormData.estado}`
+      };
+
+      const updatedLote: Lote = {
+        ...loteToEditInModal,
+        loteNro: editFormData.loteNro.trim() || loteToEditInModal.loteNro,
+        stockBolsas: Number(editFormData.stockBolsas) || 0,
+        stockKg: Number(editFormData.stockKg) || 0,
+        variedad: editFormData.variedad.trim() || loteToEditInModal.variedad,
+        categoria: (editFormData.categoria as any) || loteToEditInModal.categoria,
+        estado: (editFormData.estado as any) || loteToEditInModal.estado,
+        auditoria: [...(loteToEditInModal.auditoria || []), auditEntry]
+      };
+
+      await onSaveLote(updatedLote);
+      showToast(`Lote ${updatedLote.loteNro} actualizado con éxito en el sector.`, 'success');
+      setLoteToEditInModal(null);
+    } catch (err) {
+      console.error('Error al editar lote:', err);
+      showToast('Error al intentar guardar las modificaciones del lote.', 'warning');
+    } finally {
+      setIsSavingEditModal(false);
+    }
+  };
 
   // 5. Estado para Mover Lotes
   const [movingLoteId, setMovingLoteId] = useState<string | null>(null);
@@ -446,11 +578,11 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
   // Color del nivel de llenado según porcentaje
   const getLevelColor = (pct: number) => {
     if (pct === 0) return {
-      bgBar: 'bg-gray-200',
-      text: 'text-gray-500',
-      badge: 'bg-gray-100 text-gray-600 border-gray-200',
-      cardBorder: 'border-gray-200/80',
-      glow: ''
+      bgBar: 'bg-purple-500',
+      text: 'text-purple-800',
+      badge: 'bg-purple-100 text-purple-900 border-purple-300 font-bold',
+      cardBorder: 'border-purple-300',
+      glow: 'shadow-purple-100'
     };
     if (pct <= 50) return {
       bgBar: 'bg-[#00603C]',
@@ -704,9 +836,9 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
           {/* Guía de Referencia de Colores e Intensidad */}
           <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-gray-500 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200/60">
             <span className="uppercase tracking-wider">Llenado:</span>
-            <div className="flex items-center gap-1">
-              <span className="w-3 h-3 rounded-full bg-gray-200 border border-gray-300"></span>
-              <span>0% Vacío</span>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-purple-100/90 border border-purple-300">
+              <span className="w-3 h-3 rounded-full bg-purple-600 border border-purple-700 shrink-0"></span>
+              <span className="text-purple-950 font-black">0% Vacío (Lugar de Guardado)</span>
             </div>
             <div className="flex items-center gap-1">
               <span className="w-3 h-3 rounded-full bg-[#00603C]"></span>
@@ -757,6 +889,7 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
                   const data = sectoresData[sectorKey];
                   const isSelected = selectedSectorKey === sectorKey;
                   const colors = getLevelColor(data.porcentajeLlenado);
+                  const isEmpty = data.porcentajeLlenado === 0 || data.totalBolsas === 0;
 
                   return (
                     <div
@@ -764,12 +897,15 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
                       id={`card-sector-${sectorKey}`}
                       onClick={() => {
                         setSelectedSectorKey(isSelected ? null : sectorKey);
-                        setSectorClienteFilter('TODOS');
                       }}
-                      className={`relative bg-white rounded-2xl p-5 border-2 transition-all duration-200 cursor-pointer select-none flex flex-col justify-between min-h-[220px] ${
-                        isSelected 
-                          ? 'border-[#C9922E] ring-4 ring-[#C9922E]/20 shadow-lg scale-[1.01] z-10' 
-                          : 'border-gray-200/80 hover:border-[#00603C]/40 hover:shadow-md'
+                      className={`relative rounded-2xl p-5 border-2 transition-all duration-200 cursor-pointer select-none flex flex-col justify-between min-h-[220px] ${
+                        isEmpty
+                          ? isSelected
+                            ? 'bg-purple-50/90 border-purple-600 ring-4 ring-purple-300/50 shadow-lg scale-[1.01] z-10'
+                            : 'bg-purple-50/40 border-purple-300/90 hover:border-purple-500 hover:shadow-md'
+                          : isSelected 
+                            ? 'bg-white border-[#C9922E] ring-4 ring-[#C9922E]/20 shadow-lg scale-[1.01] z-10' 
+                            : 'bg-white border-gray-200/80 hover:border-[#00603C]/40 hover:shadow-md'
                       } ${colors.glow}`}
                     >
                       {/* Cabecera de la Tarjeta del Sector */}
@@ -785,9 +921,16 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
                               </span>
                             )}
                           </div>
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-black border ${colors.badge}`}>
-                            {data.porcentajeLlenado}% LLENO
-                          </span>
+                          {isEmpty ? (
+                            <span className="px-2.5 py-0.5 rounded-md text-[10px] font-mono font-black border bg-purple-100 text-purple-900 border-purple-300 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-pulse"></span>
+                              0% · DISPONIBLE
+                            </span>
+                          ) : (
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-black border ${colors.badge}`}>
+                              {data.porcentajeLlenado}% LLENO
+                            </span>
+                          )}
                         </div>
 
                         {/* INDICADOR DE NIVEL DE LLENADO */}
@@ -807,12 +950,22 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
                               style={{ width: `${Math.min(100, Math.max(0, data.porcentajeLlenado))}%` }}
                             />
                           </div>
-                          {data.porcentajeLlenado > 100 && (
+                          {isEmpty ? (
+                            <div className="mt-2.5 px-3 py-1.5 bg-purple-100/90 border border-purple-300/80 rounded-xl flex items-center justify-between text-[11px] text-purple-950 font-bold shadow-2xs">
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+                                Lugar de guardado disponible
+                              </span>
+                              <span className="font-mono text-purple-800 font-extrabold">
+                                {data.capacidadBolsas.toLocaleString('es-AR')} bb libres
+                              </span>
+                            </div>
+                          ) : data.porcentajeLlenado > 100 ? (
                             <div className="flex items-center gap-1 text-[10px] text-red-600 font-bold mt-1">
                               <AlertTriangle className="w-3 h-3 shrink-0" />
                               <span>Sobrecarga: excede en {data.totalBolsas - data.capacidadBolsas} bolsas la capacidad.</span>
                             </div>
-                          )}
+                          ) : null}
                         </div>
 
                         {/* Kilogramos y Lotes almacenados */}
@@ -884,9 +1037,16 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
                 <span className="px-3.5 py-1.5 bg-[#C9922E] text-white font-mono font-black text-sm rounded-xl shadow-xs">
                   ALA {activeSectorData.ala} · SECTOR {activeSectorData.sector}
                 </span>
-                <span className={`px-3 py-1 rounded-lg text-xs font-mono font-black border ${getLevelColor(activeSectorData.porcentajeLlenado).badge}`}>
-                  {activeSectorData.porcentajeLlenado}% Ocupado
-                </span>
+                {activeSectorData.porcentajeLlenado === 0 ? (
+                  <span className="px-3 py-1 rounded-lg text-xs font-mono font-black border bg-purple-100 text-purple-900 border-purple-300 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></span>
+                    Sector Vacío · Lugar de Guardado Disponible ({activeSectorData.capacidadBolsas.toLocaleString('es-AR')} bb libres)
+                  </span>
+                ) : (
+                  <span className={`px-3 py-1 rounded-lg text-xs font-mono font-black border ${getLevelColor(activeSectorData.porcentajeLlenado).badge}`}>
+                    {activeSectorData.porcentajeLlenado}% Ocupado
+                  </span>
+                )}
                 <span className="text-xs text-gray-500 font-mono">
                   {activeSectorData.totalBolsas.toLocaleString('es-AR')} / {activeSectorData.capacidadBolsas.toLocaleString('es-AR')} bolsas · {activeSectorData.totalKg.toLocaleString('es-AR')} kg
                 </span>
@@ -988,6 +1148,24 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
                   <option value="fecha">Fecha de Ingreso</option>
                 </select>
               </div>
+
+              {/* Botón para restablecer filtros del sector */}
+              {(sectorClienteFilter !== 'TODOS' || groupBy !== 'none' || sortField !== 'stockBolsas' || sortOrder !== 'desc') && (
+                <button
+                  onClick={() => {
+                    setSectorClienteFilter('TODOS');
+                    setGroupBy('none');
+                    setSortField('stockBolsas');
+                    setSortOrder('desc');
+                    showToast('Filtros y orden del sector restablecidos.', 'info');
+                  }}
+                  className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                  title="Restablecer filtros y orden del sector"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Limpiar Filtros
+                </button>
+              )}
             </div>
 
             {/* Contador de Lotes en vista */}
@@ -1240,14 +1418,24 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
 
                         {/* Acciones */}
                         <td className="p-3 text-center">
-                          <button
-                            onClick={() => onSelectLote(lote)}
-                            className="px-2 py-1 bg-[#00603C] hover:bg-[#004d30] text-white rounded-lg text-[10px] font-semibold transition flex items-center gap-1 mx-auto cursor-pointer"
-                            title="Ver ficha técnica completa del lote"
-                          >
-                            <Eye className="w-3 h-3 text-[#C9922E]" />
-                            Ficha
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => handleStartEditLoteInModal(lote)}
+                              className="px-2 py-1 bg-[#F6EFDC] hover:bg-[#ebdfc5] text-[#00603C] border border-[#C9922E]/40 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
+                              title="Editar datos de este lote directamente en el Mapa de Calor"
+                            >
+                              <Edit2 className="w-3 h-3 text-[#C9922E]" />
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => onSelectLote(lote)}
+                              className="px-2 py-1 bg-[#00603C] hover:bg-[#004d30] text-white rounded-lg text-[10px] font-semibold transition flex items-center gap-1 cursor-pointer"
+                              title="Ver ficha técnica completa del lote"
+                            >
+                              <Eye className="w-3 h-3 text-[#C9922E]" />
+                              Ficha
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1403,13 +1591,23 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
                                   )}
                                 </td>
                                 <td className="p-2.5 text-center">
-                                  <button
-                                    onClick={() => onSelectLote(lote)}
-                                    className="px-2 py-0.5 bg-[#00603C] text-white rounded text-[10px] font-semibold hover:bg-[#004d30] flex items-center gap-1 mx-auto cursor-pointer"
-                                  >
-                                    <Eye className="w-3 h-3 text-[#C9922E]" />
-                                    Ficha
-                                  </button>
+                                  <div className="flex items-center justify-center gap-1">
+                                    <button
+                                      onClick={() => handleStartEditLoteInModal(lote)}
+                                      className="px-2 py-0.5 bg-[#F6EFDC] hover:bg-[#ebdfc5] text-[#00603C] border border-[#C9922E]/40 rounded text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                      title="Editar datos de este lote directamente en el Mapa de Calor"
+                                    >
+                                      <Edit2 className="w-3 h-3 text-[#C9922E]" />
+                                      Editar
+                                    </button>
+                                    <button
+                                      onClick={() => onSelectLote(lote)}
+                                      className="px-2 py-0.5 bg-[#00603C] text-white rounded text-[10px] font-semibold hover:bg-[#004d30] flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Eye className="w-3 h-3 text-[#C9922E]" />
+                                      Ficha
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -1551,6 +1749,150 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
                 Guardar Capacidad
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDICIÓN DE LOTE DIRECTAMENTE EN MAPA DE CALOR */}
+      {loteToEditInModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 border border-[#C9922E]/30 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-[#F6EFDC] text-[#00603C] rounded-xl">
+                  <Edit2 className="w-5 h-5 text-[#C9922E]" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-gray-900 text-base">
+                    Editar Lote en {loteToEditInModal.ala ? `ALA ${loteToEditInModal.ala} · SECTOR ${loteToEditInModal.sector}` : 'Sector'}
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Edición rápida sin salir del Mapa de Calor. Se mantiene su vista y sector actual.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setLoteToEditInModal(null)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditLoteModal} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-1">N° de Lote</label>
+                  <input
+                    type="text"
+                    value={editFormData.loteNro}
+                    onChange={(e) => setEditFormData((prev) => ({ ...prev, loteNro: e.target.value }))}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-mono font-bold text-gray-800 focus:ring-2 focus:ring-[#00603C] outline-hidden"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-1">Cliente</label>
+                  <input
+                    type="text"
+                    value={loteToEditInModal.cliente}
+                    disabled
+                    className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-xl font-medium text-gray-500 cursor-not-allowed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-1">Variedad</label>
+                  <input
+                    type="text"
+                    value={editFormData.variedad}
+                    onChange={(e) => setEditFormData((prev) => ({ ...prev, variedad: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-gray-800 focus:ring-2 focus:ring-[#00603C] outline-hidden"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-1">Categoría</label>
+                  <select
+                    value={editFormData.categoria}
+                    onChange={(e) => setEditFormData((prev) => ({ ...prev, categoria: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-gray-800 focus:ring-2 focus:ring-[#00603C] outline-hidden"
+                  >
+                    <option value="Original">Original</option>
+                    <option value="Primera Multiplicación">Primera Multiplicación</option>
+                    <option value="Segunda Multiplicación">Segunda Multiplicación</option>
+                    <option value="Tercera">Tercera</option>
+                    <option value="Identificada">Identificada</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-1">Stock Bolsas</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editFormData.stockBolsas}
+                    onChange={(e) => {
+                      const bolsas = Number(e.target.value) || 0;
+                      const kgPorBolsa = loteToEditInModal.kgPorBolsa || 40;
+                      setEditFormData((prev) => ({
+                        ...prev,
+                        stockBolsas: bolsas,
+                        stockKg: bolsas * kgPorBolsa
+                      }));
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl font-mono font-bold text-gray-800 focus:ring-2 focus:ring-[#00603C] outline-hidden"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-1">Stock Kilos</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editFormData.stockKg}
+                    onChange={(e) => setEditFormData((prev) => ({ ...prev, stockKg: Number(e.target.value) || 0 }))}
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl font-mono font-bold text-gray-800 focus:ring-2 focus:ring-[#00603C] outline-hidden"
+                    required
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-gray-700 font-semibold mb-1">Estado del Lote</label>
+                  <select
+                    value={editFormData.estado}
+                    onChange={(e) => setEditFormData((prev) => ({ ...prev, estado: e.target.value }))}
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-gray-800 focus:ring-2 focus:ring-[#00603C] outline-hidden"
+                  >
+                    <option value="Disponible">Disponible</option>
+                    <option value="Reservado">Reservado</option>
+                    <option value="Agotado">Agotado</option>
+                    <option value="A Consumo">A Consumo</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setLoteToEditInModal(null)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEditModal}
+                  className="px-5 py-2 bg-[#00603C] hover:bg-[#004d30] text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4 text-[#C9922E]" />
+                  {isSavingEditModal ? 'Guardando...' : 'Guardar y Continuar en Mapa de Calor'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

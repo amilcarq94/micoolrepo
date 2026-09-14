@@ -565,8 +565,23 @@ export const LotesView: React.FC<LotesViewProps> = ({
       alert('Error al guardar las modificaciones del movimiento.');
     }
   };
+  // Tipos y estados para ordenamiento por columna en la vista de tabla
+  type TableSortField =
+    | 'fechaAlta'
+    | 'cliente'
+    | 'especie'
+    | 'variedad'
+    | 'loteId'
+    | 'tipo'
+    | 'tratamiento'
+    | 'categoria'
+    | 'envase'
+    | 'bolsas'
+    | 'stockKg'
+    | 'estado';
+
   // Constante para almacenamiento persistente del filtro fijado
-  const PIN_STORAGE_KEY = 'agroabacus_pinned_lotes_filters_v2';
+  const PIN_STORAGE_KEY = 'agroabacus_pinned_lotes_filters_v3';
 
   // Cargar estado inicial fijado desde localStorage
   const getInitialFilterState = () => {
@@ -575,7 +590,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
-          isPinned: Boolean(parsed.isPinned),
+          isPinned: parsed.isPinned !== undefined ? Boolean(parsed.isPinned) : true,
           search: typeof parsed.search === 'string' ? parsed.search : '',
           filterClientes: Array.isArray(parsed.filterClientes) ? parsed.filterClientes : [],
           filterEspecies: Array.isArray(parsed.filterEspecies) ? parsed.filterEspecies : [],
@@ -584,15 +599,18 @@ export const LotesView: React.FC<LotesViewProps> = ({
           filterCategorias: Array.isArray(parsed.filterCategorias) ? parsed.filterCategorias : [],
           filterTratamientos: Array.isArray(parsed.filterTratamientos) ? parsed.filterTratamientos : [],
           filterEstados: Array.isArray(parsed.filterEstados) ? parsed.filterEstados : [],
+          filterEstadoRegistro: (parsed.filterEstadoRegistro as 'TODOS' | 'REALIZADO' | 'PRE-CARGA') || 'TODOS',
           filterAlas: Array.isArray(parsed.filterAlas) ? parsed.filterAlas : [],
           filterSectores: Array.isArray(parsed.filterSectores) ? parsed.filterSectores : [],
+          sortField: (parsed.sortField as TableSortField) || 'fechaAlta',
+          sortOrder: (parsed.sortOrder as 'asc' | 'desc') || 'desc',
         };
       }
     } catch (e) {
       console.error('Error al cargar filtros fijados:', e);
     }
     return {
-      isPinned: false,
+      isPinned: true,
       search: '',
       filterClientes: [],
       filterEspecies: [],
@@ -601,8 +619,11 @@ export const LotesView: React.FC<LotesViewProps> = ({
       filterCategorias: [],
       filterTratamientos: [],
       filterEstados: [],
+      filterEstadoRegistro: 'TODOS' as const,
       filterAlas: [],
       filterSectores: [],
+      sortField: 'fechaAlta' as TableSortField,
+      sortOrder: 'desc' as const,
     };
   };
 
@@ -617,7 +638,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
   const [filterCategorias, setFilterCategorias] = useState<string[]>(initialFilters.filterCategorias);
   const [filterTratamientos, setFilterTratamientos] = useState<string[]>(initialFilters.filterTratamientos);
   const [filterEstados, setFilterEstados] = useState<string[]>(initialFilters.filterEstados);
-  const [filterEstadoRegistro, setFilterEstadoRegistro] = useState<'TODOS' | 'REALIZADO' | 'PRE-CARGA'>('TODOS');
+  const [filterEstadoRegistro, setFilterEstadoRegistro] = useState<'TODOS' | 'REALIZADO' | 'PRE-CARGA'>(initialFilters.filterEstadoRegistro);
   const [filterAlas, setFilterAlas] = useState<string[]>(initialFilters.filterAlas);
   const [filterSectores, setFilterSectores] = useState<string[]>(initialFilters.filterSectores);
   const [isFilterPinned, setIsFilterPinned] = useState<boolean>(initialFilters.isPinned);
@@ -686,23 +707,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
   // Estado para el menú desplegable de opciones de cada lote en tabla
   const [activeActionDropdownId, setActiveActionDropdownId] = useState<string | null>(null);
 
-  // Tipos y estados para ordenamiento por columna en la vista de tabla
-  type TableSortField =
-    | 'fechaAlta'
-    | 'cliente'
-    | 'especie'
-    | 'variedad'
-    | 'loteId'
-    | 'tipo'
-    | 'tratamiento'
-    | 'categoria'
-    | 'envase'
-    | 'bolsas'
-    | 'stockKg'
-    | 'estado';
-
-  const [sortField, setSortField] = useState<TableSortField>('fechaAlta');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortField, setSortField] = useState<TableSortField>(initialFilters.sortField);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(initialFilters.sortOrder);
 
   const handleToggleSort = (field: TableSortField) => {
     if (sortField === field) {
@@ -747,7 +753,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
     categoria: string;
     estado: EstadoLoteType;
     tipo: TipoLoteType;
-    estadoRegistro?: 'PRE-CARGA' | 'REALIZADO';
+    estadoRegistro?: EstadoRegistroLote;
   }>({
     loteNro: '',
     stockBolsas: 0,
@@ -961,7 +967,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
     setCurrentPage(1);
   }, [search, filterClientes, filterEspecies, filterVariedades, filterTipos, filterCategorias, filterTratamientos, filterEstados, filterAlas, filterSectores]);
 
-  // Guardar en localStorage cuando se fija o cuando cambian los filtros estando fijados
+  // Guardar en localStorage cuando se fija o cuando cambian los filtros/orden estando fijados
   useEffect(() => {
     if (isFilterPinned) {
       const stateToSave = {
@@ -974,8 +980,11 @@ export const LotesView: React.FC<LotesViewProps> = ({
         filterCategorias,
         filterTratamientos,
         filterEstados,
+        filterEstadoRegistro,
         filterAlas,
         filterSectores,
+        sortField,
+        sortOrder,
       };
       localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(stateToSave));
     } else {
@@ -991,8 +1000,11 @@ export const LotesView: React.FC<LotesViewProps> = ({
     filterCategorias,
     filterTratamientos,
     filterEstados,
+    filterEstadoRegistro,
     filterAlas,
     filterSectores,
+    sortField,
+    sortOrder,
   ]);
 
   const handleTogglePinFilter = () => {
