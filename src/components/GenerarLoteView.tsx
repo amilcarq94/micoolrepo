@@ -12,6 +12,14 @@ import { generarLoteId } from '../utils/loteId';
 import { CalculoBolsasDashboard } from './CalculoBolsasDashboard';
 import { CategoriaEnvaseKg, LoteDesgloseItem, CalculoTransferConfig } from '../utils/calculoBolsas';
 import {
+  getClientePrefijo,
+  formatLoteNro,
+  extractLoteNumber,
+  getCorrelatividadCliente,
+  CorrelatividadClienteInfo
+} from '../utils/loteCorrelativo';
+import { VisorCorrelatividadLote } from './VisorCorrelatividadLote';
+import {
   PackagePlus,
   CheckCircle2,
   Clock,
@@ -82,21 +90,6 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
   // Submódulo activo: 'precarga-produccion' (reemplaza a Precarga de Lotes) | 'calculo-bolsas'
   const [activeSubModule, setActiveSubModule] = useState<'precarga-produccion' | 'calculo-bolsas'>('precarga-produccion');
 
-  // Helper para buscar el mayor número correlativo
-  const getNextLoteNumber = (offset = 0, currentList: LoteDraftItem[] = []) => {
-    const existingNumbers = lotes
-      .map(l => parseInt(l.loteNro.replace(/\D/g, ''), 10))
-      .filter(n => !isNaN(n));
-    
-    const draftNumbers = currentList
-      .map(l => parseInt(l.loteNro.replace(/\D/g, ''), 10))
-      .filter(n => !isNaN(n));
-
-    const allNumbers = [...existingNumbers, ...draftNumbers];
-    const maxNum = allNumbers.length > 0 ? Math.max(...allNumbers) : 1000;
-    return `L-${maxNum + 1 + offset}`;
-  };
-
   // General configuration state (shared across the batch)
   const [cliente, setCliente] = useState('San Diego Semillas');
   const [especie, setEspecie] = useState('Soja');
@@ -105,6 +98,31 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
   const [sector, setSector] = useState('1');
   const [observaciones, setObservaciones] = useState('');
   const [siloOrigenDetectado, setSiloOrigenDetectado] = useState<string | null>(null);
+
+  // Visor y correlatividad del cliente actual basada en el número más alto asignado (no por fecha)
+  const correlatividadInfo = useMemo(() => {
+    return getCorrelatividadCliente(cliente, lotes);
+  }, [cliente, lotes]);
+
+  // Helper para buscar el mayor número correlativo del cliente
+  const getNextLoteNumber = (offset = 0, currentList: LoteDraftItem[] = [], targetCliente: string = cliente) => {
+    const info = getCorrelatividadCliente(targetCliente, lotes);
+    const prefijo = info.prefijo;
+
+    // Buscar el número más alto entre los lotes ya guardados del cliente
+    let highest = info.numeroMasAlto;
+
+    // Y también buscar el número más alto entre los borradores actuales de la tanda
+    currentList.forEach(d => {
+      const num = extractLoteNumber(d.loteNro, prefijo);
+      if (num !== null && num > highest) {
+        highest = num;
+      }
+    });
+
+    const nextVal = highest + 1 + offset;
+    return formatLoteNro(prefijo, nextVal);
+  };
 
   // Lista de opciones de clientes incluyendo el cliente asignado
   const clientesOpciones = useMemo(() => {
@@ -178,17 +196,44 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
     return list.filter((c) => !c.toLowerCase().includes('primera multiplicaci'));
   }, [plantaConfig]);
 
-  // Draft lotes list state (presets: 35 bolsas x 800 kg)
-  const [draftLotes, setDraftLotes] = useState<LoteDraftItem[]>(() => [
-    {
-      id: `draft-1-${Date.now()}`,
-      loteNro: getNextLoteNumber(0),
-      tipo: 'Intermedio',
-      categoria: 'Pre básica',
-      stockBolsas: 35, // PRECARGADO EN 35 UNIDADES
-      kgPorBolsa: 800,  // PRECARGADO EN 800 KG
-    }
-  ]);
+  // Draft lotes list state (presets: 35 bolsas x 800 kg con correlativo inicial del cliente)
+  const [draftLotes, setDraftLotes] = useState<LoteDraftItem[]>(() => {
+    const info = getCorrelatividadCliente('San Diego Semillas', lotes);
+    return [
+      {
+        id: `draft-1-${Date.now()}`,
+        loteNro: formatLoteNro(info.prefijo, info.proximoNumero),
+        tipo: 'Intermedio',
+        categoria: 'Pre básica',
+        stockBolsas: 35, // PRECARGADO EN 35 UNIDADES
+        kgPorBolsa: 800,  // PRECARGADO EN 800 KG
+      }
+    ];
+  });
+
+  // Bandera para saber si el usuario editó manualmente algún número de lote
+  const [haEditadoNroManualmente, setHaEditadoNroManualmente] = useState(false);
+
+  // Sincronizar todos los borradores con la correlatividad del cliente especificado
+  const handleSincronizarCorrelatividad = (targetCliente: string = cliente) => {
+    const info = getCorrelatividadCliente(targetCliente, lotes);
+    const prefijo = info.prefijo;
+    const baseNum = info.proximoNumero;
+
+    setDraftLotes((prev) =>
+      prev.map((item, idx) => ({
+        ...item,
+        loteNro: formatLoteNro(prefijo, baseNum + idx),
+      }))
+    );
+    setHaEditadoNroManualmente(false);
+  };
+
+  // Cambio de cliente: actualiza cliente y renombra los lotes con sus iniciales y correlativo correspondiente
+  const handleClienteChange = (nuevoCliente: string) => {
+    setCliente(nuevoCliente);
+    handleSincronizarCorrelatividad(nuevoCliente);
+  };
 
   const [cantidadMasiva, setCantidadMasiva] = useState<number>(3);
 
@@ -216,7 +261,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
     setDraftLotes(prev => [
       ...prev,
       {
-        id: `draft-${Date.now()}-${Math.random()}`,
+        id: `draft-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         loteNro: nextNro,
         tipo: defaultTipo,
         categoria: defaultCat,
@@ -235,7 +280,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
     const newItems: LoteDraftItem[] = [];
     for (let i = 0; i < count; i++) {
       newItems.push({
-        id: `draft-${Date.now()}-${i}`,
+        id: `draft-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
         loteNro: getNextLoteNumber(i, draftLotes),
         tipo: defaultTipo,
         categoria: defaultCat,
@@ -427,6 +472,10 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
 
   // Callback para aplicar el resultado del Dashboard de Cálculo de Bolsas a los lotes en borrador
   const handleAplicarDesdeCalculoBolsas = (config: CalculoTransferConfig) => {
+    const targetCliente = (config.cliente && config.cliente.trim() !== '')
+      ? config.cliente.trim()
+      : cliente;
+
     // 1. Datos Generales de la Tanda: Copiar datos de cliente, variedad y especie si provienen del silo o cálculo
     if (config.cliente && config.cliente.trim() !== '') {
       setCliente(config.cliente.trim());
@@ -443,11 +492,10 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
       setSiloOrigenDetectado(config.siloOrigenId);
     }
 
-    // 2. Lotes a Generar: Pregenerar con la cantidad de lotes y bolsas determinadas en el cálculo
-    const existingNumbers = lotes
-      .map(l => parseInt(l.loteNro.replace(/\D/g, ''), 10))
-      .filter(n => !isNaN(n));
-    const baseMax = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 1000;
+    // 2. Lotes a Generar: Pregenerar con la correlatividad del cliente y la cantidad de lotes/bolsas del cálculo
+    const infoCliente = getCorrelatividadCliente(targetCliente, lotes);
+    const prefijo = infoCliente.prefijo;
+    const baseNum = infoCliente.proximoNumero;
 
     const newDrafts: LoteDraftItem[] = [];
 
@@ -455,7 +503,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
       config.desgloseLotes.forEach((item, i) => {
         newDrafts.push({
           id: `draft-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
-          loteNro: `L-${baseMax + 1 + i}`,
+          loteNro: formatLoteNro(prefijo, baseNum + i),
           tipo: 'Intermedio',
           categoria: 'Pre básica',
           stockBolsas: item.bolsas,
@@ -467,7 +515,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
       for (let i = 0; i < count; i++) {
         newDrafts.push({
           id: `draft-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
-          loteNro: `L-${baseMax + 1 + i}`,
+          loteNro: formatLoteNro(prefijo, baseNum + i),
           tipo: 'Intermedio',
           categoria: 'Pre básica',
           stockBolsas: config.stockBolsasPorLote || 35,
@@ -477,6 +525,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
     }
 
     setDraftLotes(newDrafts);
+    setHaEditadoNroManualmente(false);
     if (config.silosOrigenNombres) {
       setObservaciones((prev) => {
         const extra = `Estimado desde ${config.silosOrigenNombres} (${formatKg(config.totalKgNetos)} netos)`;
@@ -675,7 +724,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
               </label>
               <select
                 value={cliente}
-                onChange={(e) => setCliente(e.target.value)}
+                onChange={(e) => handleClienteChange(e.target.value)}
                 className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-[#00603C]"
               >
                 {clientesOpciones.map(c => (
@@ -772,18 +821,31 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
               </select>
             </div>
           </div>
+
+          {/* Visor de Correlatividad de Lotes por Cliente */}
+          <VisorCorrelatividadLote
+            info={correlatividadInfo}
+            cantidadLotesEnTanda={draftLotes.length}
+            onSincronizarDrafts={() => handleSincronizarCorrelatividad(cliente)}
+            className="mt-2"
+          />
         </div>
 
         {/* Sección 2: Alta Múltiple de Lotes (Generación rápida) */}
         <div className="space-y-4 pt-4 border-t border-gray-100">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
             <div>
-              <h3 className="font-serif font-bold text-lg text-slate-900 flex items-center gap-2">
-                <Layers className="w-5 h-5 text-[#00603C]" />
-                2. Lotes a Generar ({draftLotes.length} lote{draftLotes.length !== 1 ? 's' : ''})
-              </h3>
-              <p className="text-xs text-slate-500">
-                Puede dar de alta más de un lote a la vez. Cada lote viene precargado con **35 bolsas x 800 kg** (28.000 kg total).
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-serif font-bold text-lg text-slate-900 flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-[#00603C]" />
+                  2. Lotes a Generar ({draftLotes.length} lote{draftLotes.length !== 1 ? 's' : ''})
+                </h3>
+                <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-300 flex items-center gap-1">
+                  Correlativo Cliente: <span className="text-emerald-950 font-black">{correlatividadInfo.proximoLoteNro}</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Numeración automática correlativa con iniciales para {cliente}. Cada lote viene precargado con **35 bolsas x 800 kg** (28.000 kg total).
               </p>
             </div>
 
@@ -859,14 +921,22 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
                     {/* N° de Lote */}
                     <div>
-                      <label className="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">
-                        N° de Lote *
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[10px] font-extrabold text-slate-700 uppercase">
+                          N° de Lote *
+                        </label>
+                        <span className="text-[9px] font-mono font-bold text-emerald-800 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
+                          {correlatividadInfo.prefijo}
+                        </span>
+                      </div>
                       <input
                         type="text"
                         value={item.loteNro}
-                        onChange={(e) => handleUpdateDraftLote(item.id, 'loteNro', e.target.value)}
-                        placeholder="Ej. L-1001"
+                        onChange={(e) => {
+                          setHaEditadoNroManualmente(true);
+                          handleUpdateDraftLote(item.id, 'loteNro', e.target.value);
+                        }}
+                        placeholder={`Ej. ${formatLoteNro(correlatividadInfo.prefijo, correlatividadInfo.proximoNumero + idx)}`}
                         className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-[#00603C]"
                         required
                       />
