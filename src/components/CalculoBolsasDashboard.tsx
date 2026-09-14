@@ -16,9 +16,7 @@ import {
   Package,
   TrendingDown,
   Scale,
-  CheckCircle2,
   Sparkles,
-  ArrowRight,
   RotateCcw,
   Plus,
   Minus,
@@ -26,7 +24,9 @@ import {
   Building2,
   Warehouse,
   Droplets,
-  Layers
+  PackagePlus,
+  ArrowRight,
+  CheckCircle2
 } from 'lucide-react';
 import { SiloId, CAPACIDAD_MAX_SILO, MovimientoSilo } from '../types';
 import { getSiloDetailedInfo } from '../utils/siloValidation';
@@ -181,82 +181,100 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
           selectedSiloKeys.includes(s.siloId) &&
           s.cliente &&
           s.cliente !== 'Sin asignación' &&
-          s.cliente !== 'Sin asignar'
+          s.cliente !== 'Sin asignar' &&
+          s.cliente.trim() !== ''
       ) ||
       silosInfoList.find((s) => selectedSiloKeys.includes(s.siloId)) ||
       null
     );
   }, [silosInfoList, selectedSilos]);
 
-  // Transferir cálculo a formulario de Precarga
-  const handleTransferirAPrecarga = (soloEnteros: boolean = true) => {
+  // Silo asignado de referencia (prioriza selección activa o silo con cliente/variedad asignado)
+  const siloAsignado = useMemo(() => {
+    if (siloSeleccionadoConDatos) return siloSeleccionadoConDatos;
+    const selectedSiloKeys = Object.keys(selectedSilos).filter((s) => selectedSilos[s]);
+    if (selectedSiloKeys.length > 0) {
+      return silosInfoList.find((s) => selectedSiloKeys.includes(s.siloId)) || null;
+    }
+    return (
+      silosInfoList.find(
+        (s) =>
+          s.cliente &&
+          s.cliente !== 'Sin asignación' &&
+          s.cliente !== 'Sin asignar' &&
+          s.cliente !== '-' &&
+          s.cliente.trim() !== ''
+      ) || null
+    );
+  }, [siloSeleccionadoConDatos, selectedSilos, silosInfoList]);
+
+  // Generar lotes en precargar copiando cliente y variedad del silo asignado
+  const handleGenerarLotesEnPrecargar = () => {
     if (!onAplicarAPrecarga) return;
 
     const selectedSiloKeys = Object.keys(selectedSilos).filter((s) => selectedSilos[s]);
-    const esDeSilo = selectedSiloKeys.length > 0;
+    const esDeSilo = selectedSiloKeys.length > 0 || Boolean(siloAsignado);
+
+    const siloRef = siloAsignado;
 
     const clienteSilo =
-      siloSeleccionadoConDatos &&
-      siloSeleccionadoConDatos.cliente &&
-      siloSeleccionadoConDatos.cliente !== 'Sin asignación' &&
-      siloSeleccionadoConDatos.cliente !== 'Sin asignar'
-        ? siloSeleccionadoConDatos.cliente.trim()
+      siloRef &&
+      siloRef.cliente &&
+      siloRef.cliente !== 'Sin asignación' &&
+      siloRef.cliente !== 'Sin asignar' &&
+      siloRef.cliente !== '-'
+        ? siloRef.cliente.trim()
         : undefined;
 
     const variedadSilo =
-      siloSeleccionadoConDatos &&
-      siloSeleccionadoConDatos.variedad &&
-      siloSeleccionadoConDatos.variedad !== '-' &&
-      siloSeleccionadoConDatos.variedad !== 'Descontaminado'
-        ? siloSeleccionadoConDatos.variedad.trim()
+      siloRef &&
+      siloRef.variedad &&
+      siloRef.variedad !== '-' &&
+      siloRef.variedad !== 'Descontaminado' &&
+      siloRef.variedad !== 'Sin variedad'
+        ? siloRef.variedad.trim()
         : undefined;
 
     const especieSilo =
-      siloSeleccionadoConDatos &&
-      siloSeleccionadoConDatos.especie &&
-      siloSeleccionadoConDatos.especie !== 'Sin Cereal / Vacío'
-        ? siloSeleccionadoConDatos.especie.trim()
+      siloRef &&
+      siloRef.especie &&
+      siloRef.especie !== 'Sin Cereal / Vacío' &&
+      siloRef.especie !== '-'
+        ? siloRef.especie.trim()
         : undefined;
 
-    const cantEnteros = Math.max(1, calculoResultado.cantidadLotesEnteros || 1);
+    const desglose: LoteDesgloseItem[] =
+      calculoResultado.desgloseLotes && calculoResultado.desgloseLotes.length > 0
+        ? calculoResultado.desgloseLotes
+        : [
+            {
+              nroLote: 1,
+              bolsas: Math.max(1, calculoResultado.cantidadBolsasEnteras || 35),
+              kgPorBolsa: pesoEnvaseKg,
+              totalKg: Math.max(1, calculoResultado.cantidadBolsasEnteras || 35) * pesoEnvaseKg,
+              esLoteCompleto: (calculoResultado.cantidadBolsasEnteras || 35) >= 35,
+              fraccionLoteDecimal: 1.0,
+            },
+          ];
 
-    let desglose: LoteDesgloseItem[] = [];
-    let cantLotes = cantEnteros;
-
-    if (soloEnteros) {
-      cantLotes = cantEnteros;
-      for (let i = 0; i < cantEnteros; i++) {
-        desglose.push({
-          nroLote: i + 1,
-          bolsas: 35,
-          kgPorBolsa: pesoEnvaseKg,
-          totalKg: 35 * pesoEnvaseKg,
-          esLoteCompleto: true,
-          fraccionLoteDecimal: 1.0,
-        });
-      }
-    } else {
-      cantLotes = calculoResultado.excedeLoteNatural ? calculoResultado.cantidadLotes1Decimal : cantEnteros;
-      desglose = calculoResultado.desgloseLotes;
-    }
-
+    const cantLotes = desglose.length;
     const totalKgNetosCalculados = desglose.reduce((sum, item) => sum + item.totalKg, 0);
 
     onAplicarAPrecarga({
       cantidadLotes: cantLotes,
       cantidadLotes1Decimal: calculoResultado.cantidadLotes1Decimal,
-      permitirLotesConDecimal: !soloEnteros,
+      permitirLotesConDecimal: true,
       desgloseLotes: desglose,
       stockBolsasPorLote: 35,
       kgPorBolsa: pesoEnvaseKg,
-      totalKgNetos: totalKgNetosCalculados,
-      silosOrigenNombres: nombresSilosSeleccionados || 'Carga Manual',
+      totalKgNetos: totalKgNetosCalculados > 0 ? totalKgNetosCalculados : calculoResultado.kilosNetosKg,
+      silosOrigenNombres: nombresSilosSeleccionados || siloRef?.siloId || 'Silo Asignado',
       cliente: clienteSilo,
       variedad: variedadSilo,
       especie: especieSilo,
-      esDeSilo,
-      siloOrigenId: siloSeleccionadoConDatos?.siloId,
-      lotesEnteros: cantEnteros,
+      esDeSilo: Boolean(esDeSilo),
+      siloOrigenId: siloRef?.siloId,
+      lotesEnteros: calculoResultado.cantidadLotesEnteros,
       bolsasPorLoteEntero: 35,
     });
   };
@@ -747,75 +765,73 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
               </div>
 
               {/* Datos Detectados del Silo de Origen */}
-              {siloSeleccionadoConDatos && (
+              {siloAsignado ? (
                 <div className="bg-emerald-950/80 border border-emerald-500/40 rounded-2xl p-3.5 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-amber-300 flex items-center gap-1.5 font-mono uppercase tracking-wider">
                       <Warehouse className="w-4 h-4 text-amber-400" />
-                      Silo Origen: {nombresSilosSeleccionados || siloSeleccionadoConDatos.siloId}
+                      Silo Asignado: {nombresSilosSeleccionados || siloAsignado.siloId}
                     </span>
                     <span className="text-[10px] font-mono text-emerald-300 bg-emerald-900/60 px-2 py-0.5 rounded-md border border-emerald-500/30">
-                      Sincronización Automática
+                      Datos Vinculados
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                    <div className="bg-black/30 p-2 rounded-xl border border-white/5">
-                      <span className="text-slate-400 text-[10px] block">Cliente:</span>
-                      <span className="font-bold text-white truncate block">
-                        {siloSeleccionadoConDatos.cliente || 'Sin asignar'}
+                    <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                      <span className="text-slate-400 text-[10px] block font-sans">Cliente Silo:</span>
+                      <span className="font-bold text-white truncate block text-xs">
+                        {siloAsignado.cliente && siloAsignado.cliente !== 'Sin asignación' ? siloAsignado.cliente : 'Sin asignar'}
                       </span>
                     </div>
-                    <div className="bg-black/30 p-2 rounded-xl border border-white/5">
-                      <span className="text-slate-400 text-[10px] block">Variedad:</span>
-                      <span className="font-bold text-emerald-300 truncate block">
-                        {siloSeleccionadoConDatos.variedad || 'N/A'}
+                    <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                      <span className="text-slate-400 text-[10px] block font-sans">Variedad Silo:</span>
+                      <span className="font-bold text-amber-300 truncate block text-xs">
+                        {siloAsignado.variedad && siloAsignado.variedad !== '-' ? siloAsignado.variedad : 'Sin asignar'}
                       </span>
                     </div>
                   </div>
-                  <p className="text-[10px] text-emerald-200/80 leading-relaxed">
-                    ✓ Al aplicar a precarga, estos datos de variedad y cliente se copiarán en &quot;1. Datos Generales de la Tanda&quot;.
+                  <p className="text-[10px] text-emerald-200/90 leading-relaxed">
+                    ✓ Al generar lotes, se copiarán automáticamente estos datos de <strong>Cliente</strong> y <strong>Variedad</strong> a la precarga.
                   </p>
+                </div>
+              ) : (
+                <div className="bg-black/20 border border-white/10 rounded-2xl p-3 text-[11px] text-slate-400 flex items-center gap-2">
+                  <Warehouse className="w-4 h-4 text-slate-500 shrink-0" />
+                  <span>Seleccione un silo en la sección superior para copiar automáticamente su Cliente y Variedad asignados.</span>
                 </div>
               )}
 
-              {/* Botones de Transferencia a Precarga */}
+              {/* Botón: Generar Lotes en Precargar */}
               {onAplicarAPrecarga && (
-                <div className="space-y-2 pt-1">
-                  {/* Botón Principal: Aplicar lotes enteros a precarga */}
+                <div className="pt-2 space-y-2">
                   <button
                     type="button"
-                    id="btn-aplicar-lotes-enteros"
-                    onClick={() => handleTransferirAPrecarga(true)}
+                    id="btn-generar-lotes-precargar"
+                    onClick={handleGenerarLotesEnPrecargar}
                     disabled={calculoResultado.kilosNetosKg <= 0}
-                    className="w-full py-3.5 px-4 bg-[#00603C] hover:bg-[#00784b] text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg transition flex flex-col items-center justify-center gap-1 cursor-pointer border border-emerald-400/40 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 group"
+                    className="w-full py-3.5 px-4 bg-gradient-to-r from-[#00603C] to-emerald-700 hover:from-[#00754a] hover:to-emerald-600 text-white rounded-2xl shadow-xl transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer border border-emerald-400/40 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] group"
                   >
-                    <div className="flex items-center justify-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-amber-300 shrink-0" />
-                      <span>
-                        Aplicar {Math.max(1, calculoResultado.cantidadLotesEnteros)} Lote(s) Entero(s) a Precarga
-                      </span>
-                      <ArrowRight className="w-4 h-4 text-amber-300 group-hover:translate-x-1 transition-transform shrink-0" />
+                    <div className="flex items-center justify-center gap-2 text-xs sm:text-sm font-black uppercase tracking-wider">
+                      <PackagePlus className="w-5 h-5 text-amber-300 shrink-0 group-hover:scale-110 transition-transform" />
+                      <span>Generar Lotes en Precargar</span>
+                      <ArrowRight className="w-4 h-4 text-amber-300 group-hover:translate-x-1.5 transition-transform shrink-0" />
                     </div>
-                    <span className="text-[10px] font-mono text-emerald-200/90 font-normal">
-                      {Math.max(1, calculoResultado.cantidadLotesEnteros)} lote(s) x 35 bolsas ({pesoEnvaseKg} kg c/u) = {formatKg(Math.max(1, calculoResultado.cantidadLotesEnteros) * 35 * pesoEnvaseKg)} kg
-                    </span>
+
+                    <div className="text-[11px] font-mono text-emerald-100 flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-center">
+                      <span className="font-bold text-amber-300">
+                        {calculoResultado.desgloseLotes.length || 1} Lote(s) ({calculoResultado.cantidadBolsasEnteras} BLS)
+                      </span>
+                      {siloAsignado && (siloAsignado.cliente || siloAsignado.variedad) && (
+                        <span className="text-emerald-200">
+                          • Copiando: <strong>{siloAsignado.cliente || 'Sin cliente'}</strong> · <strong>{siloAsignado.variedad || 'Sin variedad'}</strong> ({siloAsignado.siloId})
+                        </span>
+                      )}
+                    </div>
                   </button>
 
-                  {/* Botón Opcional: Si excede lote natural o hay fracción decimal */}
-                  {calculoResultado.excedeLoteNatural && (
-                    <button
-                      type="button"
-                      id="btn-aplicar-todos-lotes"
-                      onClick={() => handleTransferirAPrecarga(false)}
-                      disabled={calculoResultado.kilosNetosKg <= 0}
-                      className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer border border-amber-400/30 active:scale-95"
-                    >
-                      <Layers className="w-3.5 h-3.5 text-amber-400" />
-                      <span>
-                        Aplicar Todos ({calculoResultado.desgloseLotes.length} lotes: {calculoResultado.cantidadLotesEnteros} enteros + 1 de {calculoResultado.bolsasRemanentesLote} BLS)
-                      </span>
-                    </button>
-                  )}
+                  <p className="text-[10px] text-center text-slate-300/80 leading-tight">
+                    Copia la tanda calculada ({calculoResultado.desgloseLotes.length || 1} lotes, {formatKg(calculoResultado.kilosNetosKg)} netos) y asigna Cliente y Variedad del silo a la Precarga.
+                  </p>
                 </div>
               )}
             </div>

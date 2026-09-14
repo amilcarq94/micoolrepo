@@ -489,7 +489,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
       ? ` con datos de ${config.silosOrigenNombres || 'Silo'} (Cliente: "${config.cliente}", Variedad: "${config.variedad || 'N/A'}")`
       : '';
     setSuccessMsg(
-      `¡Lotes aplicados a precarga! Se pregeneraron ${newDrafts.length} lote(s) (${newDrafts.reduce((a, c) => a + c.stockBolsas, 0)} bolsas en total)${origenDetalle}.`
+      `¡Lotes generados en precarga! Se pregeneraron ${newDrafts.length} lote(s) (${newDrafts.reduce((a, c) => a + c.stockBolsas, 0)} bolsas en total)${origenDetalle}.`
     );
   };
 

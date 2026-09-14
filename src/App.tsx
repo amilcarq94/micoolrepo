@@ -3137,7 +3137,7 @@ export default function App() {
                     const detalleSilo = config.esDeSilo && config.cliente
                       ? ` con datos de ${config.silosOrigenNombres || 'Silo'} (Cliente: "${config.cliente}", Variedad: "${config.variedad || 'N/A'}")`
                       : '';
-                    showNotification(`Se aplicaron ${config.desgloseLotes?.length || config.cantidadLotes} lote(s) enteros a Precarga${detalleSilo}.`);
+                    showNotification(`Se generaron ${config.desgloseLotes?.length || config.cantidadLotes} lote(s) en Precarga${detalleSilo}.`);
                   }}
                   onCerrar={() => navigateTo('lotes')}
                 />
