@@ -16,9 +16,11 @@ import { DashboardProduccion } from './components/DashboardProduccion';
 import { Lote, SalidaRegistrada, MovimientoStock, EstadoLoteType, AuditLogEntry, OrdenCarga, OrdenProceso, EstadoOrdenProceso, MovimientoSilo, TipoMovimientoSilo, SiloId, CAPACIDAD_MAX_SILO, Chofer, BolsonCampo, EstadoSiloManual, SilosEstadoMap, SILOS_ESTADO_DEFAULT, PlantaConfig, PLANTA_CONFIG_DEFAULT } from './types';
 import { getLoteAuditoria } from './utils/audit';
 import { LOTES_INICIALES, SALIDAS_INICIALES, CLIENTES_PRECARGADOS, ESPECIES_PRECARGADAS, ORDENES_CARGA_INICIALES, ORDENES_PROCESO_INICIALES, MOVIMIENTOS_SILO_INICIALES, CHOFERES_INICIALES, BOLSONES_INICIALES } from './data/mockData';
-import { Layers, ArrowDownRight, History, Upload, LogOut, LogIn, CheckCircle, QrCode, ClipboardCheck, Factory, ClipboardList, Warehouse, AlertTriangle, Truck, Database, PackagePlus, BarChart3, Smartphone, Menu, X, ChevronLeft, ChevronRight, Building2, Calculator } from 'lucide-react';
+import { Layers, ArrowDownRight, History, Upload, LogOut, LogIn, CheckCircle, QrCode, ClipboardCheck, Factory, ClipboardList, Warehouse, AlertTriangle, Truck, Database, PackagePlus, BarChart3, Smartphone, Menu, X, ChevronLeft, ChevronRight, Building2, Calculator, Flame } from 'lucide-react';
 import { GenerarLoteView } from './components/GenerarLoteView';
 import { CalculoBolsasDashboard } from './components/CalculoBolsasDashboard';
+import { MapaCalorDashboard } from './components/MapaCalorDashboard';
+import { CalculoTransferConfig } from './utils/calculoBolsas';
 import { QrCodeScanner } from './components/QrCodeScanner';
 import { DespachosSection } from './components/DespachosSection';
 import { ChoferesView } from './components/ChoferesView';
@@ -140,7 +142,13 @@ export default function App() {
   const [plantaConfig, setPlantaConfig] = useState<PlantaConfig>(() => {
     try {
       const saved = localStorage.getItem('agroabacus_planta_config_v1');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Array.isArray(parsed.categorias)) {
+          parsed.categorias = parsed.categorias.filter((c: string) => typeof c === 'string' && !c.toLowerCase().includes('primera multiplicaci'));
+        }
+        return parsed;
+      }
     } catch (e) {
       console.error(e);
     }
@@ -308,13 +316,14 @@ export default function App() {
   }, [siloStocks]);
 
   // 3. Control de Vistas
-  // 'modo-planta' | 'silos' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'
-  const [activeView, setActiveView] = useState<'modo-planta' | 'silos' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'>('modo-planta');
+  // 'modo-planta' | 'silos' | 'mapa-calor' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'
+  const [activeView, setActiveView] = useState<'modo-planta' | 'silos' | 'mapa-calor' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'>('modo-planta');
   const [loteSeleccionado, setLoteSeleccionado] = useState<Lote | null>(null);
   const [loteDetailSourceView, setLoteDetailSourceView] = useState<'lotes' | 'produccion'>('lotes');
   const [loteAEditar, setLoteAEditar] = useState<Lote | null>(null);
   const [preselectedLoteId, setPreselectedLoteId] = useState<string | undefined>(undefined);
   const [publicLote, setPublicLote] = useState<Lote | null>(null);
+  const [precargaConfigFromCalculo, setPrecargaConfigFromCalculo] = useState<CalculoTransferConfig | null>(null);
 
   // Notificaciones temporales de éxito
   const [notificacion, setNotificacion] = useState('');
@@ -520,12 +529,14 @@ export default function App() {
       setIsFirebaseConnected(true);
       if (snapshot.exists()) {
         const data = snapshot.data();
+        const rawCategorias = Array.isArray(data.categorias) ? data.categorias : PLANTA_CONFIG_DEFAULT.categorias;
+        const cleanCategorias = rawCategorias.filter((c: string) => typeof c === 'string' && !c.toLowerCase().includes('primera multiplicaci'));
         const loadedConfig: PlantaConfig = {
           clientes: Array.isArray(data.clientes) ? data.clientes : PLANTA_CONFIG_DEFAULT.clientes,
           especies: Array.isArray(data.especies) ? data.especies : PLANTA_CONFIG_DEFAULT.especies,
           variedades: Array.isArray(data.variedades) ? data.variedades : PLANTA_CONFIG_DEFAULT.variedades,
           tipos: Array.isArray(data.tipos) ? data.tipos : PLANTA_CONFIG_DEFAULT.tipos,
-          categorias: Array.isArray(data.categorias) ? data.categorias : PLANTA_CONFIG_DEFAULT.categorias,
+          categorias: cleanCategorias,
           tratamientos: Array.isArray(data.tratamientos) ? data.tratamientos : PLANTA_CONFIG_DEFAULT.tratamientos,
         };
         setPlantaConfig(loadedConfig);
@@ -2397,28 +2408,28 @@ export default function App() {
             )}
           </button>
 
-          {/* Tab 3.b: Cálculo de Bolsas (Navegación directa al Dashboard de Cálculo y Consolidación) */}
+          {/* Tab 3.b: Mapa de Calor (Distribución de Lotes en Galpones Clasificadora) */}
           <button
-            id="nav-tab-calculo-bolsas"
-            onClick={() => navigateTo('calculo-bolsas')}
+            id="nav-tab-mapa-calor"
+            onClick={() => navigateTo('mapa-calor')}
             className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transition-all duration-200 cursor-pointer ${
               sidebarCollapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'
             } ${
-              activeView === 'calculo-bolsas'
+              activeView === 'mapa-calor'
                 ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-md ring-1.5 ring-[#C9922E]/80'
                 : 'text-white hover:bg-white/10'
             }`}
-            title="Cálculo de Bolsas: Estimación por Silos, Merma y Consolidado de Ingresos"
+            title="Mapa de Calor: Distribución de Lotes en Sectores de Galpones (Alas A-D, Sectores 1-3)"
           >
             <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5 truncate'}`}>
-              <Calculator className={`w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                activeView === 'calculo-bolsas' ? 'text-[#00603C]' : 'text-amber-300'
+              <Flame className={`w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                activeView === 'mapa-calor' ? 'text-[#00603C]' : 'text-amber-300'
               }`} />
-              {!sidebarCollapsed && <span className="truncate">Cálculo de Bolsas</span>}
+              {!sidebarCollapsed && <span className="truncate">Mapa de Calor</span>}
             </div>
             {!sidebarCollapsed && (
               <span className="text-[8.5px] px-1.5 py-0.5 bg-amber-400/20 text-amber-200 border border-amber-400/30 rounded font-mono font-bold">
-                Calc
+                Alas A-D
               </span>
             )}
           </button>
@@ -2785,23 +2796,23 @@ export default function App() {
               </button>
 
               <button
-                id="nav-tab-mobile-calculo-bolsas"
+                id="nav-tab-mobile-mapa-calor"
                 onClick={() => {
-                  navigateTo('calculo-bolsas');
+                  navigateTo('mapa-calor');
                   setMobileNavOpen(false);
                 }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
-                  activeView === 'calculo-bolsas'
+                  activeView === 'mapa-calor'
                     ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-xs'
                     : 'text-white hover:bg-white/10'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <Calculator className={`w-4 h-4 ${activeView === 'calculo-bolsas' ? 'text-[#00603C]' : 'text-amber-300'}`} />
-                  <span>Cálculo de Bolsas</span>
+                  <Flame className={`w-4 h-4 ${activeView === 'mapa-calor' ? 'text-[#00603C]' : 'text-amber-300'}`} />
+                  <span>Mapa de Calor</span>
                 </div>
                 <span className="text-[9px] px-1.5 py-0.5 bg-amber-400/20 text-amber-200 rounded font-mono font-bold">
-                  Silos & Merma
+                  12 Sectores
                 </span>
               </button>
 
@@ -3093,10 +3104,25 @@ export default function App() {
                   setLoteDetailSourceView('produccion');
                 }}
                 onNavigateToLotes={() => navigateTo('lotes')}
+                onNavigateToSilos={() => navigateTo('silos')}
               />
             </div>
 
-            {activeView === 'calculo-bolsas' ? (
+            {activeView === 'mapa-calor' ? (
+              <div className="space-y-6 animate-in fade-in duration-300">
+                <MapaCalorDashboard
+                  lotes={lotes}
+                  clientes={clientes}
+                  especies={especies}
+                  onSaveLote={handleSaveLote}
+                  onSelectLote={(l) => {
+                    setLoteSeleccionado(l);
+                    setLoteDetailSourceView('lotes');
+                  }}
+                  onNavigateToLotes={() => navigateTo('lotes')}
+                />
+              </div>
+            ) : activeView === 'calculo-bolsas' ? (
               <div className="space-y-6 animate-in fade-in duration-300">
                 <CalculoBolsasDashboard
                   siloStocks={siloStocks}
@@ -3104,8 +3130,12 @@ export default function App() {
                   clientes={clientes}
                   especies={especies}
                   onAplicarAPrecarga={(config) => {
+                    setPrecargaConfigFromCalculo(config);
                     navigateTo('generar-lote');
-                    showNotification(`Configuración transferida. Redirigiendo a Generar Lote en Precarga...`);
+                    const detalleSilo = config.esDeSilo && config.cliente
+                      ? ` con datos de ${config.silosOrigenNombres || 'Silo'} (Cliente: "${config.cliente}", Variedad: "${config.variedad || 'N/A'}")`
+                      : '';
+                    showNotification(`Se aplicaron ${config.desgloseLotes?.length || config.cantidadLotes} lote(s) enteros a Precarga${detalleSilo}.`);
                   }}
                   onCerrar={() => navigateTo('lotes')}
                 />
@@ -3121,6 +3151,8 @@ export default function App() {
                 movimientosSilo={movimientosSilo}
                 onSaveLote={handleSaveLote}
                 onNavigateToLotes={() => navigateTo('lotes')}
+                initialCalculoConfig={precargaConfigFromCalculo}
+                onClearInitialConfig={() => setPrecargaConfigFromCalculo(null)}
               />
             ) : activeView === 'alta-lote' ? (
           <LoteForm

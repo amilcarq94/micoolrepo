@@ -318,7 +318,6 @@ export const BulkEditLotesModal: React.FC<BulkEditLotesModalProps> = ({
                       <option value="PREBA">PREBA</option>
                       <option value="ORIGINAL">ORIGINAL</option>
                       <option value="PRIMU">PRIMU</option>
-                      <option value="Primera">Primera</option>
                     </select>
                   )}
                 </div>

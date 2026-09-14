@@ -76,6 +76,7 @@ export interface DashboardProduccionProps {
   especies?: string[];
   onSelectLote?: (lote: Lote) => void;
   onNavigateToLotes?: () => void;
+  onNavigateToSilos?: () => void;
 }
 
 export interface ProductionItemRecord {
@@ -128,7 +129,8 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
   clientes: clientesProp = [],
   especies: especiesProp = [],
   onSelectLote,
-  onNavigateToLotes
+  onNavigateToLotes,
+  onNavigateToSilos
 }) => {
   // -------------------------------------------------------------
   // 1. ESTADOS DE FILTROS CASCADA / VINCULANTES
@@ -2557,6 +2559,19 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
               <FileSpreadsheet className="w-3.5 h-3.5" />
               <span>Exportar Excel</span>
             </button>
+
+            {onNavigateToSilos && (
+              <button
+                type="button"
+                id="btn-quick-nav-silos-bar"
+                onClick={onNavigateToSilos}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer shrink-0"
+                title="Ir al módulo de recepción y balance de silos"
+              >
+                <Truck className="w-3.5 h-3.5 text-amber-300" />
+                <span>Ingreso Silos</span>
+              </button>
+            )}
           </div>
         </div>
 

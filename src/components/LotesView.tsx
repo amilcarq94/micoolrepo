@@ -677,9 +677,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
     setShowBatchDeleteDialog(true);
   };
   
-  // Estado para tipo de vista (tarjetas, tabla o mapa de calor) - Por defecto vista tabla
-  const [viewType, setViewType] = useState<'grid' | 'table' | 'heatmap'>('table');
-  const [selectedHeatmapCell, setSelectedHeatmapCell] = useState<{ ala: string; sector: string } | null>(null);
+  // Estado para tipo de vista (tarjetas o tabla) - Por defecto vista tabla
+  const [viewType, setViewType] = useState<'grid' | 'table'>('table');
 
   // Estado para batch de fichas técnicas en selección múltiple
   const [batchFichasLotes, setBatchFichasLotes] = useState<Lote[] | null>(null);
@@ -1130,18 +1129,24 @@ export const LotesView: React.FC<LotesViewProps> = ({
   }, [lotesContextoCliente, lotes, plantaConfig]);
 
   const categoriasDisponibles = useMemo(() => {
-    const fromContext = lotesContextoCliente.map(l => l.categoria).filter(Boolean) as string[];
+    const fromContext = lotesContextoCliente
+      .map(l => l.categoria)
+      .filter((c): c is string => Boolean(c) && !c.toLowerCase().includes('primera multiplicaci'));
     if (fromContext.length > 0) {
       return Array.from(new Set(fromContext)).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     }
-    const base = plantaConfig?.categorias || ['Fundadora', 'PreBase', 'Original', 'Primera Multiplicación (PRIMU)'];
-    const fromLotes = lotes.map(l => l.categoria).filter(Boolean) as string[];
+    const base = (plantaConfig?.categorias || ['Fundadora', 'PreBase', 'Original', 'Primu'])
+      .filter(c => !c.toLowerCase().includes('primera multiplicaci'));
+    const fromLotes = lotes
+      .map(l => l.categoria)
+      .filter((c): c is string => Boolean(c) && !c.toLowerCase().includes('primera multiplicaci'));
     return Array.from(new Set([...base, ...fromLotes])).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [lotesContextoCliente, lotes, plantaConfig]);
 
   const categoriasParaEditor = useMemo(() => {
-    const oficiales = Array.from(CATEGORIAS_OFICIALES || []);
-    return Array.from(new Set([...oficiales, ...categoriasDisponibles, 'Original', 'Fundadora', 'PreBase', 'Primera Multiplicación (PRIMU)', 'Segunda Multiplicación', 'Certificada', 'Identificada', 'Comercial']));
+    const oficiales = Array.from(CATEGORIAS_OFICIALES || []).filter(c => !c.toLowerCase().includes('primera multiplicaci'));
+    return Array.from(new Set([...oficiales, ...categoriasDisponibles, 'Original', 'Fundadora', 'PreBase', 'Primu', 'Segunda Multiplicación', 'Certificada', 'Identificada', 'Comercial']))
+      .filter(c => !c.toLowerCase().includes('primera multiplicaci'));
   }, [categoriasDisponibles]);
 
   const tratamientosDisponibles = useMemo(() => {
@@ -1977,40 +1982,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
     link.click();
     document.body.removeChild(link);
   };
-
-  // Calcular Datos del Mapa de Calor para el acopio
-  const alas = ['A', 'B', 'C', 'D'];
-  const sectores = ['1', '2', '3'];
-
-  const cellsData: Array<{
-    ala: string;
-    sector: string;
-    totalKg: number;
-    totalBolsas: number;
-    lotesCount: number;
-    species: string[];
-    lotes: Lote[];
-  }> = [];
-
-  for (const a of alas) {
-    for (const s of sectores) {
-      const cellLotes = lotes.filter(l => l.ala === a && l.sector === s);
-      const totalKg = cellLotes.reduce((sum, l) => sum + (l.stockKg || 0), 0);
-      const totalBolsas = cellLotes.reduce((sum, l) => sum + (l.stockBolsas || 0), 0);
-      const species = Array.from(new Set(cellLotes.map(l => l.especie).filter((e): e is string => typeof e === 'string'))) as string[];
-      cellsData.push({
-        ala: a,
-        sector: s,
-        totalKg,
-        totalBolsas,
-        lotesCount: cellLotes.length,
-        species,
-        lotes: cellLotes,
-      });
-    }
-  }
-
-  const maxCellKg = Math.max(...cellsData.map(c => c.totalKg), 1);
 
   return (
     <div className="space-y-6" id="lotes-view-container">
@@ -2972,13 +2943,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
               >
                 <List className="w-4 h-4" />
               </button>
-              <button
-                onClick={() => setViewType('heatmap')}
-                className={`p-1.5 rounded-md transition ${viewType === 'heatmap' ? 'bg-[#00603C] text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-                title="Mapa de Calor de Acopio"
-              >
-                <Flame className="w-4 h-4" />
-              </button>
             </div>
           </div>
         </div>
@@ -2996,333 +2960,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
       />
 
       {/* Resultados de Búsqueda */}
-      {viewType === 'heatmap' ? (
-        /* VISTA MAPA DE CALOR DE ACOPIO */
-        <div className="space-y-6" id="heatmap-view-section">
-          {/* Tarjetas de Insights */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-2xs flex items-center gap-4">
-              <div className="p-3 bg-[#E3EFE7] text-[#00603C] rounded-xl">
-                <Warehouse className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">Ocupación de Planta</span>
-                <span className="text-lg font-black text-[#00603C] font-mono">
-                  {cellsData.filter(c => c.totalKg > 0).length} / 12 <span className="text-xs font-normal text-gray-500">Sectores</span>
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-2xs flex items-center gap-4">
-              <div className="p-3 bg-[#F6EFDC] text-[#C9922E] rounded-xl">
-                <Layers className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">Total Kg en Acopio</span>
-                <span className="text-lg font-black text-gray-800 font-mono">
-                  {formatKg(lotes.reduce((sum, l) => sum + (l.stockKg || 0), 0))}
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-2xs flex items-center gap-4">
-              <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                <Grid className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">Total Bolsas</span>
-                <span className="text-lg font-black text-gray-800 font-mono">
-                  {formatNumberArg(lotes.reduce((sum, l) => sum + (l.stockBolsas || 0), 0))} <span className="text-xs font-normal text-gray-500">und</span>
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-2xs flex items-center gap-4">
-              <div className="p-3 bg-[#00603C]/10 text-[#00603C] rounded-xl">
-                <Flame className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">Mayor Concentración</span>
-                <span className="text-xs font-bold text-[#00603C] truncate block max-w-[150px] mt-0.5">
-                  {(() => {
-                    const sortedCells = [...cellsData].sort((a, b) => b.totalKg - a.totalKg);
-                    if (sortedCells[0] && sortedCells[0].totalKg > 0) {
-                      return `ALA ${sortedCells[0].ala} - SECTOR ${sortedCells[0].sector} (${formatKg(sortedCells[0].totalKg)})`;
-                    }
-                    return 'Ninguno';
-                  })()}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Grilla Mapa de Calor */}
-          <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-4 border-b border-gray-50">
-              <div>
-                <h3 className="font-serif text-lg font-extrabold text-gray-800 flex items-center gap-2">
-                  <Flame className="w-5 h-5 text-[#C9922E]" />
-                  Distribución Física de Semilla (Mapa de Calor)
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Visualización de la carga actual de stock en cada una de las naves y celdas del depósito de acopio.
-                </p>
-              </div>
-
-              {/* Referencia de Intensidad */}
-              <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-gray-500">
-                <span>INTENSIDAD:</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded bg-gray-100 border border-gray-200"></span>
-                  <span>Vacío</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded bg-[#00603C]/10 border border-[#00603C]/20"></span>
-                  <span>Bajo</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded bg-[#00603C]/30 border border-[#00603C]/40"></span>
-                  <span>Medio</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 rounded bg-[#00603C]/70 border border-[#00603C]"></span>
-                  <span>Máximo</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Grid del Depósito */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-stretch">
-              {/* Columna Cabeceras de Ala vacía (solo en pantallas md) */}
-              <div className="hidden md:flex flex-col justify-around text-center py-4 text-xs font-black uppercase text-gray-400 font-sans tracking-widest bg-gray-50/50 rounded-2xl border border-gray-100/50 w-full min-h-[350px]">
-                <div>Ala A</div>
-                <div>Ala B</div>
-                <div>Ala C</div>
-                <div>Ala D</div>
-              </div>
-
-              {/* Los 3 Sectores */}
-              <div className="md:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* Sector headers */}
-                <div className="sm:col-span-3 grid grid-cols-3 text-center text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                  <div>Sector 1</div>
-                  <div>Sector 2</div>
-                  <div>Sector 3</div>
-                </div>
-
-                {/* Renderizar las celdas en orden de fila (A1, A2, A3, B1...) */}
-                {cellsData.map((cell, idx) => (
-                  <div key={idx} className="relative">
-                    {/* Indicador de Ala para móviles */}
-                    <div className="md:hidden block text-[10px] font-bold text-[#00603C] uppercase mb-1 px-1">
-                      Ala {cell.ala}
-                    </div>
-                    
-                    <div
-                      onClick={() => {
-                        if (selectedHeatmapCell && selectedHeatmapCell.ala === cell.ala && selectedHeatmapCell.sector === cell.sector) {
-                          setSelectedHeatmapCell(null);
-                        } else {
-                          setSelectedHeatmapCell({ ala: cell.ala, sector: cell.sector });
-                        }
-                      }}
-                      className={`p-4 rounded-xl border-2 transition duration-200 text-center flex flex-col justify-between h-36 relative select-none ${
-                        selectedHeatmapCell && selectedHeatmapCell.ala === cell.ala && selectedHeatmapCell.sector === cell.sector
-                          ? 'border-[#C9922E] ring-2 ring-[#C9922E]/20 shadow-md z-10 scale-[1.02]'
-                          : 'border-transparent'
-                      } ${
-                        cell.totalKg === 0
-                          ? 'bg-gray-100/60 text-gray-400 border-gray-200/50 hover:bg-gray-200/50'
-                          : cell.totalKg / maxCellKg <= 0.25
-                          ? 'bg-[#00603C]/5 text-[#00603C] border-[#00603C]/10 hover:bg-[#00603C]/10'
-                          : cell.totalKg / maxCellKg <= 0.6
-                          ? 'bg-[#00603C]/20 text-[#00603C] border-[#00603C]/30 hover:bg-[#00603C]/25'
-                          : 'bg-[#00603C]/70 text-white border-[#00603C]/90 hover:bg-[#00603C]/80 shadow-xs'
-                      } cursor-pointer hover:scale-[1.01]`}
-                    >
-                      {/* Label: ALA & SECTOR */}
-                      <div className="flex justify-between items-center text-[9px] uppercase tracking-wider font-bold opacity-80">
-                        <span>ALA {cell.ala}</span>
-                        <span>SECTOR {cell.sector}</span>
-                      </div>
-
-                      {/* Big Number: Kg */}
-                      <div className="my-2">
-                        <div className="text-sm sm:text-base font-extrabold tracking-tight font-mono leading-none">
-                          {formatKg(cell.totalKg)}
-                        </div>
-                        <div className="text-[10px] font-medium opacity-90 mt-1 leading-none">
-                          {formatNumberArg(cell.totalBolsas)} bolsas · {cell.lotesCount} {cell.lotesCount === 1 ? 'lote' : 'lotes'}
-                        </div>
-                      </div>
-
-                      {/* Especie Pill */}
-                      <div className="mt-1 flex justify-center">
-                        {cell.totalKg === 0 ? (
-                          <span className="text-[9px] px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded font-bold uppercase tracking-wider leading-none font-sans">Vacío</span>
-                        ) : cell.species.length === 1 ? (
-                          <span className={`text-[8px] sm:text-[9px] px-2 py-0.5 rounded font-extrabold uppercase tracking-wider leading-none truncate max-w-[120px] font-sans ${
-                            cell.totalKg / maxCellKg > 0.6 ? 'bg-white text-[#00603C]' : 'bg-[#00603C] text-white'
-                          }`}>
-                            {cell.species[0] === 'Soja' ? '🌱 Soja' : cell.species[0] === 'Trigo' ? '🌾 Trigo' : cell.species[0] === 'Arveja' ? '🟢 Arveja' : `🌱 ${cell.species[0]}`}
-                          </span>
-                        ) : (
-                          <span className={`text-[8px] sm:text-[9px] px-2 py-0.5 rounded font-extrabold uppercase tracking-wider leading-none font-sans ${
-                            cell.totalKg / maxCellKg > 0.6 ? 'bg-[#C9922E] text-white border border-white' : 'bg-[#C9922E] text-white shadow-xs'
-                          }`}>
-                            ✨ MULTI ({cell.species.length})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-4 p-3.5 bg-[#E3EFE7]/30 border border-[#E3EFE7] rounded-xl flex items-start gap-2.5 text-xs text-emerald-950">
-              <Info className="w-4 h-4 text-[#00603C] shrink-0 mt-0.5" />
-              <p className="leading-relaxed">
-                <strong>Consejo de navegación:</strong> Haga clic sobre cualquier celda del mapa de calor para ver los lotes detallados y realizar gestiones de stock en esa ubicación específica.
-              </p>
-            </div>
-          </div>
-
-          {/* Sección de Detalle de Celda Seleccionada */}
-          {selectedHeatmapCell ? (
-            <div className="bg-white rounded-3xl border border-[#C9922E]/30 p-6 shadow-sm space-y-4 animate-in fade-in duration-200" id="selected-heatmap-detail">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-3 border-b border-gray-100">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 bg-[#C9922E] text-white text-xs font-mono font-black rounded-lg shadow-sm">
-                      UBICACIÓN SELECCIONADA: ALA {selectedHeatmapCell.ala} - SECTOR {selectedHeatmapCell.sector}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Lotes acopiados actualmente en este sector físico.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setSelectedHeatmapCell(null)}
-                  className="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-lg border border-gray-200 transition"
-                >
-                  Limpiar Selección / Mostrar Todos
-                </button>
-              </div>
-
-              {/* Lista de lotes en la ubicación seleccionada */}
-              {(() => {
-                const activeCellLotes = lotes.filter(l => l.ala === selectedHeatmapCell.ala && l.sector === selectedHeatmapCell.sector);
-                if (activeCellLotes.length === 0) {
-                  return (
-                    <div className="p-8 text-center text-gray-400">
-                      <Warehouse className="w-8 h-8 mx-auto mb-2 opacity-40 text-gray-300" />
-                      <p className="text-xs">Este sector se encuentra completamente vacío.</p>
-                    </div>
-                  );
-                }
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {activeCellLotes.map(l => (
-                      <div
-                        key={l.id}
-                        className="bg-gray-50/60 rounded-2xl border border-gray-100 p-4 hover:border-[#00603C]/30 hover:bg-white transition flex flex-col justify-between gap-3 shadow-xs"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="px-2 py-0.5 bg-[#C9922E] text-white text-[10px] font-mono font-black rounded">
-                              LOTE: {l.loteNro}
-                            </span>
-                            <h4 className="font-serif text-sm font-bold text-gray-800 mt-1.5 truncate max-w-[150px]">
-                              {l.cliente}
-                            </h4>
-                          </div>
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${getEstadoBadgeStyle(l.estado)}`}>
-                            {l.estado}
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-[10px] py-1 border-t border-b border-gray-100">
-                          <div>
-                            <span className="text-gray-400 block uppercase font-bold text-[8px] tracking-wider">Variedad</span>
-                            <span className="font-semibold text-gray-700 truncate block">{l.especie} {l.variedad}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-400 block uppercase font-bold text-[8px] tracking-wider">Stock</span>
-                            <span className="font-extrabold text-[#00603C] block">{formatKg(l.stockKg)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex justify-between items-center gap-1.5">
-                          <span className="text-[10px] font-semibold text-gray-500 font-mono">
-                            {formatNumberArg(l.stockBolsas)} bolsas
-                          </span>
-                          
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenQuickEditModal(l)}
-                              className="p-1.5 text-gray-500 hover:text-[#00603C] rounded hover:bg-gray-100 transition"
-                              title="Editar Lote en la misma vista (Nombre, Bolsas, Estado, Tipo)"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setSelectedQrLote(l)}
-                              className="p-1.5 text-gray-500 hover:text-[#00603C] rounded hover:bg-gray-100 transition"
-                              title="QR"
-                            >
-                              <QrCode className="w-3.5 h-3.5 text-[#C9922E]" />
-                            </button>
-                            <button
-                              onClick={() => onSelectLote(l)}
-                              className="px-2 py-1 bg-[#00603C] text-white rounded text-[10px] font-semibold hover:bg-[#1a442b] transition flex items-center gap-1 cursor-pointer"
-                            >
-                              <Eye className="w-3 h-3 text-[#C9922E]" />
-                              Ficha
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
-          ) : (
-            /* Mostrar resumen de depósitos cuando no hay celda seleccionada */
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50 p-6 rounded-3xl border border-slate-100/50">
-              <div>
-                <h4 className="text-xs font-black uppercase text-gray-500 tracking-wider mb-3 font-sans">Información sobre Sectores de Acopio</h4>
-                <div className="space-y-2.5 text-xs text-gray-600 leading-relaxed font-sans">
-                  <p>
-                    La planta clasificadora dispone de <strong>4 Alas (Naves Longitudinales: A, B, C, D)</strong> y <strong>3 Sectores (Celdas/Bahías de Almacenamiento: 1, 2, 3)</strong> por cada Ala.
-                  </p>
-                  <p>
-                    El mapa de calor representa el nivel de carga física en Kilogramos en tiempo real de forma dinámica. La coloración se intensifica proporcionalmente en los sectores con mayor acumulación de mercadería.
-                  </p>
-                </div>
-              </div>
-              <div>
-                <h4 className="text-xs font-black uppercase text-gray-500 tracking-wider mb-3 font-sans">Especies Almacenadas actualmente</h4>
-                <div className="flex flex-wrap gap-2">
-                  {Array.from(new Set(lotes.map(l => l.especie).filter(Boolean))).map((esp, i) => (
-                    <span key={i} className="px-3 py-1.5 bg-white text-gray-700 rounded-xl border border-gray-200 text-xs font-bold shadow-2xs flex items-center gap-1.5 font-sans">
-                      {esp === 'Soja' ? '🌱' : esp === 'Trigo' ? '🌾' : esp === 'Arveja' ? '🟢' : '🌱'} {esp}
-                      <span className="font-mono text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
-                        {lotes.filter(l => l.especie === esp).length} lotes
-                      </span>
-                    </span>
-                  ))}
-                  {lotes.length === 0 && (
-                    <span className="text-xs text-gray-400 italic font-sans">No hay especies registradas en depósito.</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : filteredLotes.length === 0 ? (
+      {filteredLotes.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center text-gray-400">
           <Search className="w-10 h-10 mx-auto mb-3 opacity-50 text-[#C9922E]" />
           <h4 className="font-serif text-lg font-bold text-gray-700 mb-1">Sin Resultados</h4>

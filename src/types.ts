@@ -9,13 +9,13 @@ export type TipoLoteType = 'Intermedio' | 'Final' | 'Procesado' | 'Semilla' | 'D
 
 export type TratamientoType = 'Tratado' | 'Sin Tratar' | 'Curado Completo' | 'Fungicida' | 'Insecticida' | 'Inoculado' | 'Polímero' | string;
 
-export type CategoriaType = 'Fundadora' | 'PreBase' | 'Original' | 'Primera Multiplicación (PRIMU)' | string;
+export type CategoriaType = 'Fundadora' | 'PreBase' | 'Original' | 'Primu' | 'Pre básica' | string;
 
 export const CATEGORIAS_OFICIALES = [
   'Fundadora',
   'PreBase',
   'Original',
-  'Primera Multiplicación (PRIMU)'
+  'Primu'
 ] as const;
 
 export interface VariedadItem {
@@ -170,7 +170,7 @@ export const PLANTA_CONFIG_DEFAULT: PlantaConfig = {
     'Fundadora',
     'PreBase',
     'Original',
-    'Primera Multiplicación (PRIMU)',
+    'Primu',
     'Segunda Multiplicación',
     'Certificada',
     'Identificada',

@@ -5,7 +5,7 @@
 
 import { SiloId, MovimientoSilo } from '../types';
 
-export type CategoriaEnvaseKg = 25 | 40 | 800;
+export type CategoriaEnvaseKg = 25 | 40 | 50 | 800;
 
 export interface CalculoBolsasInput {
   silosSeleccionados?: (SiloId | 'TODOS')[];
@@ -22,6 +22,24 @@ export interface LoteDesgloseItem {
   totalKg: number;
   esLoteCompleto: boolean;
   fraccionLoteDecimal: number;
+}
+
+export interface CalculoTransferConfig {
+  cantidadLotes: number;
+  cantidadLotes1Decimal?: number;
+  permitirLotesConDecimal?: boolean;
+  desgloseLotes?: LoteDesgloseItem[];
+  stockBolsasPorLote: number;
+  kgPorBolsa: CategoriaEnvaseKg;
+  totalKgNetos: number;
+  silosOrigenNombres?: string;
+  cliente?: string;
+  variedad?: string;
+  especie?: string;
+  esDeSilo?: boolean;
+  siloOrigenId?: string;
+  lotesEnteros?: number;
+  bolsasPorLoteEntero?: number;
 }
 
 export interface CalculoBolsasResult {

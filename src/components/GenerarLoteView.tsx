@@ -4,13 +4,13 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Lote, TipoLoteType, CategoriaType, TratamientoType, LoteLimitsConfig, MovimientoStock, SiloId, MovimientoSilo, PlantaConfig, getVariedadesVisibles, getVariedadesPorEspecie } from '../types';
+import { Lote, TipoLoteType, CategoriaType, TratamientoType, LoteLimitsConfig, MovimientoStock, SiloId, MovimientoSilo, PlantaConfig, EspecieType, getVariedadesVisibles, getVariedadesPorEspecie } from '../types';
 import { formatKg } from '../utils/formatters';
 import { validateLoteLimits, getLoteLimits } from '../utils/loteLimits';
 import { getCampaniaIdFromDate } from '../utils/campanias';
 import { generarLoteId } from '../utils/loteId';
 import { CalculoBolsasDashboard } from './CalculoBolsasDashboard';
-import { CategoriaEnvaseKg, LoteDesgloseItem } from '../utils/calculoBolsas';
+import { CategoriaEnvaseKg, LoteDesgloseItem, CalculoTransferConfig } from '../utils/calculoBolsas';
 import {
   PackagePlus,
   CheckCircle2,
@@ -27,11 +27,12 @@ import {
   FlaskConical,
   X,
   Calculator,
-  FileText
+  FileText,
+  Warehouse
 } from 'lucide-react';
 
 const TIPOS_LOTE: TipoLoteType[] = ['Intermedio', 'Final'];
-const CATEGORIAS: CategoriaType[] = ['Pre básica', 'Original', 'Primera multiplicación'];
+const CATEGORIAS: CategoriaType[] = ['Pre básica', 'Original', 'Primu'];
 
 export interface LoteDraftItem {
   id: string;
@@ -52,6 +53,8 @@ interface GenerarLoteViewProps {
   movimientosSilo?: MovimientoSilo[];
   onSaveLote: (lote: Lote) => Promise<void> | void;
   onNavigateToLotes: () => void;
+  initialCalculoConfig?: CalculoTransferConfig | null;
+  onClearInitialConfig?: () => void;
 }
 
 export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
@@ -71,6 +74,8 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
   movimientosSilo = [],
   onSaveLote,
   onNavigateToLotes,
+  initialCalculoConfig,
+  onClearInitialConfig,
 }) => {
   const activeLimits = loteLimits || getLoteLimits();
 
@@ -99,35 +104,79 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
   const [ala, setAla] = useState('A');
   const [sector, setSector] = useState('1');
   const [observaciones, setObservaciones] = useState('');
+  const [siloOrigenDetectado, setSiloOrigenDetectado] = useState<string | null>(null);
 
-  // Lista de variedades estrictamente disponibles desde la Base de Datos
+  // Lista de opciones de clientes incluyendo el cliente asignado
+  const clientesOpciones = useMemo(() => {
+    const list = [...clientes];
+    if (cliente && cliente.trim() !== '' && !list.some(c => c.toLowerCase() === cliente.trim().toLowerCase())) {
+      list.push(cliente.trim());
+    }
+    return list;
+  }, [clientes, cliente]);
+
+  // Lista de opciones de especies incluyendo la especie asignada
+  const especiesOpciones = useMemo(() => {
+    const list = [...especies];
+    if (especie && especie.trim() !== '' && !list.some(e => e.toLowerCase() === especie.trim().toLowerCase())) {
+      list.push(especie.trim());
+    }
+    return list;
+  }, [especies, especie]);
+
+  // Lista de variedades estrictamente disponibles desde la Base de Datos o asignadas desde Silo
   const variedadesDisponibles = useMemo(() => {
     const dbList = plantaConfig?.variedadesDb;
+    let list: string[] = [];
     // 1. Filtrar por Especie y Cliente seleccionados
     const visibles = getVariedadesVisibles(dbList, especie, cliente);
     if (visibles.length > 0) {
-      return Array.from(new Set(visibles.map(v => v.nombre.trim())));
+      list = Array.from(new Set(visibles.map(v => v.nombre.trim())));
+    } else {
+      // 2. Filtrar por Especie seleccionada
+      const porEspecie = getVariedadesPorEspecie(dbList, especie);
+      if (porEspecie.length > 0) {
+        list = Array.from(new Set(porEspecie.map(v => v.nombre.trim())));
+      } else if (plantaConfig?.variedades && plantaConfig.variedades.length > 0) {
+        list = [...plantaConfig.variedades];
+      } else {
+        list = ['DM 46R18', 'CASUARINA', 'P46A03', 'BIO 4.50', 'STINE 4000', 'BAGUETTE 601'];
+      }
     }
-    // 2. Filtrar por Especie seleccionada
-    const porEspecie = getVariedadesPorEspecie(dbList, especie);
-    if (porEspecie.length > 0) {
-      return Array.from(new Set(porEspecie.map(v => v.nombre.trim())));
+    // Si la variedad actual proviene de un silo o selección directa y no está en la lista, incluirla
+    if (variedad && variedad.trim() !== '' && !list.some(v => v.toLowerCase() === variedad.trim().toLowerCase())) {
+      list = [variedad.trim(), ...list];
     }
-    // 3. Fallback a variedades de la configuración de planta
-    if (plantaConfig?.variedades && plantaConfig.variedades.length > 0) {
-      return plantaConfig.variedades;
-    }
-    return ['DM 46R18', 'CASUARINA', 'P46A03', 'BIO 4.50', 'STINE 4000', 'BAGUETTE 601'];
-  }, [plantaConfig, especie, cliente]);
+    return list;
+  }, [plantaConfig, especie, cliente, variedad]);
 
-  // Sincronizar automáticamente la variedad si cambia la especie o cliente
+  // Sincronizar automáticamente la variedad si está vacía
   useEffect(() => {
     if (variedadesDisponibles.length > 0) {
-      if (!variedad || !variedadesDisponibles.includes(variedad)) {
+      if (!variedad) {
+        setVariedad(variedadesDisponibles[0]);
+      } else if (!variedadesDisponibles.some(v => v.toLowerCase() === variedad.toLowerCase())) {
         setVariedad(variedadesDisponibles[0]);
       }
     }
   }, [variedadesDisponibles, variedad]);
+
+  // Lista de categorías disponibles para precarga (incluye Primu y configuración de planta)
+  const categoriasOpciones = useMemo(() => {
+    const list: string[] = [...CATEGORIAS];
+    if (plantaConfig?.categorias && Array.isArray(plantaConfig.categorias)) {
+      plantaConfig.categorias.forEach((cat) => {
+        if (
+          cat &&
+          !list.some((c) => c.toLowerCase() === cat.toLowerCase()) &&
+          !cat.toLowerCase().includes('primera multiplicaci')
+        ) {
+          list.push(cat);
+        }
+      });
+    }
+    return list.filter((c) => !c.toLowerCase().includes('primera multiplicaci'));
+  }, [plantaConfig]);
 
   // Draft lotes list state (presets: 35 bolsas x 800 kg)
   const [draftLotes, setDraftLotes] = useState<LoteDraftItem[]>(() => [
@@ -302,7 +351,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             stockBolsas: totalBolsasAcumuladas,
             stockKg: totalKgAcumulados,
             estado: 'Disponible',
-            especie,
+            especie: especie as EspecieType,
             variedad: variedad.trim() || existingLote.variedad,
             tipo: draft.tipo,
             categoria: draft.categoria,
@@ -331,7 +380,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             id: uniqueDocId,
             loteNro: normNro,
             cliente: cliente.trim(),
-            especie,
+            especie: especie as EspecieType,
             variedad: variedad.trim(),
             tipo: draft.tipo,
             categoria: draft.categoria,
@@ -342,7 +391,9 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             stockKg: stockKgCalculado,
             estado: 'Disponible',
             estadoRegistro: 'PRE-CARGA',
-            silosOrigen: [],
+            silosOrigen: siloOrigenDetectado
+              ? [{ siloId: siloOrigenDetectado as SiloId, kgExtraidos: stockKgCalculado }]
+              : [],
             origenesBolson: [],
             numeroBolsonOrigen: '',
             bolsonOrigenNro: '',
@@ -375,23 +426,36 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
   };
 
   // Callback para aplicar el resultado del Dashboard de Cálculo de Bolsas a los lotes en borrador
-  const handleAplicarDesdeCalculoBolsas = (config: {
-    cantidadLotes: number;
-    cantidadLotes1Decimal?: number;
-    permitirLotesConDecimal?: boolean;
-    desgloseLotes?: LoteDesgloseItem[];
-    stockBolsasPorLote: number;
-    kgPorBolsa: CategoriaEnvaseKg;
-    totalKgNetos: number;
-    silosOrigenNombres?: string;
-  }) => {
+  const handleAplicarDesdeCalculoBolsas = (config: CalculoTransferConfig) => {
+    // 1. Datos Generales de la Tanda: Copiar datos de cliente, variedad y especie si provienen del silo o cálculo
+    if (config.cliente && config.cliente.trim() !== '') {
+      setCliente(config.cliente.trim());
+    }
+    if (config.variedad && config.variedad.trim() !== '') {
+      setVariedad(config.variedad.trim());
+    }
+    if (config.especie && config.especie.trim() !== '') {
+      setEspecie(config.especie.trim());
+    }
+    if (config.silosOrigenNombres) {
+      setSiloOrigenDetectado(config.silosOrigenNombres);
+    } else if (config.siloOrigenId) {
+      setSiloOrigenDetectado(config.siloOrigenId);
+    }
+
+    // 2. Lotes a Generar: Pregenerar con la cantidad de lotes y bolsas determinadas en el cálculo
+    const existingNumbers = lotes
+      .map(l => parseInt(l.loteNro.replace(/\D/g, ''), 10))
+      .filter(n => !isNaN(n));
+    const baseMax = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 1000;
+
     const newDrafts: LoteDraftItem[] = [];
 
     if (config.desgloseLotes && config.desgloseLotes.length > 0) {
       config.desgloseLotes.forEach((item, i) => {
         newDrafts.push({
-          id: `draft-${Date.now()}-${i}`,
-          loteNro: getNextLoteNumber(i, newDrafts),
+          id: `draft-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
+          loteNro: `L-${baseMax + 1 + i}`,
           tipo: 'Intermedio',
           categoria: 'Pre básica',
           stockBolsas: item.bolsas,
@@ -402,8 +466,8 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
       const count = Math.max(1, Math.min(50, Math.floor(config.cantidadLotes) || 1));
       for (let i = 0; i < count; i++) {
         newDrafts.push({
-          id: `draft-${Date.now()}-${i}`,
-          loteNro: getNextLoteNumber(i, newDrafts),
+          id: `draft-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
+          loteNro: `L-${baseMax + 1 + i}`,
           tipo: 'Intermedio',
           categoria: 'Pre básica',
           stockBolsas: config.stockBolsasPorLote || 35,
@@ -416,15 +480,28 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
     if (config.silosOrigenNombres) {
       setObservaciones((prev) => {
         const extra = `Estimado desde ${config.silosOrigenNombres} (${formatKg(config.totalKgNetos)} netos)`;
-        return prev ? `${prev} | ${extra}` : extra;
+        return prev && !prev.includes(config.silosOrigenNombres!) ? `${prev} | ${extra}` : extra;
       });
     }
     setActiveSubModule('precarga-produccion');
-    const detalleLotesDecimal = config.cantidadLotes1Decimal && config.permitirLotesConDecimal
-      ? `(${config.cantidadLotes1Decimal} lotes en total, incluyendo lote fraccionario)`
-      : `(${newDrafts.length} lote(s) de ${config.stockBolsasPorLote} bolsas)`;
-    setSuccessMsg(`¡Cálculo de bolsas aplicado! Se prepararon ${newDrafts.length} lote(s) en borrador ${detalleLotesDecimal}.`);
+
+    const origenDetalle = config.esDeSilo && config.cliente
+      ? ` con datos de ${config.silosOrigenNombres || 'Silo'} (Cliente: "${config.cliente}", Variedad: "${config.variedad || 'N/A'}")`
+      : '';
+    setSuccessMsg(
+      `¡Lotes aplicados a precarga! Se pregeneraron ${newDrafts.length} lote(s) (${newDrafts.reduce((a, c) => a + c.stockBolsas, 0)} bolsas en total)${origenDetalle}.`
+    );
   };
+
+  // Efecto para sincronizar configuración proveniente de la vista independiente "calculo-bolsas"
+  useEffect(() => {
+    if (initialCalculoConfig) {
+      handleAplicarDesdeCalculoBolsas(initialCalculoConfig);
+      if (onClearInitialConfig) {
+        onClearInitialConfig();
+      }
+    }
+  }, [initialCalculoConfig]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -577,10 +654,18 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
 
         {/* Sección 1: Datos Generales (Compartidos por la tanda) */}
         <div className="space-y-4">
-          <h3 className="font-serif font-bold text-lg text-slate-900 border-b border-gray-100 pb-2 flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-[#00603C]" />
-            1. Datos Generales de la Tanda
-          </h3>
+          <div className="flex flex-wrap items-center justify-between border-b border-gray-100 pb-2 gap-2">
+            <h3 className="font-serif font-bold text-lg text-slate-900 flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-[#00603C]" />
+              1. Datos Generales de la Tanda
+            </h3>
+            {siloOrigenDetectado && (
+              <span className="text-[11px] font-mono font-bold text-emerald-900 bg-emerald-100 px-3 py-1 rounded-xl border border-emerald-300 flex items-center gap-1.5 shadow-2xs animate-in fade-in">
+                <Warehouse className="w-3.5 h-3.5 text-emerald-700" />
+                Silo de Origen: {siloOrigenDetectado}
+              </span>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Cliente */}
@@ -593,7 +678,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
                 onChange={(e) => setCliente(e.target.value)}
                 className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-[#00603C]"
               >
-                {clientes.map(c => (
+                {clientesOpciones.map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
@@ -609,7 +694,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
                 onChange={(e) => setEspecie(e.target.value)}
                 className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-[#00603C]"
               >
-                {especies.map(esp => (
+                {especiesOpciones.map(esp => (
                   <option key={esp} value={esp}>{esp}</option>
                 ))}
               </select>
@@ -809,11 +894,12 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
                         Categoría *
                       </label>
                       <select
+                        id={`select-categoria-draft-${item.id}`}
                         value={item.categoria}
                         onChange={(e) => handleUpdateDraftLote(item.id, 'categoria', e.target.value as CategoriaType)}
-                        className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
+                        className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-[#00603C]"
                       >
-                        {CATEGORIAS.map(cat => (
+                        {categoriasOpciones.map(cat => (
                           <option key={cat} value={cat}>{cat}</option>
                         ))}
                       </select>

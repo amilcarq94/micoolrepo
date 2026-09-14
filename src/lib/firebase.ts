@@ -530,6 +530,13 @@ export async function seedPlantaConfigIfEmpty(initialConfig?: PlantaConfig): Pro
         updatedBy: 'Sistema'
       });
       console.log('Inicialización de catálogo de Planta completada con éxito.');
+    } else {
+      const data = docSnap.data();
+      if (Array.isArray(data?.categorias) && data.categorias.some((c: string) => typeof c === 'string' && c.toLowerCase().includes('primera multiplicaci'))) {
+        const cleaned = data.categorias.filter((c: string) => typeof c === 'string' && !c.toLowerCase().includes('primera multiplicaci'));
+        await setDoc(configDocRef, { categorias: cleaned, updatedAt: new Date().toISOString() }, { merge: true });
+        console.log('Categoría primera multiplicación removida de Firestore catalogos.');
+      }
     }
   } catch (error) {
     console.warn('Error en inicialización de catálogo de Planta:', error);

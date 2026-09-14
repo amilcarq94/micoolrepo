@@ -116,7 +116,7 @@ const CATALOG_DEFINITIONS: CatalogMeta[] = [
     accentBadge: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
     description: 'Categoría fiscal y de certificación de la semilla (Fundadora, PreBase, Original, Primu, etc.).',
     placeholder: 'Ej: Fundadora, PreBase, Original, Primu...',
-    examples: ['Fundadora', 'PreBase', 'Original', 'Primera Multiplicación (PRIMU)']
+    examples: ['Fundadora', 'PreBase', 'Original', 'Primu']
   },
   {
     key: 'tratamientos',

@@ -66,9 +66,12 @@ export const LoteForm: React.FC<LoteFormProps> = ({
   }, [plantaConfig]);
 
   const categoriasList = useMemo(() => {
-    return plantaConfig?.categorias && plantaConfig.categorias.length > 0
-      ? plantaConfig.categorias
-      : ['Fundadora', 'PreBase', 'Original', 'Primera Multiplicación (PRIMU)'];
+    const defaultList = ['Fundadora', 'PreBase', 'Original', 'Primu'];
+    if (plantaConfig?.categorias && plantaConfig.categorias.length > 0) {
+      const combined = [...defaultList, ...plantaConfig.categorias];
+      return Array.from(new Set(combined)).filter(c => !c.toLowerCase().includes('primera multiplicaci'));
+    }
+    return defaultList;
   }, [plantaConfig]);
 
   const tratamientosList = useMemo(() => {

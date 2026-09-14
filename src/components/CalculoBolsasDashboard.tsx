@@ -8,7 +8,8 @@ import { formatKg } from '../utils/formatters';
 import {
   CategoriaEnvaseKg,
   calcularBolsasYLotes,
-  LoteDesgloseItem
+  LoteDesgloseItem,
+  CalculoTransferConfig
 } from '../utils/calculoBolsas';
 import {
   Calculator,
@@ -35,16 +36,7 @@ interface CalculoBolsasDashboardProps {
   movimientosSilo?: any[];
   clientes?: string[];
   especies?: string[];
-  onAplicarAPrecarga?: (config: {
-    cantidadLotes: number;
-    cantidadLotes1Decimal?: number;
-    permitirLotesConDecimal?: boolean;
-    desgloseLotes?: LoteDesgloseItem[];
-    stockBolsasPorLote: number;
-    kgPorBolsa: CategoriaEnvaseKg;
-    totalKgNetos: number;
-    silosOrigenNombres?: string;
-  }) => void;
+  onAplicarAPrecarga?: (config: CalculoTransferConfig) => void;
   onCerrar?: () => void;
 }
 
@@ -58,7 +50,7 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
   // ESTADO - CARGA MANUAL DE TOTAL DE KILOS BRUTOS A PROCESAR
   // =========================================================================
   const [totalKilosBrutos, setTotalKilosBrutos] = useState<number>(28000); // 28.000 kg por defecto (1 lote natural)
-  const [porcentajeMerma, setPorcentajeMerma] = useState<number>(0);
+  const [porcentajeMerma, setPorcentajeMerma] = useState<number>(8);
   const [pesoEnvaseKg, setPesoEnvaseKg] = useState<CategoriaEnvaseKg>(800); // 800 kg por defecto para Big Bag
   const [cargarConDecimal, setCargarConDecimal] = useState<boolean>(true);
 
@@ -179,23 +171,93 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
     });
   }, [totalKilosBrutos, porcentajeMerma, pesoEnvaseKg]);
 
+  // Obtener datos del silo seleccionado (si el cálculo se realiza desde uno o más silos)
+  const siloSeleccionadoConDatos = useMemo(() => {
+    const selectedSiloKeys = Object.keys(selectedSilos).filter((s) => selectedSilos[s]);
+    if (selectedSiloKeys.length === 0) return null;
+    return (
+      silosInfoList.find(
+        (s) =>
+          selectedSiloKeys.includes(s.siloId) &&
+          s.cliente &&
+          s.cliente !== 'Sin asignación' &&
+          s.cliente !== 'Sin asignar'
+      ) ||
+      silosInfoList.find((s) => selectedSiloKeys.includes(s.siloId)) ||
+      null
+    );
+  }, [silosInfoList, selectedSilos]);
+
   // Transferir cálculo a formulario de Precarga
-  const handleTransferirAPrecarga = () => {
+  const handleTransferirAPrecarga = (soloEnteros: boolean = true) => {
     if (!onAplicarAPrecarga) return;
 
-    const lotesAGenerar = cargarConDecimal && calculoResultado.excedeLoteNatural
-      ? calculoResultado.cantidadLotes1Decimal
-      : Math.max(1, calculoResultado.cantidadLotesEnteros || 1);
+    const selectedSiloKeys = Object.keys(selectedSilos).filter((s) => selectedSilos[s]);
+    const esDeSilo = selectedSiloKeys.length > 0;
+
+    const clienteSilo =
+      siloSeleccionadoConDatos &&
+      siloSeleccionadoConDatos.cliente &&
+      siloSeleccionadoConDatos.cliente !== 'Sin asignación' &&
+      siloSeleccionadoConDatos.cliente !== 'Sin asignar'
+        ? siloSeleccionadoConDatos.cliente.trim()
+        : undefined;
+
+    const variedadSilo =
+      siloSeleccionadoConDatos &&
+      siloSeleccionadoConDatos.variedad &&
+      siloSeleccionadoConDatos.variedad !== '-' &&
+      siloSeleccionadoConDatos.variedad !== 'Descontaminado'
+        ? siloSeleccionadoConDatos.variedad.trim()
+        : undefined;
+
+    const especieSilo =
+      siloSeleccionadoConDatos &&
+      siloSeleccionadoConDatos.especie &&
+      siloSeleccionadoConDatos.especie !== 'Sin Cereal / Vacío'
+        ? siloSeleccionadoConDatos.especie.trim()
+        : undefined;
+
+    const cantEnteros = Math.max(1, calculoResultado.cantidadLotesEnteros || 1);
+
+    let desglose: LoteDesgloseItem[] = [];
+    let cantLotes = cantEnteros;
+
+    if (soloEnteros) {
+      cantLotes = cantEnteros;
+      for (let i = 0; i < cantEnteros; i++) {
+        desglose.push({
+          nroLote: i + 1,
+          bolsas: 35,
+          kgPorBolsa: pesoEnvaseKg,
+          totalKg: 35 * pesoEnvaseKg,
+          esLoteCompleto: true,
+          fraccionLoteDecimal: 1.0,
+        });
+      }
+    } else {
+      cantLotes = calculoResultado.excedeLoteNatural ? calculoResultado.cantidadLotes1Decimal : cantEnteros;
+      desglose = calculoResultado.desgloseLotes;
+    }
+
+    const totalKgNetosCalculados = desglose.reduce((sum, item) => sum + item.totalKg, 0);
 
     onAplicarAPrecarga({
-      cantidadLotes: lotesAGenerar,
+      cantidadLotes: cantLotes,
       cantidadLotes1Decimal: calculoResultado.cantidadLotes1Decimal,
-      permitirLotesConDecimal: cargarConDecimal,
-      desgloseLotes: cargarConDecimal ? calculoResultado.desgloseLotes : calculoResultado.desgloseLotes.filter((l) => l.esLoteCompleto),
+      permitirLotesConDecimal: !soloEnteros,
+      desgloseLotes: desglose,
       stockBolsasPorLote: 35,
       kgPorBolsa: pesoEnvaseKg,
-      totalKgNetos: calculoResultado.kilosNetosKg,
+      totalKgNetos: totalKgNetosCalculados,
       silosOrigenNombres: nombresSilosSeleccionados || 'Carga Manual',
+      cliente: clienteSilo,
+      variedad: variedadSilo,
+      especie: especieSilo,
+      esDeSilo,
+      siloOrigenId: siloSeleccionadoConDatos?.siloId,
+      lotesEnteros: cantEnteros,
+      bolsasPorLoteEntero: 35,
     });
   };
 
@@ -531,7 +593,7 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
                   <span className="font-mono text-xs font-bold text-slate-500">%</span>
                 </div>
                 <div className="flex gap-1">
-                  {[0, 2, 3, 5, 8].map((m) => (
+                  {[8, 10, 12, 15, 18].map((m) => (
                     <button
                       key={m}
                       type="button"
@@ -684,23 +746,77 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Botón de Transferencia a Precarga (si está disponible) */}
+              {/* Datos Detectados del Silo de Origen */}
+              {siloSeleccionadoConDatos && (
+                <div className="bg-emerald-950/80 border border-emerald-500/40 rounded-2xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-amber-300 flex items-center gap-1.5 font-mono uppercase tracking-wider">
+                      <Warehouse className="w-4 h-4 text-amber-400" />
+                      Silo Origen: {nombresSilosSeleccionados || siloSeleccionadoConDatos.siloId}
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-300 bg-emerald-900/60 px-2 py-0.5 rounded-md border border-emerald-500/30">
+                      Sincronización Automática
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div className="bg-black/30 p-2 rounded-xl border border-white/5">
+                      <span className="text-slate-400 text-[10px] block">Cliente:</span>
+                      <span className="font-bold text-white truncate block">
+                        {siloSeleccionadoConDatos.cliente || 'Sin asignar'}
+                      </span>
+                    </div>
+                    <div className="bg-black/30 p-2 rounded-xl border border-white/5">
+                      <span className="text-slate-400 text-[10px] block">Variedad:</span>
+                      <span className="font-bold text-emerald-300 truncate block">
+                        {siloSeleccionadoConDatos.variedad || 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-emerald-200/80 leading-relaxed">
+                    ✓ Al aplicar a precarga, estos datos de variedad y cliente se copiarán en &quot;1. Datos Generales de la Tanda&quot;.
+                  </p>
+                </div>
+              )}
+
+              {/* Botones de Transferencia a Precarga */}
               {onAplicarAPrecarga && (
-                <button
-                  type="button"
-                  id="btn-aplicar-calculo-precarga"
-                  onClick={handleTransferirAPrecarga}
-                  disabled={calculoResultado.kilosNetosKg <= 0}
-                  className="w-full py-3.5 bg-[#00603C] hover:bg-[#00784b] text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg transition flex items-center justify-center gap-2.5 cursor-pointer border border-emerald-400/30 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-                >
-                  <CheckCircle2 className="w-5 h-5 text-amber-300" />
-                  <span>
-                    {cargarConDecimal && calculoResultado.excedeLoteNatural
-                      ? `Aplicar ${calculoResultado.cantidadLotes1Decimal} Lote(s) a Precarga`
-                      : `Aplicar ${Math.max(1, calculoResultado.cantidadLotesEnteros)} Lote(s) Entero(s) a Precarga`}
-                  </span>
-                  <ArrowRight className="w-4 h-4 text-amber-300" />
-                </button>
+                <div className="space-y-2 pt-1">
+                  {/* Botón Principal: Aplicar lotes enteros a precarga */}
+                  <button
+                    type="button"
+                    id="btn-aplicar-lotes-enteros"
+                    onClick={() => handleTransferirAPrecarga(true)}
+                    disabled={calculoResultado.kilosNetosKg <= 0}
+                    className="w-full py-3.5 px-4 bg-[#00603C] hover:bg-[#00784b] text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg transition flex flex-col items-center justify-center gap-1 cursor-pointer border border-emerald-400/40 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 group"
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-amber-300 shrink-0" />
+                      <span>
+                        Aplicar {Math.max(1, calculoResultado.cantidadLotesEnteros)} Lote(s) Entero(s) a Precarga
+                      </span>
+                      <ArrowRight className="w-4 h-4 text-amber-300 group-hover:translate-x-1 transition-transform shrink-0" />
+                    </div>
+                    <span className="text-[10px] font-mono text-emerald-200/90 font-normal">
+                      {Math.max(1, calculoResultado.cantidadLotesEnteros)} lote(s) x 35 bolsas ({pesoEnvaseKg} kg c/u) = {formatKg(Math.max(1, calculoResultado.cantidadLotesEnteros) * 35 * pesoEnvaseKg)} kg
+                    </span>
+                  </button>
+
+                  {/* Botón Opcional: Si excede lote natural o hay fracción decimal */}
+                  {calculoResultado.excedeLoteNatural && (
+                    <button
+                      type="button"
+                      id="btn-aplicar-todos-lotes"
+                      onClick={() => handleTransferirAPrecarga(false)}
+                      disabled={calculoResultado.kilosNetosKg <= 0}
+                      className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer border border-amber-400/30 active:scale-95"
+                    >
+                      <Layers className="w-3.5 h-3.5 text-amber-400" />
+                      <span>
+                        Aplicar Todos ({calculoResultado.desgloseLotes.length} lotes: {calculoResultado.cantidadLotesEnteros} enteros + 1 de {calculoResultado.bolsasRemanentesLote} BLS)
+                      </span>
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
