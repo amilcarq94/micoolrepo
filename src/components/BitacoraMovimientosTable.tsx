@@ -91,6 +91,9 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
   const [fechaRealizadoConfirm, setFechaRealizadoConfirm] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
+  const [pesoDeMilConfirm, setPesoDeMilConfirm] = useState<string>(() =>
+    lote.pesoDeMil !== undefined && lote.pesoDeMil !== null ? String(lote.pesoDeMil) : ''
+  );
   const [isActivatingRealizado, setIsActivatingRealizado] = useState<boolean>(false);
 
   // Estados de filtros
@@ -618,6 +621,8 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
       const kgB = lote.kgPorBolsa || 40;
       const kgTot = lote.stockKg > 0 ? lote.stockKg : bolsas * kgB;
       const fechaEf = fechaRealizadoConfirm || new Date().toISOString().split('T')[0];
+      const cleanedPeso = pesoDeMilConfirm.trim().replace(',', '.');
+      const numPeso = cleanedPeso !== '' && !isNaN(Number(cleanedPeso)) ? Number(cleanedPeso) : undefined;
 
       const nuevoMov: MovimientoStock = {
         id: `MOV-REAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -654,6 +659,7 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
         kgPorBolsa: kgB,
         stockKg: kgTot,
         estado: bolsas > 0 ? 'Disponible' : 'Agotado',
+        pesoDeMil: numPeso !== undefined ? numPeso : lote.pesoDeMil,
         historial: nuevoHistorial,
         auditoria: [
           {
@@ -1913,6 +1919,30 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                   onChange={(e) => setFechaRealizadoConfirm(e.target.value)}
                   className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-mono font-bold focus:bg-white focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
                 />
+              </div>
+
+              {/* Peso de mil (cantidad determinada de gramos) */}
+              <div className="space-y-1.5">
+                <label className="block text-gray-700 font-bold uppercase tracking-wider text-[10px] flex items-center justify-between">
+                  <span>Peso de mil (g):</span>
+                  <span className="text-[10px] text-emerald-700 font-mono normal-case">Gramos / PMS</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Ej: 165.4"
+                    value={pesoDeMilConfirm}
+                    onChange={(e) => setPesoDeMilConfirm(e.target.value)}
+                    className="w-full px-3 py-2 pr-8 bg-gray-50 border border-gray-300 rounded-xl text-xs font-mono font-bold focus:bg-white focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 pointer-events-none">
+                    g
+                  </span>
+                </div>
+                <span className="text-[10px] text-gray-500 block">
+                  Dato manual que refleja una cantidad determinada de gramos
+                </span>
               </div>
 
               {/* Botones de acción */}

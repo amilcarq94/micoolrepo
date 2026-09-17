@@ -35,6 +35,7 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
   });
 
   const [bolsasProducidas, setBolsasProducidas] = useState<number>(primaryLote.stockBolsas || 0);
+  const [pesoDeMil, setPesoDeMil] = useState<string>(() => (primaryLote.pesoDeMil !== undefined && primaryLote.pesoDeMil !== null ? String(primaryLote.pesoDeMil) : ''));
   const [siloOrigen, setSiloOrigen] = useState<string>(() => {
     return primaryLote.siloOrigen || (primaryLote.silosOrigen && primaryLote.silosOrigen[0]?.siloId) || '';
   });
@@ -55,6 +56,8 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
       return;
     }
 
+    const cleanedPeso = pesoDeMil.trim().replace(',', '.');
+    const numPesoDeMil = cleanedPeso !== '' && !isNaN(Number(cleanedPeso)) ? Number(cleanedPeso) : undefined;
     const finalSilo = siloOrigen && siloOrigen !== 'Sin Silo' ? siloOrigen.trim() : '';
 
     const updatedLotesList: Lote[] = targetLotes.map(currLote => {
@@ -112,6 +115,7 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
         kgPorBolsa: currentKgB,
         stockKg: currentKgTot,
         estado: currentBolsas > 0 ? 'Disponible' : 'Agotado',
+        pesoDeMil: numPesoDeMil !== undefined ? numPesoDeMil : currLote.pesoDeMil,
         siloOrigen: finalSilo || currLote.siloOrigen || '',
         silosOrigen: finalSilo ? [{ siloId: finalSilo as any, kgExtraidos: 0, kg: 0 }] : (currLote.silosOrigen || []),
         ala: ala || currLote.ala,
@@ -244,8 +248,8 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
               </div>
             )}
 
-            {/* Ajuste de Bolsas Realizadas */}
-            <div className="pt-2 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+            {/* Ajuste de Bolsas Realizadas y Peso de mil */}
+            <div className="pt-2 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-4 gap-3 items-center">
               <div>
                 <label className="text-[11px] font-bold text-slate-700 block mb-1">
                   Bolsas Realizadas:
@@ -269,6 +273,25 @@ export const MovRealizadoModal: React.FC<MovRealizadoModalProps> = ({
                 <span className="text-xs font-mono font-black text-emerald-700 block py-1.5">
                   {formatKg(bolsasProducidas * (primaryLote.kgPorBolsa || 800))}
                 </span>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 flex items-center justify-between mb-1">
+                  <span>Peso de mil:</span>
+                  <span className="text-[10px] text-emerald-700 font-mono">Gramos (g)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Ej: 165.4"
+                    value={pesoDeMil}
+                    onChange={(e) => setPesoDeMil(e.target.value)}
+                    className="w-full px-3 py-1.5 pr-7 bg-white border border-slate-300 rounded-lg text-xs font-bold font-mono text-slate-900"
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">
+                    g
+                  </span>
+                </div>
               </div>
             </div>
           </div>

@@ -317,7 +317,7 @@ export const DashboardCierreMensual: React.FC<DashboardCierreMensualProps> = ({
       'Variedad': item.variedad,
       'Lotes Activos': item.cantLotes,
       'Total Bolsas': item.totalBolsas,
-      'Total Kilogramos (Kg)': item.totalKg,
+      'Total Kilogramos': item.totalKg,
       'Total Toneladas (Tn)': Number((item.totalKg / 1000).toFixed(2)),
       'Participación (% Kg)': `${item.porcentaje}%`
     }));
@@ -328,7 +328,7 @@ export const DashboardCierreMensual: React.FC<DashboardCierreMensualProps> = ({
       'Variedad': '—',
       'Lotes Activos': kpis.cantLotes,
       'Total Bolsas': kpis.totalBolsas,
-      'Total Kilogramos (Kg)': kpis.totalKg,
+      'Total Kilogramos': kpis.totalKg,
       'Total Toneladas (Tn)': Number(kpis.totalTn.toFixed(2)),
       'Participación (% Kg)': '100.0%'
     });

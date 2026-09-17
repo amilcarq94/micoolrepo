@@ -46,6 +46,7 @@ export const ProcesarLoteModal: React.FC<ProcesarLoteModalProps> = ({
   const [bolsasProducidas, setBolsasProducidas] = useState<number>(primaryLote.stockBolsas || 35);
   const [kgPorBolsa, setKgPorBolsa] = useState<number>(primaryLote.kgPorBolsa || activeLimits.kgPorBolsaDefault);
   const [kgTotales, setKgTotales] = useState<number>((primaryLote.stockBolsas || 35) * (primaryLote.kgPorBolsa || activeLimits.kgPorBolsaDefault));
+  const [pesoDeMil, setPesoDeMil] = useState<string>(() => (primaryLote.pesoDeMil !== undefined && primaryLote.pesoDeMil !== null ? String(primaryLote.pesoDeMil) : ''));
 
   // Silo de origen informativo (sin afectar stock ni requerir kg extraídos)
   const [siloSeleccionado, setSiloSeleccionado] = useState<string>(() => {
@@ -78,6 +79,7 @@ export const ProcesarLoteModal: React.FC<ProcesarLoteModalProps> = ({
       setAla(primaryLote.ala || 'A');
       setSector(primaryLote.sector || '1');
       setObservaciones(primaryLote.observaciones || '');
+      setPesoDeMil(primaryLote.pesoDeMil !== undefined && primaryLote.pesoDeMil !== null ? String(primaryLote.pesoDeMil) : '');
     }
   }, [primaryLote, activeLimits]);
 
@@ -92,6 +94,10 @@ export const ProcesarLoteModal: React.FC<ProcesarLoteModalProps> = ({
     }
 
     const fechaHoraStr = fechaRealizacion;
+
+    // Peso de mil manual (cantidad determinada de gramos)
+    const cleanedPeso = pesoDeMil.trim().replace(',', '.');
+    const numPesoDeMil = cleanedPeso !== '' && !isNaN(Number(cleanedPeso)) ? Number(cleanedPeso) : undefined;
 
     // Silo de origen como dato descriptivo/informativo sin afectar stock
     const finalSiloOrigen = (siloSeleccionado && siloSeleccionado !== 'Sin Silo') ? siloSeleccionado.trim() : '';
@@ -148,6 +154,7 @@ export const ProcesarLoteModal: React.FC<ProcesarLoteModalProps> = ({
         kgPorBolsa: currentKgB,
         stockKg: currentKgTot,
         estado: currentBolsas > 0 ? 'Disponible' : 'Agotado',
+        pesoDeMil: numPesoDeMil !== undefined ? numPesoDeMil : currLote.pesoDeMil,
         siloOrigen: finalSiloOrigen || currLote.siloOrigen,
         silosOrigen: silosOrigenFinal.length > 0 ? silosOrigenFinal : (currLote.silosOrigen || []),
         ala,
@@ -304,19 +311,19 @@ export const ProcesarLoteModal: React.FC<ProcesarLoteModalProps> = ({
           </div>
         </div>
 
-        {/* 4. Producción (Aplica para lote individual) */}
+        {/* 4. Producción y Calidad (Aplica para lote individual) */}
         {targetLotes.length === 1 && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-emerald-50/60 p-4 rounded-2xl border border-emerald-200">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-emerald-50/60 p-4 rounded-2xl border border-emerald-200">
             <div>
               <label className="block text-xs font-bold text-slate-800 mb-1 font-sans">
-                Stock Bolsas Producidas
+                Stock Bolsas Producidas *
               </label>
               <input
                 type="number"
                 min="0"
                 value={bolsasProducidas}
                 onChange={(e) => setBolsasProducidas(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold font-mono text-slate-800"
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold font-mono text-slate-800 focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
@@ -329,7 +336,7 @@ export const ProcesarLoteModal: React.FC<ProcesarLoteModalProps> = ({
                 min="1"
                 value={kgPorBolsa}
                 onChange={(e) => setKgPorBolsa(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold font-mono text-slate-800"
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold font-mono text-slate-800 focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
@@ -340,6 +347,59 @@ export const ProcesarLoteModal: React.FC<ProcesarLoteModalProps> = ({
               <div className="px-3 py-2 bg-emerald-100 border border-emerald-300 rounded-xl text-xs font-bold font-mono text-emerald-900">
                 {formatKg(kgTotales)}
               </div>
+            </div>
+
+            {/* Celda: Peso de mil (dato a mano que refleja gramos) */}
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1 font-sans flex items-center justify-between">
+                <span>Peso de mil</span>
+                <span className="text-[10px] text-emerald-700 font-bold font-mono uppercase">Gramos (g)</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Ej: 165.4"
+                  value={pesoDeMil}
+                  onChange={(e) => setPesoDeMil(e.target.value)}
+                  className="w-full px-3 py-2 pr-8 bg-white border-2 border-emerald-500/60 rounded-xl text-xs font-bold font-mono text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 shadow-2xs"
+                  title="Peso de mil semillas en gramos (ingreso manual)"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                  g
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-500 mt-0.5 block">
+                Refleja cantidad de gramos (PMS)
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Peso de mil para lote múltiple si se procesan varios */}
+        {targetLotes.length > 1 && (
+          <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-800 font-sans">
+                Peso de mil (g) para los {targetLotes.length} lotes:
+              </label>
+              <span className="text-[11px] text-slate-500">
+                Dato manual que refleja una cantidad determinada de gramos (PMS) para los lotes seleccionados.
+              </span>
+            </div>
+            <div className="relative w-full sm:w-48 shrink-0">
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="Ej: 165.4"
+                value={pesoDeMil}
+                onChange={(e) => setPesoDeMil(e.target.value)}
+                className="w-full px-3 py-2 pr-8 bg-white border-2 border-emerald-500/60 rounded-xl text-xs font-bold font-mono text-slate-900 focus:ring-2 focus:ring-emerald-600 shadow-2xs"
+                title="Peso de mil semillas en gramos (ingreso manual)"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                g
+              </span>
             </div>
           </div>
         )}

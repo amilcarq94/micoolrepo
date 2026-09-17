@@ -5,9 +5,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Lote, EstadoLoteType, TipoLoteType, MovimientoSilo, LoteLimitsConfig, PlantaConfig, AuditLogEntry, CategoriaType, CATEGORIAS_OFICIALES } from '../types';
+import { Lote, EstadoLoteType, TipoLoteType, MovimientoSilo, LoteLimitsConfig, PlantaConfig, AuditLogEntry, CategoriaType, CATEGORIAS_OFICIALES, EstadoRegistroLote } from '../types';
 import { formatNumberArg, formatKg, formatDateStr } from '../utils/formatters';
-import { Search, Grid, List, Plus, Filter, Eye, Edit2, Edit3, ArrowDownRight, Trash2, QrCode, Download, Lock, ShieldAlert, KeyRound, X, Flame, Warehouse, Layers, Info, SlidersHorizontal, Check, Pin, RotateCcw, ChevronDown, Package, Sprout, Clock, CheckCircle2, BarChart2, Building2, Tag, FlaskConical, PieChart, Wheat, Sliders, PackagePlus, RefreshCw, FileText, ListFilter, Copy, Scale, FileSpreadsheet, Calendar, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Maximize2, Minimize2, ArrowRightLeft } from 'lucide-react';
+import { Search, Grid, List, Plus, Filter, Eye, Edit2, Edit3, ArrowDownRight, Trash2, QrCode, Download, Lock, ShieldAlert, KeyRound, X, Flame, Warehouse, Layers, Info, SlidersHorizontal, Check, Pin, RotateCcw, ChevronDown, Package, Sprout, Clock, CheckCircle2, BarChart2, Building2, Tag, FlaskConical, PieChart, Wheat, Sliders, PackagePlus, RefreshCw, FileText, ListFilter, Copy, Scale, FileSpreadsheet, Calendar, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Maximize2, Minimize2, ArrowRightLeft, LayoutGrid } from 'lucide-react';
 import { BatchPrintIdBolsasModal } from './BatchPrintIdBolsasModal';
 import { BatchPrintLotesModal } from './BatchPrintLotesModal';
 import { ImprimirFichaTecnica } from './ImprimirFichaTecnica';
@@ -773,6 +773,9 @@ export const LotesView: React.FC<LotesViewProps> = ({
   // Estado para expandir vista de tabla
   const [isTableExpanded, setIsTableExpanded] = useState<boolean>(true);
 
+  // Estado para agrupar datos de lotes y ver toda la fila sin necesidad de desplazamiento horizontal
+  const [isTableGrouped, setIsTableGrouped] = useState<boolean>(true);
+
   // Estado para modal rápido de edición en la misma vista (tarjetas o ventana directa)
   const [quickEditModalLote, setQuickEditModalLote] = useState<Lote | null>(null);
 
@@ -1277,8 +1280,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
 
       switch (sortField) {
         case 'fechaAlta':
-          aVal = a.fechaIngreso || a.fechaAlta || (a.fechaHoraProduccion ? a.fechaHoraProduccion.split('T')[0] : '') || '';
-          bVal = b.fechaIngreso || b.fechaAlta || (b.fechaHoraProduccion ? b.fechaHoraProduccion.split('T')[0] : '') || '';
+          aVal = a.fechaIngreso || (a as any).fechaAlta || (a.fechaHoraProduccion ? a.fechaHoraProduccion.split('T')[0] : '') || '';
+          bVal = b.fechaIngreso || (b as any).fechaAlta || (b.fechaHoraProduccion ? b.fechaHoraProduccion.split('T')[0] : '') || '';
           break;
         case 'cliente':
           aVal = (a.cliente || '').toLowerCase();
@@ -1309,8 +1312,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
           bVal = (b.categoria || '').toLowerCase();
           break;
         case 'envase':
-          aVal = a.envase || (a.kgPorBolsa ? `${a.kgPorBolsa}` : '40');
-          bVal = b.envase || (b.kgPorBolsa ? `${b.kgPorBolsa}` : '40');
+          aVal = (a as any).envase || (a.kgPorBolsa ? `${a.kgPorBolsa}` : '40');
+          bVal = (b as any).envase || (b.kgPorBolsa ? `${b.kgPorBolsa}` : '40');
           break;
         case 'bolsas':
           aVal = Number(a.stockBolsas) || 0;
@@ -1591,10 +1594,10 @@ export const LotesView: React.FC<LotesViewProps> = ({
         'Tipo de lote': l.tipo || 'Final',
         'Categoría': l.categoria || 'PRIMU',
         'Tratamiento': tratamientoStr,
+        'Peso de 1000': (l.pesoDeMil !== undefined && l.pesoDeMil !== null && !isNaN(Number(l.pesoDeMil))) ? Number(l.pesoDeMil) : '—',
+        'Silo de Origen': siloOrigenStr,
         'INASE incio': l.inaseInicio || '—',
-        'INASE final': l.inaseFinal || '—',
-        'N° de Bolsón de origen': bolsonOrigenStr,
-        'Sector de bolsón de origen': sectorBolsonOrigenStr
+        'INASE final': l.inaseFinal || '—'
       };
     });
 
@@ -1606,11 +1609,13 @@ export const LotesView: React.FC<LotesViewProps> = ({
       cantidadLotes: number;
       totalBolsas: number;
       totalKg: number;
+      totalKgTratado: number;
     }
 
     const summaryMap = new Map<string, ResumenGroup>();
     let grandTotalBolsas = 0;
     let grandTotalKg = 0;
+    let grandTotalKgTratado = 0;
 
     lotesRealizados.forEach(l => {
       const cli = normalizeCliente(l.cliente) || 'Sin cliente';
@@ -1620,15 +1625,18 @@ export const LotesView: React.FC<LotesViewProps> = ({
 
       const bolsas = Number(l.stockBolsas) || 0;
       const kg = Number(l.stockKg) || 0;
+      const kgTratado = isLoteTratado(l) ? kg : 0;
 
       grandTotalBolsas += bolsas;
       grandTotalKg += kg;
+      grandTotalKgTratado += kgTratado;
 
       const existing = summaryMap.get(key);
       if (existing) {
         existing.cantidadLotes += 1;
         existing.totalBolsas += bolsas;
         existing.totalKg += kg;
+        existing.totalKgTratado += kgTratado;
       } else {
         summaryMap.set(key, {
           cliente: cli,
@@ -1636,7 +1644,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
           variedad: varN,
           cantidadLotes: 1,
           totalBolsas: bolsas,
-          totalKg: kg
+          totalKg: kg,
+          totalKgTratado: kgTratado
         });
       }
     });
@@ -1655,9 +1664,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
       'Variedad': g.variedad,
       'Cantidad de Lotes': g.cantidadLotes,
       'Total Bolsas': g.totalBolsas,
-      'Total Kilogramos (Kg)': g.totalKg,
-      'Total Toneladas (Tn)': Number((g.totalKg / 1000).toFixed(2)),
-      'Participación (% Kg)': grandTotalKg > 0 ? `${((g.totalKg / grandTotalKg) * 100).toFixed(1)}%` : '0.0%'
+      'Total Kilogramos': g.totalKg,
+      'Total Kilogramos Tratados': g.totalKgTratado
     }));
 
     // Fila consolidada de Total General
@@ -1667,9 +1675,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
       'Variedad': '—',
       'Cantidad de Lotes': lotesRealizados.length,
       'Total Bolsas': grandTotalBolsas,
-      'Total Kilogramos (Kg)': grandTotalKg,
-      'Total Toneladas (Tn)': Number((grandTotalKg / 1000).toFixed(2)),
-      'Participación (% Kg)': '100.0%'
+      'Total Kilogramos': grandTotalKg,
+      'Total Kilogramos Tratados': grandTotalKgTratado
     });
 
     const summaryWorksheet = XLSX.utils.json_to_sheet(summaryRows);
@@ -1705,165 +1712,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
     XLSX.writeFile(workbook, `Reporte_de_Produccion_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Exportar Reporte de Movimientos en formato Excel (2 Hojas: 1- Resumen Cierre, 2- Lotes Mov Realizados)
-  const handleExportMovimientosExcel = () => {
-    // Filtrar los movimientos realizados (aplicando los filtros de búsqueda si existen)
-    const candidateSource = (activeDimensionCount > 0 || search.trim() !== '') ? filteredLotes : lotes;
-    let targetMovRealizados = candidateSource.filter(l => {
-      const isMov = l.esMovimiento || l.tipoMovimiento || l.loteOrigen || 
-                    (l.loteNro && l.loteNro.toUpperCase().includes('MOV')) || 
-                    (l.id && l.id.toUpperCase().includes('MOV')) ||
-                    l.fechaRealizacionMovimiento ||
-                    l.estadoMovimiento;
-      const isRealizado = (l.estadoRegistro || 'REALIZADO') === 'REALIZADO' && l.estadoRegistro !== 'PRE-CARGA';
-      return isMov && isRealizado;
-    });
-
-    // Si los filtros redujeron a 0, intentar con todos los movimientos realizados
-    if (targetMovRealizados.length === 0) {
-      targetMovRealizados = lotes.filter(l => {
-        const isMov = l.esMovimiento || l.tipoMovimiento || l.loteOrigen || 
-                      (l.loteNro && l.loteNro.toUpperCase().includes('MOV')) || 
-                      (l.id && l.id.toUpperCase().includes('MOV')) ||
-                      l.fechaRealizacionMovimiento ||
-                      l.estadoMovimiento;
-        const isRealizado = (l.estadoRegistro || 'REALIZADO') === 'REALIZADO' && l.estadoRegistro !== 'PRE-CARGA';
-        return isMov && isRealizado;
-      });
-    }
-
-    if (targetMovRealizados.length === 0) {
-      alert('No se encontraron movimientos realizados a la fecha para exportar. Asegúrese de pasar los movimientos a REALIZADO con el botón MOV REALIZADO.');
-      return;
-    }
-
-    // 1. HOJA 1 = RESUMEN CIERRE
-    // Columnas: "CLIENTE" / "Especie" / "Variedad" / "Cantidad de Lotes" / "Total Bolsas" / "Total Kilogramos (Kg)" / "KG TRATADOS"
-    const resumenMap = new Map<string, {
-      cliente: string;
-      especie: string;
-      variedad: string;
-      cantidadLotes: number;
-      totalBolsas: number;
-      totalKg: number;
-      kgTratados: number;
-    }>();
-
-    targetMovRealizados.forEach(l => {
-      const cl = l.cliente || 'Sin cliente';
-      const esp = l.especie || 'Sin especie';
-      const varName = l.variedad || 'Sin variedad';
-      const key = `${cl}__${esp}__${varName}`;
-
-      const bolsas = Number(l.stockBolsas) || 0;
-      const kgBolsa = Number(l.kgPorBolsa) || 800;
-      const kgTot = Number(l.stockKg) > 0 ? Number(l.stockKg) : (bolsas * kgBolsa);
-
-      const trats = Array.isArray(l.tratamiento) ? l.tratamiento : [l.tratamiento];
-      const isTratado = trats.some(t => String(t).toLowerCase() === 'tratado' || (t && t !== 'Sin Tratar' && t !== 'Sin Tratamiento')) ||
-                        (l.tipoMovimiento || '').toLowerCase().includes('tratado') ||
-                        Boolean(l.productoAplicado && l.productoAplicado.trim() !== '' && l.productoAplicado !== 'Sin Tratamiento') ||
-                        Boolean(l.producto && !['Ninguno', 'Sin Tratamiento', 'FINAL', 'INTERMEDIO', ''].includes(l.producto));
-
-      const current = resumenMap.get(key) || {
-        cliente: cl,
-        especie: esp,
-        variedad: varName,
-        cantidadLotes: 0,
-        totalBolsas: 0,
-        totalKg: 0,
-        kgTratados: 0,
-      };
-
-      current.cantidadLotes += 1;
-      current.totalBolsas += bolsas;
-      current.totalKg += kgTot;
-      if (isTratado) {
-        current.kgTratados += kgTot;
-      }
-
-      resumenMap.set(key, current);
-    });
-
-    const resumenData = Array.from(resumenMap.values()).map(r => ({
-      'Cliente': r.cliente,
-      'Especie': r.especie,
-      'Variedad': r.variedad,
-      'Cantidad de Lotes': r.cantidadLotes,
-      'Total Bolsas': r.totalBolsas,
-      'Total Kilogramos (Kg)': r.totalKg,
-      'KG TRATADOS': r.kgTratados,
-    }));
-
-    // Fila de Total General al final de la Hoja 1
-    const totalGeneral = resumenData.reduce((acc, row) => ({
-      lotes: acc.lotes + row['Cantidad de Lotes'],
-      bolsas: acc.bolsas + row['Total Bolsas'],
-      kg: acc.kg + row['Total Kilogramos (Kg)'],
-      kgTratados: acc.kgTratados + row['KG TRATADOS'],
-    }), { lotes: 0, bolsas: 0, kg: 0, kgTratados: 0 });
-
-    resumenData.push({
-      'Cliente': 'TOTAL GENERAL',
-      'Especie': '—',
-      'Variedad': '—',
-      'Cantidad de Lotes': totalGeneral.lotes,
-      'Total Bolsas': totalGeneral.bolsas,
-      'Total Kilogramos (Kg)': totalGeneral.kg,
-      'KG TRATADOS': totalGeneral.kgTratados,
-    });
-
-    // 2. HOJA 2 = LOTES MOV REALIZADOS
-    // Columnas: "Fecha de MOV realizado" / "Cliente" / "Especie" / "Variedad" / "Número de lote" / "Bolsas realizadas" / "Kg por bolsa" / "Stock total" / "Tipo de lote" / "Categoría" / "Tratamiento" / "Producto Aplicado / Principio Activo"
-    const lotesMovData = targetMovRealizados.map(l => {
-      const fechaRealizadaStr = l.fechaRealizacionMovimiento || l.fechaMovimiento || l.fechaIngreso || l.fechaHoraProduccion?.split('T')[0] || '—';
-      const bolsas = Number(l.stockBolsas) || 0;
-      const kgBolsa = Number(l.kgPorBolsa) || 800;
-      const stockTotal = Number(l.stockKg) > 0 ? Number(l.stockKg) : (bolsas * kgBolsa);
-
-      let tratamientoStr = Array.isArray(l.tratamiento) ? l.tratamiento.join(', ') : (l.tratamiento || 'Original');
-      if ((l.tipoMovimiento || '').toLowerCase().includes('tratado') && !tratamientoStr.toLowerCase().includes('tratado')) {
-        tratamientoStr = 'Tratado';
-      }
-
-      const productoAplicado = l.productoAplicado || l.producto || '—';
-
-      return {
-        'Fecha de MOV realizado': fechaRealizadaStr,
-        'Cliente': l.cliente || 'Sin cliente',
-        'Especie': l.especie || 'Sin especie',
-        'Variedad': l.variedad || 'Sin variedad',
-        'Número de lote': l.loteNro || l.id,
-        'Bolsas realizadas': bolsas,
-        'Kg por bolsa': kgBolsa,
-        'Stock total': stockTotal,
-        'Tipo de lote': l.tipo || 'Final',
-        'Categoría': l.categoria || 'PRIMU',
-        'Tratamiento': tratamientoStr,
-        'Producto Aplicado / Principio Activo': productoAplicado,
-      };
-    });
-
-    const summaryWorksheet = XLSX.utils.json_to_sheet(resumenData);
-    const summaryCols = Object.keys(resumenData[0] || {}).map(key => {
-      const maxLen = Math.max(key.length, ...resumenData.map(r => String((r as any)[key] ?? '').length));
-      return { wch: Math.min(Math.max(maxLen + 3, 14), 40) };
-    });
-    summaryWorksheet['!cols'] = summaryCols;
-
-    const detailWorksheet = XLSX.utils.json_to_sheet(lotesMovData);
-    const detailCols = Object.keys(lotesMovData[0] || {}).map(key => {
-      const maxLen = Math.max(key.length, ...lotesMovData.map(r => String((r as any)[key] ?? '').length));
-      return { wch: Math.min(Math.max(maxLen + 3, 15), 45) };
-    });
-    detailWorksheet['!cols'] = detailCols;
-
-    const workbook = XLSX.utils.book_new();
-    // Hoja 1 = Resumen Cierre, Hoja 2 = Lotes Mov Realizados
-    XLSX.utils.book_append_sheet(workbook, summaryWorksheet, 'Resumen Cierre');
-    XLSX.utils.book_append_sheet(workbook, detailWorksheet, 'Lotes Mov Realizados');
-    XLSX.writeFile(workbook, `Reporte_de_Movimientos_${new Date().toISOString().split('T')[0]}.xlsx`);
-  };
 
   // Exportar CSV delimitado por punto y coma (;) respetando las columnas
   const handleExportCSV = () => {
@@ -1888,10 +1736,10 @@ export const LotesView: React.FC<LotesViewProps> = ({
       'Tipo de lote',
       'Categoría',
       'Tratamiento',
+      'Peso de 1000',
+      'Silo de Origen',
       'INASE incio',
-      'INASE final',
-      'N° de Bolsón de origen',
-      'Sector de bolsón de origen'
+      'INASE final'
     ];
 
     const rows = lotesRealizados.map(l => {
@@ -1965,10 +1813,10 @@ export const LotesView: React.FC<LotesViewProps> = ({
         l.tipo || 'Final',
         l.categoria || 'PRIMU',
         tratamientoStr,
+        (l.pesoDeMil !== undefined && l.pesoDeMil !== null && !isNaN(Number(l.pesoDeMil))) ? l.pesoDeMil : '—',
+        siloOrigenStr,
         l.inaseInicio || '—',
-        l.inaseFinal || '—',
-        bolsonOrigenStr,
-        sectorBolsonOrigenStr
+        l.inaseFinal || '—'
       ];
     });
 
@@ -2053,15 +1901,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
             >
               <FileSpreadsheet className="w-4 h-4 text-[#C9922E]" />
               <span>Reporte de Producción</span>
-            </button>
-            <button
-              id="btn-reporte-movimientos-excel"
-              onClick={handleExportMovimientosExcel}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold font-sans uppercase tracking-wider bg-white text-sky-800 hover:bg-sky-50 border border-sky-300 rounded-lg transition cursor-pointer shadow-2xs"
-              title="Descargar archivo de Excel (.xlsx) con el Reporte de Movimientos"
-            >
-              <Download className="w-4 h-4 text-sky-600" />
-              <span>Reporte de Movimientos</span>
             </button>
             <button
               id="btn-exportar-lotes-csv"
@@ -3197,6 +3036,21 @@ export const LotesView: React.FC<LotesViewProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                id="btn-toggle-grouped-tabla-lotes"
+                onClick={() => setIsTableGrouped(prev => !prev)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-black border shadow-xs transition cursor-pointer ${
+                  isTableGrouped
+                    ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-500'
+                    : 'bg-emerald-900/90 hover:bg-emerald-800 text-amber-200 border-emerald-700'
+                }`}
+                title={isTableGrouped ? 'Cambiar a columnas individuales extendidas' : 'Agrupar datos para ver toda la fila sin desplazamiento horizontal'}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>{isTableGrouped ? 'Fila Completa (Agrupada)' : 'Columnas Individuales'}</span>
+              </button>
+
+              <button
+                type="button"
                 id="btn-toggle-expand-tabla-lotes"
                 onClick={() => setIsTableExpanded(prev => !prev)}
                 className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-900/90 hover:bg-emerald-800 text-amber-300 hover:text-amber-200 rounded-lg text-xs font-black border border-emerald-700 shadow-xs transition cursor-pointer"
@@ -3399,53 +3253,51 @@ export const LotesView: React.FC<LotesViewProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-[#00603C] text-white font-sans text-xs uppercase tracking-wider">
-                  <th className="py-2.5 px-3 font-semibold text-center w-10">
-                    <input
-                      type="checkbox"
-                      checked={filteredLotes.length > 0 && filteredLotes.every(l => selectedLoteIds.includes(l.id))}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          const currentIds = filteredLotes.map(l => l.id);
-                          setSelectedLoteIds(prev => Array.from(new Set([...prev, ...currentIds])));
-                        } else {
-                          const currentIds = filteredLotes.map(l => l.id);
-                          setSelectedLoteIds(prev => prev.filter(id => !currentIds.includes(id)));
-                        }
-                      }}
-                      title="Seleccionar todos los lotes"
-                      aria-label="Seleccionar todos los lotes"
-                      className="rounded border-gray-300 text-[#00603C] focus:ring-offset-0 focus:ring-0 h-4 w-4 cursor-pointer"
-                    />
-                  </th>
+                {isTableGrouped ? (
+                  <tr className="bg-[#00603C] text-white font-sans text-xs uppercase tracking-wider">
+                    <th className="py-2.5 px-3 font-semibold text-center w-10">
+                      <input
+                        type="checkbox"
+                        checked={filteredLotes.length > 0 && filteredLotes.every(l => selectedLoteIds.includes(l.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            const currentIds = filteredLotes.map(l => l.id);
+                            setSelectedLoteIds(prev => Array.from(new Set([...prev, ...currentIds])));
+                          } else {
+                            const currentIds = filteredLotes.map(l => l.id);
+                            setSelectedLoteIds(prev => prev.filter(id => !currentIds.includes(id)));
+                          }
+                        }}
+                        title="Seleccionar todos los lotes"
+                        aria-label="Seleccionar todos los lotes"
+                        className="rounded border-gray-300 text-[#00603C] focus:ring-offset-0 focus:ring-0 h-4 w-4 cursor-pointer"
+                      />
+                    </th>
 
-                  {/* 1. Fecha de alta */}
-                  {visibleColumns.fechaAlta && (
+                    {/* 1. Lote & Fecha */}
                     <th
-                      onClick={() => handleToggleSort('fechaAlta')}
-                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'fechaAlta' ? 'text-amber-300' : 'text-white'}`}
-                      title={`Ordenar por Fecha de Alta (${sortField === 'fechaAlta' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      onClick={() => handleToggleSort('loteId')}
+                      className={`py-2 px-3 font-black uppercase text-xs tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'loteId' || sortField === 'fechaAlta' ? 'text-amber-300' : 'text-white'}`}
+                      title="Ordenar por Lote o Fecha"
                     >
-                      <div className="inline-flex items-center gap-1">
-                        <span>Fecha de alta</span>
-                        {sortField === 'fechaAlta' ? (
+                      <div className="inline-flex items-center gap-1.5">
+                        <span>Lote / Fecha</span>
+                        {sortField === 'loteId' || sortField === 'fechaAlta' ? (
                           sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
                         ) : (
                           <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
                         )}
                       </div>
                     </th>
-                  )}
 
-                  {/* 2. Cliente */}
-                  {visibleColumns.cliente && (
+                    {/* 2. Cliente & Cultivo */}
                     <th
                       onClick={() => handleToggleSort('cliente')}
-                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'cliente' ? 'text-amber-300' : 'text-white'}`}
-                      title={`Ordenar por Cliente (${sortField === 'cliente' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      className={`py-2 px-3 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 ${sortField === 'cliente' || sortField === 'especie' || sortField === 'variedad' ? 'text-amber-300' : 'text-white'}`}
+                      title="Ordenar por Cliente, Especie o Variedad"
                     >
-                      <div className="inline-flex items-center gap-1">
-                        <span>Cliente</span>
+                      <div className="inline-flex items-center gap-1.5">
+                        <span>Cliente & Cultivo</span>
                         {sortField === 'cliente' ? (
                           sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
                         ) : (
@@ -3453,176 +3305,44 @@ export const LotesView: React.FC<LotesViewProps> = ({
                         )}
                       </div>
                     </th>
-                  )}
 
-                  {/* 3. Especie */}
-                  {visibleColumns.especie && (
-                    <th
-                      onClick={() => handleToggleSort('especie')}
-                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'especie' ? 'text-amber-300' : 'text-white'}`}
-                      title={`Ordenar por Especie (${sortField === 'especie' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
-                    >
-                      <div className="inline-flex items-center gap-1">
-                        <span>Especie</span>
-                        {sortField === 'especie' ? (
-                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
-                        ) : (
-                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
-                        )}
-                      </div>
-                    </th>
-                  )}
-
-                  {/* 4. Variedad */}
-                  {visibleColumns.variedad && (
-                    <th
-                      onClick={() => handleToggleSort('variedad')}
-                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'variedad' ? 'text-amber-300' : 'text-white'}`}
-                      title={`Ordenar por Variedad (${sortField === 'variedad' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
-                    >
-                      <div className="inline-flex items-center gap-1">
-                        <span>Variedad</span>
-                        {sortField === 'variedad' ? (
-                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
-                        ) : (
-                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
-                        )}
-                      </div>
-                    </th>
-                  )}
-
-                  {/* 5. Lote (Grande, claro y fácil de visualizar) */}
-                  {visibleColumns.loteId && (
-                    <th
-                      onClick={() => handleToggleSort('loteId')}
-                      className={`py-2 px-2.5 font-black uppercase text-xs tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'loteId' ? 'text-amber-300' : 'text-amber-400'}`}
-                      title={`Ordenar por Lote (${sortField === 'loteId' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
-                    >
-                      <div className="inline-flex items-center gap-1">
-                        <span>Lote</span>
-                        {sortField === 'loteId' ? (
-                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
-                        ) : (
-                          <ArrowUpDown className="w-3 h-3 text-amber-300/50 hover:text-amber-300" />
-                        )}
-                      </div>
-                    </th>
-                  )}
-
-                  {/* 6. Tipo de lote */}
-                  {visibleColumns.tipo && (
-                    <th
-                      onClick={() => handleToggleSort('tipo')}
-                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'tipo' ? 'text-amber-300' : 'text-white'}`}
-                      title={`Ordenar por Tipo (${sortField === 'tipo' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
-                    >
-                      <div className="inline-flex items-center gap-1">
-                        <span>Tipo de lote</span>
-                        {sortField === 'tipo' ? (
-                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
-                        ) : (
-                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
-                        )}
-                      </div>
-                    </th>
-                  )}
-
-                  {/* 7. Tratamiento */}
-                  {visibleColumns.tratamiento && (
-                    <th
-                      onClick={() => handleToggleSort('tratamiento')}
-                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'tratamiento' ? 'text-amber-300' : 'text-white'}`}
-                      title={`Ordenar por Tratamiento (${sortField === 'tratamiento' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
-                    >
-                      <div className="inline-flex items-center gap-1">
-                        <span>Tratamiento</span>
-                        {sortField === 'tratamiento' ? (
-                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
-                        ) : (
-                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
-                        )}
-                      </div>
-                    </th>
-                  )}
-
-                  {/* 8. Categoría */}
-                  {visibleColumns.categoria && (
+                    {/* 3. Clasificación & Tratamiento */}
                     <th
                       onClick={() => handleToggleSort('categoria')}
-                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'categoria' ? 'text-amber-300' : 'text-white'}`}
-                      title={`Ordenar por Categoría (${sortField === 'categoria' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      className={`py-2 px-3 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 ${sortField === 'categoria' || sortField === 'tipo' || sortField === 'tratamiento' ? 'text-amber-300' : 'text-white'}`}
+                      title="Ordenar por Categoría / Tipo / Tratamiento"
                     >
-                      <div className="inline-flex items-center gap-1">
-                        <span>Categoría</span>
-                        {sortField === 'categoria' ? (
+                      <div className="inline-flex items-center gap-1.5">
+                        <span>Clasificación & Tratamiento</span>
+                        {sortField === 'categoria' || sortField === 'tratamiento' ? (
                           sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
                         ) : (
                           <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
                         )}
                       </div>
                     </th>
-                  )}
 
-                  {/* 8. Envase */}
-                  {visibleColumns.envase && (
-                    <th
-                      onClick={() => handleToggleSort('envase')}
-                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'envase' ? 'text-amber-300' : 'text-white'}`}
-                      title={`Ordenar por Envase (${sortField === 'envase' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
-                    >
-                      <div className="inline-flex items-center gap-1">
-                        <span>Envase</span>
-                        {sortField === 'envase' ? (
-                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
-                        ) : (
-                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
-                        )}
-                      </div>
-                    </th>
-                  )}
-
-                  {/* 9. Cantidad de bolsas en stock */}
-                  {visibleColumns.bolsas && (
-                    <th
-                      onClick={() => handleToggleSort('bolsas')}
-                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-right select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'bolsas' ? 'text-amber-300' : 'text-white'}`}
-                      title={`Ordenar por Bolsas en Stock (${sortField === 'bolsas' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
-                    >
-                      <div className="inline-flex items-center gap-1 justify-end">
-                        <span>Cantidad bolsas</span>
-                        {sortField === 'bolsas' ? (
-                          sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
-                        ) : (
-                          <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
-                        )}
-                      </div>
-                    </th>
-                  )}
-
-                  {/* 10. Cantidad de kg en stock */}
-                  {visibleColumns.stockKg && (
+                    {/* 4. Stock & Envase */}
                     <th
                       onClick={() => handleToggleSort('stockKg')}
-                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-right select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'stockKg' ? 'text-amber-300' : 'text-white'}`}
-                      title={`Ordenar por Kg en Stock (${sortField === 'stockKg' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      className={`py-2 px-3 font-bold uppercase text-[11px] tracking-wider text-right select-none cursor-pointer transition hover:bg-emerald-900/60 ${sortField === 'stockKg' || sortField === 'bolsas' ? 'text-amber-300' : 'text-white'}`}
+                      title="Ordenar por Stock (Kg o Bolsas)"
                     >
-                      <div className="inline-flex items-center gap-1 justify-end">
-                        <span>Cantidad kg</span>
-                        {sortField === 'stockKg' ? (
+                      <div className="inline-flex items-center gap-1.5 justify-end">
+                        <span>Stock & Envase</span>
+                        {sortField === 'stockKg' || sortField === 'bolsas' ? (
                           sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
                         ) : (
                           <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
                         )}
                       </div>
                     </th>
-                  )}
 
-                  {/* 11. Estado */}
-                  {visibleColumns.estado && (
+                    {/* 5. Estado */}
                     <th
                       onClick={() => handleToggleSort('estado')}
-                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-center select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'estado' ? 'text-amber-300' : 'text-white'}`}
-                      title={`Ordenar por Estado (${sortField === 'estado' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-center select-none cursor-pointer transition hover:bg-emerald-900/60 ${sortField === 'estado' ? 'text-amber-300' : 'text-white'}`}
+                      title="Ordenar por Estado"
                     >
                       <div className="inline-flex items-center gap-1 justify-center">
                         <span>Estado</span>
@@ -3633,13 +3353,255 @@ export const LotesView: React.FC<LotesViewProps> = ({
                         )}
                       </div>
                     </th>
-                  )}
 
-                  {/* 12. Acción */}
-                  <th className="py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-white text-center whitespace-nowrap">
-                    Acción
-                  </th>
-                </tr>
+                    {/* 6. Acción */}
+                    <th className="py-2 px-3 font-bold uppercase text-[11px] tracking-wider text-white text-center whitespace-nowrap">
+                      Acción
+                    </th>
+                  </tr>
+                ) : (
+                  <tr className="bg-[#00603C] text-white font-sans text-xs uppercase tracking-wider">
+                    <th className="py-2.5 px-3 font-semibold text-center w-10">
+                      <input
+                        type="checkbox"
+                        checked={filteredLotes.length > 0 && filteredLotes.every(l => selectedLoteIds.includes(l.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            const currentIds = filteredLotes.map(l => l.id);
+                            setSelectedLoteIds(prev => Array.from(new Set([...prev, ...currentIds])));
+                          } else {
+                            const currentIds = filteredLotes.map(l => l.id);
+                            setSelectedLoteIds(prev => prev.filter(id => !currentIds.includes(id)));
+                          }
+                        }}
+                        title="Seleccionar todos los lotes"
+                        aria-label="Seleccionar todos los lotes"
+                        className="rounded border-gray-300 text-[#00603C] focus:ring-offset-0 focus:ring-0 h-4 w-4 cursor-pointer"
+                      />
+                    </th>
+
+                    {/* 1. Fecha de alta */}
+                    {visibleColumns.fechaAlta && (
+                      <th
+                        onClick={() => handleToggleSort('fechaAlta')}
+                        className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'fechaAlta' ? 'text-amber-300' : 'text-white'}`}
+                        title={`Ordenar por Fecha de Alta (${sortField === 'fechaAlta' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1">
+                          <span>Fecha de alta</span>
+                          {sortField === 'fechaAlta' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 2. Cliente */}
+                    {visibleColumns.cliente && (
+                      <th
+                        onClick={() => handleToggleSort('cliente')}
+                        className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'cliente' ? 'text-amber-300' : 'text-white'}`}
+                        title={`Ordenar por Cliente (${sortField === 'cliente' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1">
+                          <span>Cliente</span>
+                          {sortField === 'cliente' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 3. Especie */}
+                    {visibleColumns.especie && (
+                      <th
+                        onClick={() => handleToggleSort('especie')}
+                        className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'especie' ? 'text-amber-300' : 'text-white'}`}
+                        title={`Ordenar por Especie (${sortField === 'especie' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1">
+                          <span>Especie</span>
+                          {sortField === 'especie' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 4. Variedad */}
+                    {visibleColumns.variedad && (
+                      <th
+                        onClick={() => handleToggleSort('variedad')}
+                        className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'variedad' ? 'text-amber-300' : 'text-white'}`}
+                        title={`Ordenar por Variedad (${sortField === 'variedad' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1">
+                          <span>Variedad</span>
+                          {sortField === 'variedad' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 5. Lote (Grande, claro y fácil de visualizar) */}
+                    {visibleColumns.loteId && (
+                      <th
+                        onClick={() => handleToggleSort('loteId')}
+                        className={`py-2 px-2.5 font-black uppercase text-xs tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'loteId' ? 'text-amber-300' : 'text-amber-400'}`}
+                        title={`Ordenar por Lote (${sortField === 'loteId' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1">
+                          <span>Lote</span>
+                          {sortField === 'loteId' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-amber-300/50 hover:text-amber-300" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 6. Tipo de lote */}
+                    {visibleColumns.tipo && (
+                      <th
+                        onClick={() => handleToggleSort('tipo')}
+                        className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'tipo' ? 'text-amber-300' : 'text-white'}`}
+                        title={`Ordenar por Tipo (${sortField === 'tipo' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1">
+                          <span>Tipo de lote</span>
+                          {sortField === 'tipo' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 7. Tratamiento */}
+                    {visibleColumns.tratamiento && (
+                      <th
+                        onClick={() => handleToggleSort('tratamiento')}
+                        className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'tratamiento' ? 'text-amber-300' : 'text-white'}`}
+                        title={`Ordenar por Tratamiento (${sortField === 'tratamiento' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1">
+                          <span>Tratamiento</span>
+                          {sortField === 'tratamiento' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 8. Categoría */}
+                    {visibleColumns.categoria && (
+                      <th
+                        onClick={() => handleToggleSort('categoria')}
+                        className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'categoria' ? 'text-amber-300' : 'text-white'}`}
+                        title={`Ordenar por Categoría (${sortField === 'categoria' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1">
+                          <span>Categoría</span>
+                          {sortField === 'categoria' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 8. Envase */}
+                    {visibleColumns.envase && (
+                      <th
+                        onClick={() => handleToggleSort('envase')}
+                        className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'envase' ? 'text-amber-300' : 'text-white'}`}
+                        title={`Ordenar por Envase (${sortField === 'envase' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1">
+                          <span>Envase</span>
+                          {sortField === 'envase' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 9. Cantidad de bolsas en stock */}
+                    {visibleColumns.bolsas && (
+                      <th
+                        onClick={() => handleToggleSort('bolsas')}
+                        className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-right select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'bolsas' ? 'text-amber-300' : 'text-white'}`}
+                        title={`Ordenar por Bolsas en Stock (${sortField === 'bolsas' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1 justify-end">
+                          <span>Cantidad bolsas</span>
+                          {sortField === 'bolsas' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 10. Cantidad de kg en stock */}
+                    {visibleColumns.stockKg && (
+                      <th
+                        onClick={() => handleToggleSort('stockKg')}
+                        className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-right select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'stockKg' ? 'text-amber-300' : 'text-white'}`}
+                        title={`Ordenar por Kg en Stock (${sortField === 'stockKg' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1 justify-end">
+                          <span>Cantidad kg</span>
+                          {sortField === 'stockKg' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 11. Estado */}
+                    {visibleColumns.estado && (
+                      <th
+                        onClick={() => handleToggleSort('estado')}
+                        className={`py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-center select-none cursor-pointer transition hover:bg-emerald-900/60 whitespace-nowrap ${sortField === 'estado' ? 'text-amber-300' : 'text-white'}`}
+                        title={`Ordenar por Estado (${sortField === 'estado' ? (sortOrder === 'asc' ? 'Ascendente' : 'Descendente') : 'Clic para ordenar'})`}
+                      >
+                        <div className="inline-flex items-center gap-1 justify-center">
+                          <span>Estado</span>
+                          {sortField === 'estado' ? (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-emerald-200/50 hover:text-white" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+
+                    {/* 12. Acción */}
+                    <th className="py-2 px-2.5 font-bold uppercase text-[11px] tracking-wider text-white text-center whitespace-nowrap">
+                      Acción
+                    </th>
+                  </tr>
+                )}
               </thead>
 
               <tbody className="divide-y divide-gray-100 text-xs">
@@ -3653,7 +3615,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                     }
                   >
                     {/* Checkbox de Selección */}
-                    <td className="py-2 px-3 text-center">
+                    <td className="py-2 px-3 text-center align-middle">
                       <input
                         type="checkbox"
                         checked={selectedLoteIds.includes(l.id)}
@@ -3664,176 +3626,319 @@ export const LotesView: React.FC<LotesViewProps> = ({
                       />
                     </td>
 
-                    {/* 1. Fecha de alta */}
-                    {visibleColumns.fechaAlta && (
-                      <td className="py-2 px-2.5 font-mono text-xs text-slate-700 whitespace-nowrap">
-                        {formatDateStr(l.fechaIngreso || l.fechaAlta || (l.fechaHoraProduccion ? l.fechaHoraProduccion.split('T')[0] : ''))}
-                      </td>
-                    )}
+                    {isTableGrouped ? (
+                      <>
+                        {/* 1. Lote & Fecha (Agrupado) */}
+                        <td className="py-2 px-3 align-middle whitespace-nowrap">
+                          {inlineEditingNameId === l.id ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={inlineEditingNameVal}
+                                onChange={(e) => setInlineEditingNameVal(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSaveLoteNameDirect(l);
+                                  } else if (e.key === 'Escape') {
+                                    setInlineEditingNameId(null);
+                                  }
+                                }}
+                                autoFocus
+                                className="px-2 py-1 text-xs font-black font-mono bg-amber-50 border-2 border-amber-500 rounded focus:outline-none focus:ring-2 focus:ring-emerald-600 text-slate-900 w-32 shadow-xs"
+                                placeholder="Nombre lote..."
+                              />
+                              <button
+                                type="button"
+                                disabled={isSavingInlineName}
+                                onClick={() => handleSaveLoteNameDirect(l)}
+                                className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow-xs cursor-pointer"
+                                title="Guardar nombre (Enter)"
+                              >
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isSavingInlineName}
+                                onClick={() => setInlineEditingNameId(null)}
+                                className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded shadow-xs cursor-pointer"
+                                title="Cancelar (Esc)"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 group/lotename">
+                                <span className="text-xs sm:text-sm font-black font-mono text-slate-950 px-2 py-0.5 bg-amber-200/90 rounded border border-amber-400 shadow-2xs tracking-wider inline-block">
+                                  {l.loteNro || l.id}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditLoteName(l)}
+                                  className="p-1 text-slate-400 hover:text-amber-800 hover:bg-amber-100 rounded transition opacity-60 group-hover/lotename:opacity-100 cursor-pointer"
+                                  title="Editar nombre de lote"
+                                >
+                                  <Edit2 className="w-3 h-3 text-amber-700" />
+                                </button>
+                                {l.estadoRegistro === 'PRE-CARGA' && (
+                                  <span className="px-1.5 py-0.2 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[9px] rounded font-mono" title="Pre-Carga: Planificado">
+                                    PRE
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 text-[11px] text-slate-500 font-mono">
+                                <Calendar className="w-3 h-3 text-slate-400" />
+                                <span>{formatDateStr(l.fechaIngreso || (l as any).fechaAlta || (l.fechaHoraProduccion ? l.fechaHoraProduccion.split('T')[0] : ''))}</span>
+                              </div>
+                            </div>
+                          )}
+                        </td>
 
-                    {/* 2. Cliente */}
-                    {visibleColumns.cliente && (
-                      <td className="py-2 px-2.5 font-semibold text-slate-900 text-xs whitespace-nowrap max-w-[160px] truncate" title={l.cliente || '—'}>
-                        {l.cliente || '—'}
-                      </td>
-                    )}
-
-                    {/* 3. Especie */}
-                    {visibleColumns.especie && (
-                      <td className="py-2 px-2.5 text-xs text-slate-700 font-medium whitespace-nowrap">
-                        {l.especie || '—'}
-                      </td>
-                    )}
-
-                    {/* 4. Variedad */}
-                    {visibleColumns.variedad && (
-                      <td className="py-2 px-2.5 text-xs font-bold text-slate-900 whitespace-nowrap">
-                        {l.variedad || '—'}
-                      </td>
-                    )}
-
-                    {/* 5. Lote (Grande, claro y fácil de visualizar - con edición directa en tabla) */}
-                    {visibleColumns.loteId && (
-                      <td className="py-2 px-2.5 whitespace-nowrap">
-                        {inlineEditingNameId === l.id ? (
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="text"
-                              value={inlineEditingNameVal}
-                              onChange={(e) => setInlineEditingNameVal(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  handleSaveLoteNameDirect(l);
-                                } else if (e.key === 'Escape') {
-                                  setInlineEditingNameId(null);
-                                }
-                              }}
-                              autoFocus
-                              className="px-2 py-1 text-xs font-black font-mono bg-amber-50 border-2 border-amber-500 rounded focus:outline-none focus:ring-2 focus:ring-emerald-600 text-slate-900 w-36 shadow-xs"
-                              placeholder="Nombre lote..."
-                            />
-                            <button
-                              type="button"
-                              disabled={isSavingInlineName}
-                              onClick={() => handleSaveLoteNameDirect(l)}
-                              className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow-xs cursor-pointer"
-                              title="Guardar nombre (Enter)"
-                            >
-                              <Check className="w-3.5 h-3.5 stroke-[3]" />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isSavingInlineName}
-                              onClick={() => setInlineEditingNameId(null)}
-                              className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded shadow-xs cursor-pointer"
-                              title="Cancelar (Esc)"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
+                        {/* 2. Cliente & Cultivo (Agrupado) */}
+                        <td className="py-2 px-3 align-middle">
+                          <div className="space-y-0.5 min-w-[140px] max-w-[220px]">
+                            <div className="font-bold text-slate-900 text-xs truncate" title={l.cliente || '—'}>
+                              {l.cliente || '—'}
+                            </div>
+                            <div className="text-[11px] text-slate-600 truncate" title={`${l.especie || '—'} · ${l.variedad || '—'}`}>
+                              <span className="font-semibold text-[#00603C]">{l.especie || '—'}</span>
+                              <span className="text-slate-400 mx-1">·</span>
+                              <span className="font-medium text-slate-800">{l.variedad || '—'}</span>
+                            </div>
                           </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 group/lotename">
-                            <span className="text-sm sm:text-base font-black font-mono text-slate-950 px-2.5 py-0.5 bg-amber-200/90 rounded border border-amber-400 shadow-2xs tracking-wider inline-block">
-                              {l.loteNro || l.id}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleStartEditLoteName(l)}
-                              className="p-1 text-slate-400 hover:text-amber-800 hover:bg-amber-100 rounded transition opacity-60 group-hover/lotename:opacity-100 cursor-pointer"
-                              title="Editar nombre de lote desde la tabla"
-                            >
-                              <Edit2 className="w-3.5 h-3.5 text-amber-700" />
-                            </button>
-                            {l.estadoRegistro === 'PRE-CARGA' && (
-                              <span className="px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[9px] rounded font-mono" title="Pre-Carga: Planificado">
-                                PRE
+                        </td>
+
+                        {/* 3. Clasificación & Tratamiento (Agrupado) */}
+                        <td className="py-2 px-3 align-middle">
+                          <div className="space-y-1 min-w-[150px]">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-slate-800 text-xs">
+                                {l.categoria || 'Original'}
                               </span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    )}
-
-                    {/* 6. Tipo de lote */}
-                    {visibleColumns.tipo && (
-                      <td className="py-2 px-2.5 whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-black uppercase tracking-wider border shadow-2xs ${getTipoBadgeStyle(l.tipo)}`}>
-                          <Tag className="w-3 h-3 shrink-0" />
-                          <span>{l.tipo || 'Final'}</span>
-                        </span>
-                      </td>
-                    )}
-
-                    {/* 7. Tratamiento (Etiqueta Roja para Tratado / Etiqueta Gris para Sin Tratar) */}
-                    {visibleColumns.tratamiento && (
-                      <td className="py-2 px-2.5 whitespace-nowrap">
-                        {isLoteTratado(l) ? (
-                          <div className="inline-flex flex-col items-start gap-0.5">
-                            <span
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white border border-red-700 shadow-2xs transition"
-                              title={getLoteProductoTratamiento(l) ? `Tratado con: ${getLoteProductoTratamiento(l)}` : 'Lote Tratado'}
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                              <span>TRATADO</span>
-                            </span>
-                            {getLoteProductoTratamiento(l) && (
-                              <span className="text-[10px] text-slate-600 font-bold truncate max-w-[130px] px-0.5" title={getLoteProductoTratamiento(l)!}>
-                                {getLoteProductoTratamiento(l)}
+                              <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-black uppercase tracking-wider border shadow-2xs ${getTipoBadgeStyle(l.tipo)}`}>
+                                {l.tipo || 'Final'}
                               </span>
-                            )}
+                            </div>
+                            <div>
+                              {isLoteTratado(l) ? (
+                                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-red-600 text-white border border-red-700 shadow-2xs">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                                  <span>TRATADO</span>
+                                  {getLoteProductoTratamiento(l) && (
+                                    <span className="font-normal opacity-90 truncate max-w-[90px]" title={getLoteProductoTratamiento(l)!}>
+                                      ({getLoteProductoTratamiento(l)})
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-slate-200 text-slate-700 border border-slate-300">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                  <span>SIN TRATAR</span>
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        ) : (
-                          <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black uppercase tracking-wider bg-slate-200 hover:bg-slate-300 text-slate-700 border border-slate-300 shadow-2xs transition"
-                            title="Lote Sin Tratar"
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                            <span>SIN TRATAR</span>
+                        </td>
+
+                        {/* 4. Stock & Envase (Agrupado) */}
+                        <td className="py-2 px-3 text-right align-middle whitespace-nowrap">
+                          <div className="space-y-0.5">
+                            <div className="font-mono font-black text-slate-900 text-xs sm:text-sm">
+                              {formatNumberArg(l.stockBolsas, 0)} b. <span className="text-emerald-800 font-bold">({formatNumberArg(l.stockKg, 0)} kg)</span>
+                            </div>
+                            <div className="text-[10.5px] text-slate-500 font-medium flex items-center justify-end gap-1.5">
+                              <span>{(l as any).envase || (l.kgPorBolsa ? `Bolsa ${l.kgPorBolsa} kg` : 'Bolsa 40 kg')}</span>
+                              {l.pesoDeMil && (
+                                <span className="text-[10px] text-amber-800 bg-amber-100/80 px-1.5 py-0.2 rounded font-bold border border-amber-300 font-mono" title={`Peso de mil: ${l.pesoDeMil} g`}>
+                                  PMS: {l.pesoDeMil}g
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 5. Estado */}
+                        <td className="py-2 px-2.5 text-center align-middle whitespace-nowrap">
+                          <span className={`inline-block px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider rounded-full border ${getEstadoBadgeStyle(l.estado)}`}>
+                            {l.estado}
                           </span>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        {/* 1. Fecha de alta */}
+                        {visibleColumns.fechaAlta && (
+                          <td className="py-2 px-2.5 font-mono text-xs text-slate-700 whitespace-nowrap">
+                            {formatDateStr(l.fechaIngreso || (l as any).fechaAlta || (l.fechaHoraProduccion ? l.fechaHoraProduccion.split('T')[0] : ''))}
+                          </td>
                         )}
-                      </td>
-                    )}
 
-                    {/* 8. Categoría */}
-                    {visibleColumns.categoria && (
-                      <td className="py-2 px-2.5 text-xs font-semibold text-slate-800 whitespace-nowrap">
-                        {l.categoria || 'Original'}
-                      </td>
-                    )}
+                        {/* 2. Cliente */}
+                        {visibleColumns.cliente && (
+                          <td className="py-2 px-2.5 font-semibold text-slate-900 text-xs whitespace-nowrap max-w-[160px] truncate" title={l.cliente || '—'}>
+                            {l.cliente || '—'}
+                          </td>
+                        )}
 
-                    {/* 8. Envase */}
-                    {visibleColumns.envase && (
-                      <td className="py-2 px-2.5 text-xs text-slate-700 font-medium whitespace-nowrap">
-                        {l.envase || (l.kgPorBolsa ? `Bolsa ${l.kgPorBolsa} kg` : 'Bolsa 40 kg')}
-                      </td>
-                    )}
+                        {/* 3. Especie */}
+                        {visibleColumns.especie && (
+                          <td className="py-2 px-2.5 text-xs text-slate-700 font-medium whitespace-nowrap">
+                            {l.especie || '—'}
+                          </td>
+                        )}
 
-                    {/* 9. Cantidad de bolsas en stock */}
-                    {visibleColumns.bolsas && (
-                      <td className="py-2 px-2.5 text-right whitespace-nowrap">
-                        <div className="font-mono font-black text-slate-900 text-xs sm:text-sm">
-                          {formatNumberArg(l.stockBolsas, 0)} b.
-                        </div>
-                      </td>
-                    )}
+                        {/* 4. Variedad */}
+                        {visibleColumns.variedad && (
+                          <td className="py-2 px-2.5 text-xs font-bold text-slate-900 whitespace-nowrap">
+                            {l.variedad || '—'}
+                          </td>
+                        )}
 
-                    {/* 10. Cantidad de kg en stock */}
-                    {visibleColumns.stockKg && (
-                      <td className="py-2 px-2.5 text-right whitespace-nowrap">
-                        <div className="font-mono font-bold text-emerald-800 text-xs sm:text-sm">
-                          {formatNumberArg(l.stockKg, 0)} kg
-                        </div>
-                      </td>
-                    )}
+                        {/* 5. Lote (Grande, claro y fácil de visualizar - con edición directa en tabla) */}
+                        {visibleColumns.loteId && (
+                          <td className="py-2 px-2.5 whitespace-nowrap">
+                            {inlineEditingNameId === l.id ? (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  value={inlineEditingNameVal}
+                                  onChange={(e) => setInlineEditingNameVal(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleSaveLoteNameDirect(l);
+                                    } else if (e.key === 'Escape') {
+                                      setInlineEditingNameId(null);
+                                    }
+                                  }}
+                                  autoFocus
+                                  className="px-2 py-1 text-xs font-black font-mono bg-amber-50 border-2 border-amber-500 rounded focus:outline-none focus:ring-2 focus:ring-emerald-600 text-slate-900 w-36 shadow-xs"
+                                  placeholder="Nombre lote..."
+                                />
+                                <button
+                                  type="button"
+                                  disabled={isSavingInlineName}
+                                  onClick={() => handleSaveLoteNameDirect(l)}
+                                  className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow-xs cursor-pointer"
+                                  title="Guardar nombre (Enter)"
+                                >
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isSavingInlineName}
+                                  onClick={() => setInlineEditingNameId(null)}
+                                  className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded shadow-xs cursor-pointer"
+                                  title="Cancelar (Esc)"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 group/lotename">
+                                <span className="text-sm sm:text-base font-black font-mono text-slate-950 px-2.5 py-0.5 bg-amber-200/90 rounded border border-amber-400 shadow-2xs tracking-wider inline-block">
+                                  {l.loteNro || l.id}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditLoteName(l)}
+                                  className="p-1 text-slate-400 hover:text-amber-800 hover:bg-amber-100 rounded transition opacity-60 group-hover/lotename:opacity-100 cursor-pointer"
+                                  title="Editar nombre de lote desde la tabla"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5 text-amber-700" />
+                                </button>
+                                {l.estadoRegistro === 'PRE-CARGA' && (
+                                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[9px] rounded font-mono" title="Pre-Carga: Planificado">
+                                    PRE
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        )}
 
-                    {/* 11. Estado */}
-                    {visibleColumns.estado && (
-                      <td className="py-2 px-2.5 text-center whitespace-nowrap">
-                        <span className={`inline-block px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider rounded-full border ${getEstadoBadgeStyle(l.estado)}`}>
-                          {l.estado}
-                        </span>
-                      </td>
+                        {/* 6. Tipo de lote */}
+                        {visibleColumns.tipo && (
+                          <td className="py-2 px-2.5 whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-black uppercase tracking-wider border shadow-2xs ${getTipoBadgeStyle(l.tipo)}`}>
+                              <Tag className="w-3 h-3 shrink-0" />
+                              <span>{l.tipo || 'Final'}</span>
+                            </span>
+                          </td>
+                        )}
+
+                        {/* 7. Tratamiento (Etiqueta Roja para Tratado / Etiqueta Gris para Sin Tratar) */}
+                        {visibleColumns.tratamiento && (
+                          <td className="py-2 px-2.5 whitespace-nowrap">
+                            {isLoteTratado(l) ? (
+                              <div className="inline-flex flex-col items-start gap-0.5">
+                                <span
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white border border-red-700 shadow-2xs transition"
+                                  title={getLoteProductoTratamiento(l) ? `Tratado con: ${getLoteProductoTratamiento(l)}` : 'Lote Tratado'}
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                                  <span>TRATADO</span>
+                                </span>
+                                {getLoteProductoTratamiento(l) && (
+                                  <span className="text-[10px] text-slate-600 font-bold truncate max-w-[130px] px-0.5" title={getLoteProductoTratamiento(l)!}>
+                                    {getLoteProductoTratamiento(l)}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black uppercase tracking-wider bg-slate-200 hover:bg-slate-300 text-slate-700 border border-slate-300 shadow-2xs transition"
+                                title="Lote Sin Tratar"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                <span>SIN TRATAR</span>
+                              </span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* 8. Categoría */}
+                        {visibleColumns.categoria && (
+                          <td className="py-2 px-2.5 text-xs font-semibold text-slate-800 whitespace-nowrap">
+                            {l.categoria || 'Original'}
+                          </td>
+                        )}
+
+                        {/* 8. Envase */}
+                        {visibleColumns.envase && (
+                          <td className="py-2 px-2.5 text-xs text-slate-700 font-medium whitespace-nowrap">
+                            {(l as any).envase || (l.kgPorBolsa ? `Bolsa ${l.kgPorBolsa} kg` : 'Bolsa 40 kg')}
+                          </td>
+                        )}
+
+                        {/* 9. Cantidad de bolsas en stock */}
+                        {visibleColumns.bolsas && (
+                          <td className="py-2 px-2.5 text-right whitespace-nowrap">
+                            <div className="font-mono font-black text-slate-900 text-xs sm:text-sm">
+                              {formatNumberArg(l.stockBolsas, 0)} b.
+                            </div>
+                          </td>
+                        )}
+
+                        {/* 10. Cantidad de kg en stock */}
+                        {visibleColumns.stockKg && (
+                          <td className="py-2 px-2.5 text-right whitespace-nowrap">
+                            <div className="font-mono font-bold text-emerald-800 text-xs sm:text-sm">
+                              {formatNumberArg(l.stockKg, 0)} kg
+                            </div>
+                          </td>
+                        )}
+
+                        {/* 11. Estado */}
+                        {visibleColumns.estado && (
+                          <td className="py-2 px-2.5 text-center whitespace-nowrap">
+                            <span className={`inline-block px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider rounded-full border ${getEstadoBadgeStyle(l.estado)}`}>
+                              {l.estado}
+                            </span>
+                          </td>
+                        )}
+                      </>
                     )}
 
                     {/* 12. Acción */}

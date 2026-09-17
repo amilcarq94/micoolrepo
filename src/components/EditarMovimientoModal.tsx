@@ -696,7 +696,7 @@ export const EditarMovimientoModal: React.FC<EditarMovimientoModalProps> = ({
                 className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 shadow-2xs"
               />
               <span className="text-[10px] text-slate-400 mt-0.5 block">
-                Impacta en el Reporte de Movimientos en Excel
+                Fecha efectiva registrada para la trazabilidad del movimiento
               </span>
             </div>
 

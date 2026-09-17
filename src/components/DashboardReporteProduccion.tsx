@@ -696,6 +696,8 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
         'Bolsas',
         'Kg/Bolsa',
         'Total Kg',
+        'Peso de 1000',
+        'Silo de Origen',
         activeSubReporte === 'clasificacion' ? 'Fecha Realización' : 'Fecha Tratamiento',
         'Orden Movimiento',
         'Ubicación'
@@ -711,6 +713,8 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
       'Bolsas': l.stockBolsas,
       'Kg/Bolsa': l.kgPorBolsa,
       'Total Kg': l.stockKg,
+      'Peso de 1000': (l.pesoDeMil !== undefined && l.pesoDeMil !== null && !isNaN(Number(l.pesoDeMil))) ? Number(l.pesoDeMil) : '—',
+      'Silo de Origen': l.siloOrigen ? String(l.siloOrigen) : (l.silosOrigen && l.silosOrigen.length > 0 ? l.silosOrigen.map(s => s.siloId).join(', ') : 'Sin dato'),
       'Fecha': activeSubReporte === 'clasificacion' ? (getFechaStr(l.fechaHoraProduccion) || l.fechaIngreso) : (getFechaStr(l.fechaTratamiento) || l.fechaIngreso),
       'Orden Movimiento': l.numeroOrdenMovimiento || l.ordenProcesoId || 'N/A',
       'Ubicación': l.ala && l.sector ? `Ala ${l.ala} - Sector ${l.sector}` : (l.ubicacionAcopio || 'Acopio General')

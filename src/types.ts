@@ -316,6 +316,7 @@ export interface Lote {
   origenesBolson?: OrigenBolsonItem[]; // Detalle dinámico de orígenes de bolsón con su sector
   ubicacionAcopio?: string; // Ubicación acopio (e.g., 'Ala A - Sector 1' o texto personalizado)
   humedad?: number; // Porcentaje de humedad del lote (% ej: 13.5). Dato informativo, no modifica los kg.
+  pesoDeMil?: number; // Peso de mil semillas en gramos (PMS, ej: 165.4). Cantidad de gramos determinada ingresada a mano.
   inaseInicio?: string; // Numeración inicial Código INASE
   inaseFinal?: string; // Numeración final Código INASE
   preMovimientos?: PreMovimientoLote[]; // Movimientos pendientes de confirmación vinculados a Órdenes de Movimiento

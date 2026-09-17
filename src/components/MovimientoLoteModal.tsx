@@ -578,7 +578,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                 />
               </div>
               <span className="text-[10px] text-slate-500 mt-1 block">
-                Fecha efectiva que impactará en el reporte de movimientos.
+                Fecha efectiva registrada para la trazabilidad del movimiento.
               </span>
             </div>
 

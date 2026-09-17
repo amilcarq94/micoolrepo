@@ -1498,12 +1498,21 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               <span className="font-medium text-gray-700 block mt-0.5">{lote.kgPorBolsa || 40} kg por bolsa</span>
             </div>
 
-            <div className="border-t border-gray-50 pt-3">
-              <span className="text-[9px] uppercase tracking-wider text-gray-400 block font-bold">% Humedad del Lote</span>
-              <span className="font-semibold text-gray-800 text-sm block mt-0.5">
-                {lote.humedad !== undefined ? `${lote.humedad}%` : '13.5%'}
-                <span className="text-[10px] text-gray-400 font-normal ml-1.5">(Dato Informativo)</span>
-              </span>
+            <div className="border-t border-gray-50 pt-3 flex items-start justify-between">
+              <div>
+                <span className="text-[9px] uppercase tracking-wider text-gray-400 block font-bold">% Humedad del Lote</span>
+                <span className="font-semibold text-gray-800 text-sm block mt-0.5">
+                  {lote.humedad !== undefined ? `${lote.humedad}%` : '13.5%'}
+                  <span className="text-[10px] text-gray-400 font-normal ml-1.5">(Informativo)</span>
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-[9px] uppercase tracking-wider text-emerald-800 block font-bold">Peso de mil (g)</span>
+                <span className="font-mono font-bold text-emerald-900 text-sm block mt-0.5">
+                  {lote.pesoDeMil !== undefined && lote.pesoDeMil !== null ? `${lote.pesoDeMil} g` : '—'}
+                  <span className="text-[10px] text-emerald-600 font-normal ml-1.5">(PMS)</span>
+                </span>
+              </div>
             </div>
 
             {/* Sección: Vinculación y Origen de Proceso / Silo / Bolsón */}

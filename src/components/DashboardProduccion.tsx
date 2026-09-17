@@ -102,6 +102,8 @@ export interface ProductionItemRecord {
   kgDespachados: number;
   kgPasadosConsumo: number;
   bolsasPasadasConsumo: number;
+  bolsasMovimientos?: number;
+  kgMovimientos?: number;
   estadoLote: string; // 'Disponible' | 'Reservado' | 'Agotado' | 'A Consumo'
   ubicacion: string;
   loteOriginal: Lote;
@@ -311,33 +313,247 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
   // -------------------------------------------------------------
   const allProductionRecords: ProductionItemRecord[] = useMemo(() => {
     return lotes.map((lote) => {
-      // 1. Entradas registradas en el historial del lote
-      const entradas = lote.historial?.filter((m) => m.tipo && m.tipo.startsWith('Entrada')) || [];
-      const salidasHistorial = lote.historial?.filter((m) => m.tipo && (m.tipo.startsWith('Salida') || m.tipo.includes('despacho'))) || [];
+      const pesoBolsa = lote.kgPorBolsa || 40;
 
-      // 2. Salidas cruzadas desde la tabla de SalidasRegistradas vinculadas a este lote
-      const salidasExt = salidas.filter((s) => s.loteId === lote.id || s.loteId === lote.loteNro);
+      // 1. Entradas registradas en el historial del lote
+      const entradas =
+        lote.historial?.filter((m) => {
+          if (!m) return false;
+          const tipoStr = (m.tipo || '').trim();
+          return (
+            tipoStr.startsWith('Entrada') ||
+            tipoStr.startsWith('Alta') ||
+            tipoStr.startsWith('Ingreso') ||
+            tipoStr.startsWith('Reingreso')
+          );
+        }) || [];
+
+      // 2. Clasificación estricta de salidas del historial del lote
+      let bolsasDespachoHist = 0;
+      let kgDespachoHist = 0;
+      let bolsasMovimientosHist = 0;
+      let kgMovimientosHist = 0;
+      let bolsasConsumoHist = 0;
+      let kgConsumoHist = 0;
+
+      (lote.historial || []).forEach((m) => {
+        if (!m) return;
+        const tipoStr = (m.tipo || '').trim();
+        const tipoLower = tipoStr.toLowerCase();
+        const detLower = (m.detalle || '').toLowerCase();
+        const tipoSalida = (m.tipoSalida || '').toLowerCase();
+
+        // Omitir entradas
+        const esEntrada =
+          tipoStr.startsWith('Entrada') ||
+          tipoStr.startsWith('Alta') ||
+          tipoStr.startsWith('Ingreso') ||
+          tipoStr.startsWith('Reingreso');
+        if (esEntrada) return;
+
+        const cantBolsas = Math.abs(m.cantidadBolsas || 0);
+        const kgBolsa = m.kgPorBolsa || pesoBolsa;
+        const cantKg = Math.abs(m.cantidadKg || 0) || cantBolsas * kgBolsa;
+
+        // A. Movimientos internos entre lotes (transferencias, curado desdoblado, orden de movimiento)
+        const esMovimiento =
+          tipoSalida === 'movimiento' ||
+          tipoStr === 'Salida por movimiento' ||
+          tipoStr === 'Salida por movimientos' ||
+          tipoLower.includes('movimiento') ||
+          detLower.includes('movimiento') ||
+          detLower.includes('transferencia') ||
+          detLower.includes('hacia nuevo lote') ||
+          detLower.includes('desdoblamiento') ||
+          detLower.includes('curado') ||
+          detLower.includes('orden de movimiento') ||
+          detLower.includes('precarga de movimiento');
+
+        if (esMovimiento) {
+          bolsasMovimientosHist += cantBolsas;
+          kgMovimientosHist += cantKg;
+          return;
+        }
+
+        // B. Pasado a Consumo / Mermas / Ajuste a consumo
+        const esConsumo =
+          tipoSalida === 'consumo' ||
+          tipoStr === 'Pasado a Consumo' ||
+          tipoLower.includes('consumo') ||
+          detLower.includes('consumo') ||
+          detLower.includes('a consumo') ||
+          detLower.includes('descarte') ||
+          detLower.includes('merma');
+
+        if (esConsumo) {
+          bolsasConsumoHist += cantBolsas;
+          kgConsumoHist += cantKg;
+          return;
+        }
+
+        // C. Salida manual sin remito de despacho comercial
+        if (tipoStr === 'Salida manual' || tipoSalida === 'manual') {
+          const tieneRemito = Boolean(m.remitoCliente && m.remitoCliente.trim() !== '-' && m.remitoCliente.trim() !== '');
+          const mencionaDespacho = detLower.includes('despacho') || detLower.includes('remito') || detLower.includes('orden de carga');
+          if (!tieneRemito && !mencionaDespacho) {
+            bolsasConsumoHist += cantBolsas;
+            kgConsumoHist += cantKg;
+            return;
+          }
+        }
+
+        // D. Despacho comercial efectivo (con remito / orden de carga / chofer)
+        const esDespacho =
+          tipoSalida === 'despacho' ||
+          tipoStr === 'Salida por despacho' ||
+          tipoStr === 'Despacho' ||
+          Boolean(m.ordenId && (m.ordenId.startsWith('OC-') || m.ordenId.startsWith('ORD-'))) ||
+          Boolean(m.remitoCliente && m.remitoCliente.trim() !== '-' && m.remitoCliente.trim() !== '') ||
+          detLower.includes('despacho') ||
+          detLower.includes('remito') ||
+          detLower.includes('orden de carga') ||
+          detLower.includes('orden n°') ||
+          (tipoStr === 'Salida' && (Boolean(m.chofer) || detLower.includes('remito') || detLower.includes('despacho')));
+
+        if (esDespacho) {
+          bolsasDespachoHist += cantBolsas;
+          kgDespachoHist += cantKg;
+        }
+      });
+
+      // 3. Salidas cruzadas desde la tabla de SalidasRegistradas vinculadas a este lote (despachos oficiales)
+      const salidasExt = (salidas || []).filter(
+        (s) => s.loteId === lote.id || s.loteId === lote.loteNro
+      );
       const kgSalidasExt = salidasExt.reduce((acc, s) => acc + (s.totalKg || 0), 0);
       const bolsasSalidasExt = salidasExt.reduce((acc, s) => acc + (s.cantidadBolsas || 0), 0);
 
-      const kgSalidasHist = salidasHistorial.reduce((acc, m) => acc + (m.cantidadKg || 0), 0);
-      const bolsasSalidasHist = salidasHistorial.reduce((acc, m) => acc + (m.cantidadBolsas || 0), 0);
+      // Deduplicación: no sumar dos veces el mismo despacho si ya está en salidasExt y en lote.historial
+      let bolsasHistDespachoNoExt = 0;
+      let kgHistDespachoNoExt = 0;
 
-      const kgDespachados = Math.max(kgSalidasHist, kgSalidasExt);
-      const bolsasDespachadas = Math.max(bolsasSalidasHist, bolsasSalidasExt);
+      (lote.historial || []).forEach((m) => {
+        if (!m) return;
+        const tipoStr = (m.tipo || '').trim();
+        const tipoLower = tipoStr.toLowerCase();
+        const detLower = (m.detalle || '').toLowerCase();
+        const tipoSalida = (m.tipoSalida || '').toLowerCase();
 
-      // 3. Bolsas y Kg Producidos
+        // Omitir si es movimiento o consumo
+        const esMovimiento =
+          tipoSalida === 'movimiento' ||
+          tipoStr === 'Salida por movimiento' ||
+          tipoStr === 'Salida por movimientos' ||
+          tipoLower.includes('movimiento') ||
+          detLower.includes('movimiento') ||
+          detLower.includes('transferencia') ||
+          detLower.includes('hacia nuevo lote') ||
+          detLower.includes('desdoblamiento') ||
+          detLower.includes('curado') ||
+          detLower.includes('orden de movimiento') ||
+          detLower.includes('precarga de movimiento');
+        if (esMovimiento) return;
+
+        const esConsumo =
+          tipoSalida === 'consumo' ||
+          tipoStr === 'Pasado a Consumo' ||
+          tipoLower.includes('consumo') ||
+          detLower.includes('consumo') ||
+          detLower.includes('a consumo') ||
+          detLower.includes('descarte') ||
+          detLower.includes('merma');
+        if (esConsumo) return;
+
+        if (tipoStr === 'Salida manual' || tipoSalida === 'manual') {
+          const tieneRemito = Boolean(m.remitoCliente && m.remitoCliente.trim() !== '-' && m.remitoCliente.trim() !== '');
+          const mencionaDespacho = detLower.includes('despacho') || detLower.includes('remito') || detLower.includes('orden de carga');
+          if (!tieneRemito && !mencionaDespacho) return;
+        }
+
+        const esDespacho =
+          tipoSalida === 'despacho' ||
+          tipoStr === 'Salida por despacho' ||
+          tipoStr === 'Despacho' ||
+          Boolean(m.ordenId && (m.ordenId.startsWith('OC-') || m.ordenId.startsWith('ORD-'))) ||
+          Boolean(m.remitoCliente && m.remitoCliente.trim() !== '-' && m.remitoCliente.trim() !== '') ||
+          detLower.includes('despacho') ||
+          detLower.includes('remito') ||
+          detLower.includes('orden de carga') ||
+          detLower.includes('orden n°') ||
+          (tipoStr === 'Salida' && (Boolean(m.chofer) || detLower.includes('remito') || detLower.includes('despacho')));
+
+        if (!esDespacho) return;
+
+        const mRemito = (m.remitoCliente || '').trim().toUpperCase();
+        const detUpper = (m.detalle || '').toUpperCase();
+
+        const alreadyInExt = salidasExt.some((s) => {
+          const sId = (s.id || '').trim().toUpperCase();
+          const sRemito = (s.remitoCliente || '').trim().toUpperCase();
+          if (sId && (mRemito === sId || detUpper.includes(sId))) return true;
+          if (sRemito && sRemito !== '-' && (mRemito === sRemito || detUpper.includes(sRemito))) return true;
+          if (m.ordenId && s.id === m.ordenId) return true;
+          return false;
+        });
+
+        if (!alreadyInExt) {
+          const cantB = Math.abs(m.cantidadBolsas || 0);
+          const kgB = m.kgPorBolsa || pesoBolsa;
+          const cantKg = Math.abs(m.cantidadKg || 0) || cantB * kgB;
+          bolsasHistDespachoNoExt += cantB;
+          kgHistDespachoNoExt += cantKg;
+        }
+      });
+
+      let bolsasDespachadas = bolsasSalidasExt + bolsasHistDespachoNoExt;
+      let kgDespachados = kgSalidasExt + kgHistDespachoNoExt;
+
+      // Consolidación de seguridad para datos de despacho
+      bolsasDespachadas = Math.max(bolsasDespachadas, Math.max(bolsasSalidasExt, bolsasDespachoHist));
+      kgDespachados = Math.max(kgDespachados, Math.max(kgSalidasExt, kgDespachoHist));
+
+      const bolsasMovimientos = bolsasMovimientosHist;
+      const kgMovimientos = kgMovimientosHist;
+
+      // 4. Kilos Pasados a Consumo (Lotes pasados a consumo)
+      const kgAjustesConsumo = kgConsumoHist;
+
+      let kgLoteConsumoTotal = 0;
+      if (lote.estado === 'A Consumo' || (lote.tipo && lote.tipo.toLowerCase().includes('consumo'))) {
+        kgLoteConsumoTotal = Math.max(lote.stockKg || 0, (lote.stockKg || 0) + kgConsumoHist);
+      }
+
+      const kgSilosConsumo = (movimientosSilo || []).filter((m) => {
+        const matchLote =
+          (m.loteId && (m.loteId === lote.id || m.loteId === lote.loteNro)) ||
+          (m.loteNro && (m.loteNro === lote.loteNro || m.loteNro === lote.id)) ||
+          (m.loteResultanteId && m.loteResultanteId === lote.id);
+        const esConsumo =
+          m.motivoManual === 'Consumo a granel' ||
+          (m.observaciones && m.observaciones.toLowerCase().includes('consumo')) ||
+          (m.tipo && m.tipo.toLowerCase().includes('consumo'));
+        return matchLote && esConsumo;
+      }).reduce((acc, m) => acc + (m.kg || 0), 0);
+
+      const kgPasadosConsumo = Math.max(kgLoteConsumoTotal, kgAjustesConsumo) + kgSilosConsumo;
+      const bolsasPasadasConsumo = pesoBolsa > 0 ? Math.round(kgPasadosConsumo / pesoBolsa) : 0;
+
+      // 5. Bolsas y Kg Producidos
+      // La confección total integra el stock en nave + las salidas SOLO por despacho + salidas por movimiento + pasado a consumo
+      const totalEgresosBolsas = bolsasDespachadas + bolsasMovimientos + bolsasPasadasConsumo;
+      const totalEgresosKg = kgDespachados + kgMovimientos + kgPasadosConsumo;
+
       let bolsasProducidas = 0;
       let kgProducidos = 0;
 
       if (entradas.length > 0) {
         const bEnt = entradas.reduce((acc, m) => acc + (m.cantidadBolsas || 0), 0);
         const kgEnt = entradas.reduce((acc, m) => acc + (m.cantidadKg || 0), 0);
-        bolsasProducidas = Math.max(bEnt, (lote.stockBolsas || 0) + bolsasDespachadas);
-        kgProducidos = Math.max(kgEnt, (lote.stockKg || 0) + kgDespachados);
+        bolsasProducidas = Math.max(bEnt, (lote.stockBolsas || 0) + totalEgresosBolsas);
+        kgProducidos = Math.max(kgEnt, (lote.stockKg || 0) + totalEgresosKg);
       } else {
-        bolsasProducidas = (lote.stockBolsas || 0) + bolsasDespachadas;
-        kgProducidos = (lote.stockKg || 0) + kgDespachados;
+        bolsasProducidas = (lote.stockBolsas || 0) + totalEgresosBolsas;
+        kgProducidos = (lote.stockKg || 0) + totalEgresosKg;
       }
 
       // Si aún da 0 y hay stock
@@ -346,7 +562,7 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
         bolsasProducidas = lote.stockBolsas || 0;
       }
 
-      // 4. Tratamientos y detección si es Tratado
+      // 6. Tratamientos y detección si es Tratado
       const trats = Array.isArray(lote.tratamiento)
         ? lote.tratamiento
         : [lote.tratamiento || 'Sin Tratar'];
@@ -370,49 +586,10 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
         );
       });
 
-      // 5. Ubicación
-      const ubicacion = lote.ubicacionAcopio || (lote.ala && lote.sector ? `Ala ${lote.ala} - Sector ${lote.sector}` : 'Planta General');
-
-      // 6. Kilos Pasados a Consumo (Lotes pasados a consumo)
-      // Tomado desde Ajuste General de Existencias (historial de movimientos de stock) y stock de silos en lotes
-      const pesoBolsa = lote.kgPorBolsa || 40;
-
-      // a. Kilos registrados en Ajuste General de Existencias (historial del lote)
-      const kgAjustesConsumo = (lote.historial || []).reduce((acc, m) => {
-        const tipoLower = (m.tipo || '').toLowerCase();
-        const detLower = (m.detalle || '').toLowerCase();
-        if (
-          m.tipo === 'Pasado a Consumo' ||
-          tipoLower.includes('consumo') ||
-          detLower.includes('consumo') ||
-          detLower.includes('a consumo')
-        ) {
-          const kgMov = m.cantidadKg || (m.cantidadBolsas || 0) * (m.kgPorBolsa || pesoBolsa);
-          return acc + kgMov;
-        }
-        return acc;
-      }, 0);
-
-      // b. Si el lote completo tiene estado 'A Consumo' o tipo 'Bajo Consumo'
-      let kgLoteConsumoTotal = 0;
-      if (lote.estado === 'A Consumo' || (lote.tipo && lote.tipo.toLowerCase().includes('consumo'))) {
-        kgLoteConsumoTotal = Math.max(lote.stockKg || 0, kgProducidos);
-      }
-
-      // c. Kilos desde movimientos de Silos vinculados al lote marcados para consumo / salida manual a consumo
-      const kgSilosConsumo = (movimientosSilo || []).filter((m) => {
-        const matchLote = (m.loteId && (m.loteId === lote.id || m.loteId === lote.loteNro)) ||
-                          (m.loteNro && (m.loteNro === lote.loteNro || m.loteNro === lote.id)) ||
-                          (m.loteResultanteId && m.loteResultanteId === lote.id);
-        const esConsumo = m.motivoManual === 'Consumo a granel' ||
-                          (m.observaciones && m.observaciones.toLowerCase().includes('consumo')) ||
-                          (m.tipo && m.tipo.toLowerCase().includes('consumo'));
-        return matchLote && esConsumo;
-      }).reduce((acc, m) => acc + (m.kg || 0), 0);
-
-      // Consolidación final del volumen pasado a consumo
-      const kgPasadosConsumo = Math.max(kgLoteConsumoTotal, kgAjustesConsumo) + kgSilosConsumo;
-      const bolsasPasadasConsumo = pesoBolsa > 0 ? Math.round(kgPasadosConsumo / pesoBolsa) : 0;
+      // 7. Ubicación
+      const ubicacion =
+        lote.ubicacionAcopio ||
+        (lote.ala && lote.sector ? `Ala ${lote.ala} - Sector ${lote.sector}` : 'Planta General');
 
       const rawFecha =
         (lote.fechaHoraProduccion ? lote.fechaHoraProduccion.split('T')[0] : '') ||
@@ -446,6 +623,8 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
         kgDespachados,
         kgPasadosConsumo,
         bolsasPasadasConsumo,
+        bolsasMovimientos,
+        kgMovimientos,
         estadoLote: lote.estado || 'Disponible',
         ubicacion,
         loteOriginal: lote,
@@ -804,12 +983,14 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
     () => selectedRecords.reduce((sum, r) => sum + r.kgStock, 0),
     [selectedRecords]
   );
+  // SOLO egresos efectivos por despacho comercial (excluye movimientos internos y pasado a consumo)
   const totalKgDespachados = useMemo(
-    () => Math.max(0, totalKgProducidos - totalKgStock),
-    [totalKgProducidos, totalKgStock]
+    () => selectedRecords.reduce((sum, r) => sum + r.kgDespachados, 0),
+    [selectedRecords]
   );
   const totalTnProducidas = totalKgProducidos / 1000;
   const totalTnStock = totalKgStock / 1000;
+  const totalTnDespachadas = totalKgDespachados / 1000;
   const porcentajeKgEnStock =
     totalKgProducidos > 0 ? (totalKgStock / totalKgProducidos) * 100 : 0;
   const porcentajeKgDespachados =
@@ -824,10 +1005,13 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
     () => selectedRecords.reduce((sum, r) => sum + r.bolsasStock, 0),
     [selectedRecords]
   );
+  // SOLO bolsas egresadas por despacho oficial (excluye movimientos y pasado a consumo)
   const totalBolsasDespachadas = useMemo(
-    () => Math.max(0, totalBolsasProducidas - totalBolsasStock),
-    [totalBolsasProducidas, totalBolsasStock]
+    () => selectedRecords.reduce((sum, r) => sum + r.bolsasDespachadas, 0),
+    [selectedRecords]
   );
+  const porcentajeBolsasDespachadas =
+    totalBolsasProducidas > 0 ? (totalBolsasDespachadas / totalBolsasProducidas) * 100 : 0;
   const totalLotesProducidos = selectedRecords.length;
   const totalLotesConStock = useMemo(
     () => selectedRecords.filter((r) => r.bolsasStock > 0).length,
@@ -835,6 +1019,16 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
   );
   const porcentajeBolsasEnStock =
     totalBolsasProducidas > 0 ? (totalBolsasStock / totalBolsasProducidas) * 100 : 0;
+
+  // TOTALES DE SALIDAS POR MOVIMIENTOS INTERNOS ENTRE LOTES
+  const totalKgMovimientos = useMemo(
+    () => selectedRecords.reduce((sum, r) => sum + (r.kgMovimientos || 0), 0),
+    [selectedRecords]
+  );
+  const totalBolsasMovimientos = useMemo(
+    () => selectedRecords.reduce((sum, r) => sum + (r.bolsasMovimientos || 0), 0),
+    [selectedRecords]
+  );
 
   // VISOR 3: ANÁLISIS COMPARATIVO DE TRATAMIENTO (De los lotes seleccionados)
   const kgTratadosProducidos = useMemo(
@@ -1015,14 +1209,16 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
       { 'MÉTRICA / INDICADOR': 'Total Toneladas Producidas', 'VALOR / CANTIDAD': Number(totalTnProducidas.toFixed(2)), 'UNIDAD': 'Tn', 'DETALLE / OBSERVACIÓN': 'Equivalente métrico en toneladas' },
       { 'MÉTRICA / INDICADOR': 'Total Kilos en Stock Físico', 'VALOR / CANTIDAD': totalKgStock, 'UNIDAD': 'kg', 'DETALLE / OBSERVACIÓN': `${porcentajeKgEnStock.toFixed(1)}% del volumen total en nave` },
       { 'MÉTRICA / INDICADOR': 'Total Toneladas en Stock Físico', 'VALOR / CANTIDAD': Number(totalTnStock.toFixed(2)), 'UNIDAD': 'Tn', 'DETALLE / OBSERVACIÓN': 'Existencias disponibles' },
-      { 'MÉTRICA / INDICADOR': 'Total Kilos Despachados / Egresados', 'VALOR / CANTIDAD': totalKgDespachados, 'UNIDAD': 'kg', 'DETALLE / OBSERVACIÓN': `${porcentajeKgDespachados.toFixed(1)}% despachado en remitos` },
-      { 'MÉTRICA / INDICADOR': 'Total Toneladas Despachadas', 'VALOR / CANTIDAD': Number((totalKgDespachados / 1000).toFixed(2)), 'UNIDAD': 'Tn', 'DETALLE / OBSERVACIÓN': 'Volumen egresado de planta' },
+      { 'MÉTRICA / INDICADOR': 'Total Kilos Despachados (Solo Despacho)', 'VALOR / CANTIDAD': totalKgDespachados, 'UNIDAD': 'kg', 'DETALLE / OBSERVACIÓN': `${porcentajeKgDespachados.toFixed(1)}% egresado estrictamente por despacho comercial` },
+      { 'MÉTRICA / INDICADOR': 'Total Toneladas Despachadas (Solo Despacho)', 'VALOR / CANTIDAD': Number((totalKgDespachados / 1000).toFixed(2)), 'UNIDAD': 'Tn', 'DETALLE / OBSERVACIÓN': 'Volumen egresado con remito oficial' },
+      { 'MÉTRICA / INDICADOR': 'Total Kilos Movimientos Internos', 'VALOR / CANTIDAD': totalKgMovimientos, 'UNIDAD': 'kg', 'DETALLE / OBSERVACIÓN': 'Salidas por transferencias o desdoblamiento entre lotes' },
       { 'MÉTRICA / INDICADOR': '', 'VALOR / CANTIDAD': '', 'UNIDAD': '', 'DETALLE / OBSERVACIÓN': '' },
 
       { 'MÉTRICA / INDICADOR': '=== 2. BALANCE DE BOLSAS Y LOTES (VISOR 1) ===', 'VALOR / CANTIDAD': '', 'UNIDAD': '', 'DETALLE / OBSERVACIÓN': '' },
       { 'MÉTRICA / INDICADOR': 'Total Bolsas Producidas', 'VALOR / CANTIDAD': totalBolsasProducidas, 'UNIDAD': 'bolsas', 'DETALLE / OBSERVACIÓN': 'Confección total acumulada' },
       { 'MÉTRICA / INDICADOR': 'Total Bolsas en Stock', 'VALOR / CANTIDAD': totalBolsasStock, 'UNIDAD': 'bolsas', 'DETALLE / OBSERVACIÓN': `${porcentajeBolsasEnStock.toFixed(1)}% de las bolsas disponibles` },
-      { 'MÉTRICA / INDICADOR': 'Total Bolsas Despachadas', 'VALOR / CANTIDAD': totalBolsasDespachadas, 'UNIDAD': 'bolsas', 'DETALLE / OBSERVACIÓN': `${(100 - porcentajeBolsasEnStock).toFixed(1)}% entregadas` },
+      { 'MÉTRICA / INDICADOR': 'Total Bolsas Despachadas (Solo Despacho)', 'VALOR / CANTIDAD': totalBolsasDespachadas, 'UNIDAD': 'bolsas', 'DETALLE / OBSERVACIÓN': `${porcentajeBolsasDespachadas.toFixed(1)}% entregadas con remito oficial` },
+      { 'MÉTRICA / INDICADOR': 'Total Bolsas Movimientos Internos', 'VALOR / CANTIDAD': totalBolsasMovimientos, 'UNIDAD': 'bolsas', 'DETALLE / OBSERVACIÓN': 'Envases transferidos a otros lotes' },
       { 'MÉTRICA / INDICADOR': 'Total Lotes Producidos', 'VALOR / CANTIDAD': totalLotesProducidos, 'UNIDAD': 'lotes', 'DETALLE / OBSERVACIÓN': 'Partidas registradas' },
       { 'MÉTRICA / INDICADOR': 'Total Lotes con Stock Activo', 'VALOR / CANTIDAD': totalLotesConStock, 'UNIDAD': 'lotes', 'DETALLE / OBSERVACIÓN': `${totalLotesConStock} de ${totalLotesProducidos} lotes con stock > 0` },
       { 'MÉTRICA / INDICADOR': '', 'VALOR / CANTIDAD': '', 'UNIDAD': '', 'DETALLE / OBSERVACIÓN': '' },
@@ -1147,15 +1343,15 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
 
 ⚖️ TOTAL KILOGRAMOS (VISOR 1):
 • Producidos: ${formatNumberArg(totalKgProducidos, 0)} kg (${totalTnProducidas.toFixed(2)} Tn)
-• En Stock: ${formatNumberArg(totalKgStock, 0)} kg (${totalTnStock.toFixed(2)} Tn)
-• Despachados: ${formatNumberArg(totalKgDespachados, 0)} kg (${porcentajeKgDespachados.toFixed(1)}%)
-• Pasado a Consumo: ${formatNumberArg(totalKgPasadosConsumo, 0)} kg (${(totalKgPasadosConsumo / 1000).toFixed(2)} Tn en ${totalLotesPasadosConsumo} lotes)
+• En Stock: ${formatNumberArg(totalKgStock, 0)} kg (${totalTnStock.toFixed(2)} Tn - ${porcentajeKgEnStock.toFixed(1)}%)
+• Despachados: ${formatNumberArg(totalKgDespachados, 0)} kg (${(totalKgDespachados / 1000).toFixed(2)} Tn - ${porcentajeKgDespachados.toFixed(1)}% SOLO por despacho)
+${totalKgMovimientos > 0 ? `• Movimientos Internos: ${formatNumberArg(totalKgMovimientos, 0)} kg (${(totalKgMovimientos / 1000).toFixed(2)} Tn)\n` : ''}• Pasado a Consumo: ${formatNumberArg(totalKgPasadosConsumo, 0)} kg (${(totalKgPasadosConsumo / 1000).toFixed(2)} Tn en ${totalLotesPasadosConsumo} lotes)
 
 📦 TOTAL BOLSAS & LOTES (VISOR 1):
 • Producidas: ${formatNumberArg(totalBolsasProducidas, 0)} bolsas
 • En Stock: ${formatNumberArg(totalBolsasStock, 0)} bolsas (${porcentajeBolsasEnStock.toFixed(1)}%)
-• Despachadas: ${formatNumberArg(totalBolsasDespachadas, 0)} bolsas
-• Pasadas a Consumo: ${formatNumberArg(totalBolsasPasadasConsumo, 0)} bolsas
+• Despachadas: ${formatNumberArg(totalBolsasDespachadas, 0)} bolsas (${porcentajeBolsasDespachadas.toFixed(1)}% SOLO por despacho)
+${totalBolsasMovimientos > 0 ? `• Movimientos Internos: ${formatNumberArg(totalBolsasMovimientos, 0)} bolsas\n` : ''}• Pasadas a Consumo: ${formatNumberArg(totalBolsasPasadasConsumo, 0)} bolsas
 • Lotes: ${totalLotesProducidos} producidos / ${totalLotesConStock} con stock activo / ${totalLotesPasadosConsumo} con consumo
 
 🧪 ANÁLISIS TRATAMIENTO (VISOR 2):
@@ -1527,7 +1723,7 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                 </div>
               </div>
 
-              {/* TARJETA 3: BOLSAS DESPACHADAS / EGRESADAS (FLUJO DE SALIDA) */}
+              {/* TARJETA 3: BOLSAS DESPACHADAS (SOLO EGRESOS POR DESPACHO) */}
               <div className="p-6 rounded-2xl border-2 border-white/15 bg-black/40 hover:border-amber-400/50 transition-all duration-200 shadow-xl flex flex-col justify-between space-y-4 relative overflow-hidden">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -1536,7 +1732,7 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                       Bolsas Despachadas
                     </span>
                     <span className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/25 text-amber-200 uppercase tracking-wider">
-                      {(100 - porcentajeBolsasEnStock).toFixed(1)}% Egresado
+                      {porcentajeBolsasDespachadas.toFixed(1)}% Despachado
                     </span>
                   </div>
 
@@ -1549,7 +1745,7 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                       <span className="text-sm sm:text-base font-bold text-amber-200 font-sans">bolsas</span>
                     </div>
                     <span className="text-xs text-slate-300 block mt-2 font-medium">
-                      Salidas efectivas registradas con remito
+                      Salidas efectivas registradas SOLO por despacho
                     </span>
                   </div>
                 </div>
@@ -1557,13 +1753,13 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                 {/* Métricas Operativas de Despacho */}
                 <div className="pt-3 border-t border-white/10 grid grid-cols-2 gap-2 text-xs">
                   <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
-                    <span className="block text-[10px] uppercase font-bold text-slate-400">Tn Egresadas</span>
+                    <span className="block text-[10px] uppercase font-bold text-slate-400">Tn Despachadas</span>
                     <span className="text-base font-mono font-bold text-amber-200">
                       {(totalKgDespachados / 1000).toFixed(2)} <span className="text-xs font-normal text-slate-300">Tn</span>
                     </span>
                   </div>
                   <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
-                    <span className="block text-[10px] uppercase font-bold text-slate-400">Kilos Remitidos</span>
+                    <span className="block text-[10px] uppercase font-bold text-slate-400">Kilos Despachados</span>
                     <span className="text-base font-mono font-bold text-white">
                       {formatNumberArg(totalKgDespachados, 0)} <span className="text-xs font-normal text-slate-300">kg</span>
                     </span>
@@ -1572,7 +1768,7 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
               </div>
             </div>
 
-            {/* BARRA INDUSTRIAL DE FLUJO DE BOLSAS: EN STOCK VS EGRESADAS */}
+            {/* BARRA INDUSTRIAL DE FLUJO DE BOLSAS: EN STOCK VS DESPACHADAS */}
             <div className="bg-black/35 p-4 sm:p-5 rounded-2xl border border-white/10 space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm font-bold">
                 <span className="flex items-center gap-2 text-emerald-300 font-sans">
@@ -1581,26 +1777,52 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                 </span>
                 <span className="flex items-center gap-2 text-amber-300 font-sans">
                   <span className="w-3 h-3 rounded-full bg-amber-400 shadow-xs"></span>
-                  Bolsas Egresadas / Despacho: <strong className="font-mono text-white text-sm sm:text-base">{formatNumberArg(totalBolsasDespachadas, 0)} b.</strong> ({(100 - porcentajeBolsasEnStock).toFixed(1)}%)
+                  Bolsas Despachadas: <strong className="font-mono text-white text-sm sm:text-base">{formatNumberArg(totalBolsasDespachadas, 0)} b.</strong> ({porcentajeBolsasDespachadas.toFixed(1)}%)
                 </span>
+                {totalBolsasPasadasConsumo > 0 && (
+                  <span className="flex items-center gap-2 text-purple-300 font-sans">
+                    <span className="w-3 h-3 rounded-full bg-purple-400 shadow-xs"></span>
+                    A Consumo: <strong className="font-mono text-white text-sm">{formatNumberArg(totalBolsasPasadasConsumo, 0)} b.</strong>
+                  </span>
+                )}
+                {totalBolsasMovimientos > 0 && (
+                  <span className="flex items-center gap-2 text-blue-300 font-sans">
+                    <span className="w-3 h-3 rounded-full bg-blue-400 shadow-xs"></span>
+                    Movimientos: <strong className="font-mono text-white text-sm">{formatNumberArg(totalBolsasMovimientos, 0)} b.</strong>
+                  </span>
+                )}
               </div>
 
               {/* Barra de progreso de alto impacto */}
               <div className="w-full h-5 sm:h-6 bg-black/60 rounded-full overflow-hidden p-0.5 border border-white/20 flex shadow-inner">
                 <div
                   className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-500 relative flex items-center justify-end pr-2 text-[10.5px] font-mono font-black text-slate-950 shadow-md"
-                  style={{ width: `${Math.max(5, Math.min(100, porcentajeBolsasEnStock))}%` }}
+                  style={{ width: `${Math.max(porcentajeBolsasEnStock > 0 ? 5 : 0, Math.min(100, porcentajeBolsasEnStock))}%` }}
                   title={`Stock: ${formatNumberArg(totalBolsasStock, 0)} bolsas (${porcentajeBolsasEnStock.toFixed(1)}%)`}
                 >
                   {porcentajeBolsasEnStock >= 12 && `${porcentajeBolsasEnStock.toFixed(0)}%`}
                 </div>
                 <div
                   className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500 relative flex items-center justify-start pl-2 text-[10.5px] font-mono font-black text-slate-950 shadow-md"
-                  style={{ width: `${Math.max(5, Math.min(100, 100 - porcentajeBolsasEnStock))}%` }}
-                  title={`Despachadas: ${formatNumberArg(totalBolsasDespachadas, 0)} bolsas (${(100 - porcentajeBolsasEnStock).toFixed(1)}%)`}
+                  style={{ width: `${Math.max(porcentajeBolsasDespachadas > 0 ? 5 : 0, Math.min(100, porcentajeBolsasDespachadas))}%` }}
+                  title={`Despachadas: ${formatNumberArg(totalBolsasDespachadas, 0)} bolsas (${porcentajeBolsasDespachadas.toFixed(1)}%)`}
                 >
-                  {(100 - porcentajeBolsasEnStock) >= 12 && `${(100 - porcentajeBolsasEnStock).toFixed(0)}%`}
+                  {porcentajeBolsasDespachadas >= 12 && `${porcentajeBolsasDespachadas.toFixed(0)}%`}
                 </div>
+                {totalBolsasPasadasConsumo > 0 && (
+                  <div
+                    className="h-full bg-gradient-to-r from-purple-500 to-purple-400 rounded-full transition-all duration-500 relative flex items-center justify-center text-[10.5px] font-mono font-black text-white shadow-md"
+                    style={{ width: `${Math.max(2, Math.min(100, (totalBolsasPasadasConsumo / (totalBolsasProducidas || 1)) * 100))}%` }}
+                    title={`A Consumo: ${formatNumberArg(totalBolsasPasadasConsumo, 0)} bolsas`}
+                  />
+                )}
+                {totalBolsasMovimientos > 0 && (
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-500 relative flex items-center justify-center text-[10.5px] font-mono font-black text-white shadow-md"
+                    style={{ width: `${Math.max(2, Math.min(100, (totalBolsasMovimientos / (totalBolsasProducidas || 1)) * 100))}%` }}
+                    title={`Movimientos internos: ${formatNumberArg(totalBolsasMovimientos, 0)} bolsas`}
+                  />
+                )}
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300 pt-1 font-sans">
@@ -1713,7 +1935,7 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                 </div>
               </div>
 
-              {/* 3. Toneladas Despachadas */}
+              {/* 3. Toneladas Despachadas (SOLO EGRESOS POR DESPACHO) */}
               <div className="bg-black/35 p-5 rounded-2xl border border-white/15 hover:border-amber-400/50 transition-all duration-200 space-y-2.5 shadow-inner group/mcard flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between">
@@ -1722,7 +1944,7 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                       Toneladas Despachadas
                     </span>
                     <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 border border-amber-400/30 font-mono">
-                      {porcentajeKgDespachados.toFixed(1)}% Egresado
+                      {porcentajeKgDespachados.toFixed(1)}% Despachado
                     </span>
                   </div>
                   <div className="flex items-baseline gap-2 py-2">
@@ -1732,12 +1954,12 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                     <span className="text-base sm:text-lg font-bold text-amber-200 font-sans">Tn</span>
                   </div>
                   <span className="text-xs font-mono text-slate-300 block font-medium">
-                    ({formatNumberArg(totalKgDespachados, 0)} kg salidas efectivas)
+                    ({formatNumberArg(totalKgDespachados, 0)} kg salidas efectivas SOLO por despacho)
                   </span>
                 </div>
                 <div className="pt-2.5 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400 font-sans">
                   <span>Bolsas despachadas: <strong className="text-amber-200 font-mono">{formatNumberArg(totalBolsasDespachadas, 0)}</strong></span>
-                  <span>Con remito oficial</span>
+                  <span>Solo con remito / despacho comercial</span>
                 </div>
               </div>
 
@@ -1791,6 +2013,13 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                       <span className="text-[11px] font-mono text-purple-200/80">({formatNumberArg(totalKgPasadosConsumo, 0)} kg)</span>
                     </span>
                   )}
+                  {totalKgMovimientos > 0 && (
+                    <span className="flex items-center gap-2 text-blue-300 font-sans">
+                      <span className="w-3 h-3 rounded-full bg-blue-400 shadow-xs"></span>
+                      Movimientos: <strong className="font-mono text-white text-sm">{(totalKgMovimientos / 1000).toFixed(2)} Tn</strong>{' '}
+                      <span className="text-[11px] font-mono text-blue-200/80">({formatNumberArg(totalKgMovimientos, 0)} kg)</span>
+                    </span>
+                  )}
                 </div>
                 <span className="text-slate-400 font-sans text-xs">
                   Balance Total: <strong className="text-white font-mono">{totalTnProducidas.toFixed(2)} Tn</strong>
@@ -1818,6 +2047,13 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                     className="h-full bg-gradient-to-r from-purple-500 to-purple-400 rounded-full transition-all duration-500 relative flex items-center justify-center text-[10.5px] font-mono font-black text-white shadow-md"
                     style={{ width: `${Math.max(2, Math.min(100, (totalKgPasadosConsumo / (totalKgProducidos || 1)) * 100))}%` }}
                     title={`A Consumo: ${(totalKgPasadosConsumo / 1000).toFixed(2)} Tn`}
+                  />
+                )}
+                {totalKgMovimientos > 0 && (
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-500 relative flex items-center justify-center text-[10.5px] font-mono font-black text-white shadow-md"
+                    style={{ width: `${Math.max(2, Math.min(100, (totalKgMovimientos / (totalKgProducidos || 1)) * 100))}%` }}
+                    title={`Movimientos internos: ${(totalKgMovimientos / 1000).toFixed(2)} Tn`}
                   />
                 )}
               </div>
@@ -1900,8 +2136,8 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
               </div>
             </div>
 
-            {/* Malla de 3 Columnas Balanceadas a lo ancho */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+            {/* Malla de 2 Columnas Balanceadas a lo ancho */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
               {/* Cuadro 1: Kg Tratados */}
               <div
                 id="cuadro-principal-kg-tratados"
@@ -1962,58 +2198,6 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                   <strong className="text-purple-100">{formatNumberArg(bolsasTratadasStock, 0)} b.</strong>
                 </div>
               </div>
-
-              {/* Cuadro 3: Kg Sin Tratar */}
-              <div className="bg-black/35 p-5 rounded-2xl border border-white/15 space-y-3 shadow-inner flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase font-bold text-slate-400 flex items-center gap-1.5">
-                      <Layers className="w-4 h-4 text-slate-400" />
-                      Kg Sin Tratar
-                    </span>
-                    <span className="text-[10.5px] font-mono text-slate-400 font-bold px-2 py-0.5 rounded-md bg-white/10 border border-white/15">
-                      {porcentajeSinTratar.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-2 py-2">
-                    <span className="text-4xl sm:text-5xl font-mono font-black text-white tracking-tight leading-none">
-                      {formatNumberArg(kgSinTratarProducidos, 0)}
-                    </span>
-                    <span className="text-sm sm:text-base font-bold text-slate-400 font-sans">kg</span>
-                  </div>
-                  <span className="text-xs font-mono text-slate-400 block">
-                    ({(kgSinTratarProducidos / 1000).toFixed(2)} Tn) • {formatNumberArg(bolsasSinTratarProducidas, 0)} bolsas
-                  </span>
-                </div>
-                <div className="pt-2.5 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                  <span>Sin tratar en stock:</span>
-                  <strong className="text-white">{formatNumberArg(kgSinTratarStock, 0)} kg [{(kgSinTratarStock / 1000).toFixed(2)} Tn]</strong>
-                </div>
-              </div>
-            </div>
-
-            {/* Barra comparativa de Tratado vs Sin Tratar a lo ancho */}
-            <div className="bg-black/40 p-4 rounded-xl border border-white/10 space-y-2 text-xs">
-              <div className="flex flex-wrap items-center justify-between gap-2 font-semibold">
-                <span className="text-purple-300 flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
-                  Tratado: <strong className="font-mono text-white">{formatNumberArg(kgTratadosProducidos, 0)} kg</strong> ({(kgTratadosProducidos / 1000).toFixed(2)} Tn) • {porcentajeTratado.toFixed(1)}%
-                </span>
-                <span className="text-slate-300 flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
-                  Sin Tratar: <strong className="font-mono text-white">{formatNumberArg(kgSinTratarProducidos, 0)} kg</strong> ({(kgSinTratarProducidos / 1000).toFixed(2)} Tn) • {porcentajeSinTratar.toFixed(1)}%
-                </span>
-              </div>
-              <div className="w-full h-3 bg-black/60 rounded-full overflow-hidden flex shadow-inner">
-                <div
-                  className="h-full bg-purple-500 transition-all duration-500"
-                  style={{ width: `${Math.min(100, porcentajeTratado)}%` }}
-                />
-                <div
-                  className="h-full bg-slate-500 transition-all duration-500"
-                  style={{ width: `${Math.min(100, porcentajeSinTratar)}%` }}
-                />
-              </div>
             </div>
 
             {/* Pie de Visor de Seguimiento de Tratamiento */}
@@ -2025,13 +2209,6 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                 </strong>{' '}
                 <span className="text-purple-300/80 font-mono text-[11px]">
                   [{(kgTratadosStock / 1000).toFixed(2)} Tn]
-                </span>
-              </span>
-              <span>
-                Sin Tratar en Stock:{' '}
-                <strong className="text-white font-mono">{formatNumberArg(kgSinTratarStock, 0)} kg ({formatNumberArg(bolsasSinTratarStock, 0)} b.)</strong>{' '}
-                <span className="text-slate-400 font-mono text-[11px]">
-                  [{(kgSinTratarStock / 1000).toFixed(2)} Tn]
                 </span>
               </span>
             </div>

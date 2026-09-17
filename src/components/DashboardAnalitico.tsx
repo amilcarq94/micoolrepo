@@ -287,7 +287,7 @@ export const DashboardAnalitico: React.FC<DashboardAnaliticoProps> = ({ lotes })
       'Variedad': g.variedad,
       'Cantidad de Lotes': g.cantidadLotes,
       'Total Bolsas': g.totalBolsas,
-      'Total Kilogramos (Kg)': g.totalKg,
+      'Total Kilogramos': g.totalKg,
       'Total Toneladas (Tn)': Number((g.totalKg / 1000).toFixed(2)),
       'Participación (% Kg)': grandTotalKg > 0 ? `${((g.totalKg / grandTotalKg) * 100).toFixed(1)}%` : '0.0%'
     }));
@@ -297,7 +297,7 @@ export const DashboardAnalitico: React.FC<DashboardAnaliticoProps> = ({ lotes })
       'Variedad': '—',
       'Cantidad de Lotes': filteredResult.length,
       'Total Bolsas': grandTotalBolsas,
-      'Total Kilogramos (Kg)': grandTotalKg,
+      'Total Kilogramos': grandTotalKg,
       'Total Toneladas (Tn)': Number((grandTotalKg / 1000).toFixed(2)),
       'Participación (% Kg)': '100.0%'
     });

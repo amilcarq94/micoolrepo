@@ -13,10 +13,11 @@ import { ImportarStock } from './components/ImportarStock';
 import { RegistrarSalida } from './components/RegistrarSalida';
 import { SalidasList, SalidaUnifiedRow } from './components/SalidasList';
 import { DashboardProduccion } from './components/DashboardProduccion';
+import { DashboardOperaciones } from './components/DashboardOperaciones';
 import { Lote, SalidaRegistrada, MovimientoStock, EstadoLoteType, AuditLogEntry, OrdenCarga, OrdenProceso, EstadoOrdenProceso, MovimientoSilo, TipoMovimientoSilo, SiloId, CAPACIDAD_MAX_SILO, Chofer, BolsonCampo, EstadoSiloManual, SilosEstadoMap, SILOS_ESTADO_DEFAULT, PlantaConfig, PLANTA_CONFIG_DEFAULT } from './types';
 import { getLoteAuditoria } from './utils/audit';
 import { LOTES_INICIALES, SALIDAS_INICIALES, CLIENTES_PRECARGADOS, ESPECIES_PRECARGADAS, ORDENES_CARGA_INICIALES, ORDENES_PROCESO_INICIALES, MOVIMIENTOS_SILO_INICIALES, CHOFERES_INICIALES, BOLSONES_INICIALES } from './data/mockData';
-import { Layers, ArrowDownRight, History, Upload, LogOut, LogIn, CheckCircle, QrCode, ClipboardCheck, Factory, ClipboardList, Warehouse, AlertTriangle, Truck, Database, PackagePlus, BarChart3, Smartphone, Menu, X, ChevronLeft, ChevronRight, Building2, Calculator, Flame } from 'lucide-react';
+import { Layers, ArrowDownRight, History, Upload, LogOut, LogIn, CheckCircle, QrCode, ClipboardCheck, Factory, ClipboardList, Warehouse, AlertTriangle, Truck, Database, PackagePlus, BarChart3, Smartphone, Menu, X, ChevronLeft, ChevronRight, Building2, Calculator, Flame, Activity } from 'lucide-react';
 import { GenerarLoteView } from './components/GenerarLoteView';
 import { CalculoBolsasDashboard } from './components/CalculoBolsasDashboard';
 import { MapaCalorDashboard } from './components/MapaCalorDashboard';
@@ -316,8 +317,8 @@ export default function App() {
   }, [siloStocks]);
 
   // 3. Control de Vistas
-  // 'modo-planta' | 'silos' | 'mapa-calor' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'
-  const [activeView, setActiveView] = useState<'modo-planta' | 'silos' | 'mapa-calor' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'>('modo-planta');
+  // 'modo-planta' | 'silos' | 'mapa-calor' | 'dashboard-operaciones' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'
+  const [activeView, setActiveView] = useState<'modo-planta' | 'silos' | 'mapa-calor' | 'dashboard-operaciones' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'>('modo-planta');
   const [loteSeleccionado, setLoteSeleccionado] = useState<Lote | null>(null);
   const [loteDetailSourceView, setLoteDetailSourceView] = useState<'lotes' | 'produccion' | 'mapa-calor'>('lotes');
   const [loteAEditar, setLoteAEditar] = useState<Lote | null>(null);
@@ -2436,6 +2437,32 @@ export default function App() {
             )}
           </button>
 
+          {/* Tab 3.c: Dashboard de Operaciones (Historial Global Unificado de Eventos) */}
+          <button
+            id="nav-tab-dashboard-operaciones"
+            onClick={() => navigateTo('dashboard-operaciones')}
+            className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+              sidebarCollapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'
+            } ${
+              activeView === 'dashboard-operaciones'
+                ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-md ring-1.5 ring-[#C9922E]/80'
+                : 'text-white hover:bg-white/10'
+            }`}
+            title="Dashboard de Operaciones: Historial Global de Eventos de Planta (Silos, Salidas y Auditoría de Lotes)"
+          >
+            <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5 truncate'}`}>
+              <Activity className={`w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                activeView === 'dashboard-operaciones' ? 'text-[#00603C]' : 'text-emerald-300'
+              }`} />
+              {!sidebarCollapsed && <span className="truncate">Dashboard Operaciones</span>}
+            </div>
+            {!sidebarCollapsed && (
+              <span className="text-[8.5px] px-1.5 py-0.5 bg-emerald-400/20 text-emerald-200 border border-emerald-400/30 rounded font-mono font-bold">
+                Historial
+              </span>
+            )}
+          </button>
+
           {/* Separador de Sección: Inventario & Lotes */}
           <div className={`pt-2 pb-1 text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-300/70 border-t border-[#254731]/60 ${
             sidebarCollapsed ? 'text-center' : 'px-2'
@@ -2818,6 +2845,27 @@ export default function App() {
                 </span>
               </button>
 
+              <button
+                id="nav-tab-mobile-dashboard-operaciones"
+                onClick={() => {
+                  navigateTo('dashboard-operaciones');
+                  setMobileNavOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
+                  activeView === 'dashboard-operaciones'
+                    ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-xs'
+                    : 'text-white hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Activity className={`w-4 h-4 ${activeView === 'dashboard-operaciones' ? 'text-[#00603C]' : 'text-emerald-300'}`} />
+                  <span>Dashboard Operaciones</span>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 bg-emerald-400/20 text-emerald-200 rounded font-mono font-bold">
+                  Historial
+                </span>
+              </button>
+
               <div className="pt-3 pb-1 px-1 text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-300/70 border-t border-[#254731]/60">
                 Inventario
               </div>
@@ -3026,7 +3074,7 @@ export default function App() {
       <main className={`flex-grow pt-14 md:pt-6 pb-16 px-3 sm:px-4 md:px-6 w-full relative z-10 print:pt-2 print:pb-2 print:px-0 transition-all duration-300 ${
         sidebarCollapsed ? 'md:pl-24' : 'md:pl-68'
       }`}>
-        <div className={(activeView === 'despachos' || activeView === 'lotes' || activeView === 'produccion') ? 'w-full max-w-[1850px] mx-auto' : 'max-w-7xl mx-auto'}>
+        <div className={(activeView === 'despachos' || activeView === 'lotes' || activeView === 'produccion' || activeView === 'dashboard-operaciones') ? 'w-full max-w-[1850px] mx-auto' : 'max-w-7xl mx-auto'}>
         
         {/* RUTA DE COMPONENTES SEGÚN VISTA ACTIVA */}
         {loteSeleccionado ? (
@@ -3110,7 +3158,25 @@ export default function App() {
               />
             </div>
 
-            {activeView === 'mapa-calor' ? (
+            {activeView === 'dashboard-operaciones' ? (
+              <div className="space-y-6 animate-in fade-in duration-300">
+                <DashboardOperaciones
+                  lotes={filteredLotesByCampania}
+                  movimientosSilo={movimientosSilo}
+                  salidas={filteredSalidasByCampania}
+                  siloStocks={siloStocks}
+                  clientes={clientes}
+                  especies={especies}
+                  choferes={choferes}
+                  currentUser={currentUser?.nombre}
+                  onSelectLote={(l) => {
+                    setLoteSeleccionado(l);
+                    setLoteDetailSourceView('lotes');
+                  }}
+                  onNavigateToView={(view) => navigateTo(view as any)}
+                />
+              </div>
+            ) : activeView === 'mapa-calor' ? (
               <div className="space-y-6 animate-in fade-in duration-300">
                 <MapaCalorDashboard
                   lotes={lotes}

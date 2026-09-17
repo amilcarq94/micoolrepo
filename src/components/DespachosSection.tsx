@@ -247,6 +247,9 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   const [genSuccess, setGenSuccess] = useState('');
   const [ultimaOrdenCreada, setUltimaOrdenCreada] = useState<OrdenCarga | null>(null);
 
+  // Panel Generación de Orden de Carga: minimizado por defecto, maximizar para cargar datos
+  const [isGenerarOrdenOpen, setIsGenerarOrdenOpen] = useState<boolean>(false);
+
   // Estados de datos de carga manual (Despacho: Remito, Destino, Chofer)
   const [genRemitoCliente, setGenRemitoCliente] = useState('');
   const [genDestino, setGenDestino] = useState('');
@@ -689,6 +692,9 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
 
     // Reestablecer los datos del dashboard para crear nueva orden
     handleResetAllFilters();
+
+    // Minimizar panel tras generar la orden
+    setIsGenerarOrdenOpen(false);
 
     // Scroll suave hacia la leyenda para visibilidad inmediata
     setTimeout(() => {
@@ -1415,231 +1421,312 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
         {/* A) GENERAR ORDEN DE CARGA */}
         {subView === 'generar' && (
           <div className={isFullScreenGenerar ? "fixed inset-0 z-50 bg-[#F4F6F4] overflow-y-auto p-4 md:p-8 flex flex-col" : "space-y-6"}>
-            <div className={`grid grid-cols-1 ${isFullScreenGenerar ? 'xl:grid-cols-4 gap-6' : 'lg:grid-cols-3 gap-8'}`}>
-              
-              {/* Formulario de Alta */}
-              <div className={`${isFullScreenGenerar ? 'xl:col-span-3' : 'lg:col-span-2'} bg-white p-6 md:p-8 rounded-2xl border border-gray-100 shadow-sm space-y-6`}>
-                <div className="border-b border-gray-100 pb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <span className="text-[10px] font-sans font-bold tracking-widest text-[#C9922E] uppercase">
-                      OFICINA DE PLANTA / ADMINISTRATIVO
-                    </span>
-                    <h3 className="font-serif text-xl font-bold text-[#1A1A1A] mt-0.5">
-                      Generación de Orden de Carga
-                    </h3>
+            
+            {/* Banner de Confirmación de Orden Creada (visible aún con panel minimizado) */}
+            {genSuccess && (
+              <div
+                id="banner-orden-creada-correctamente"
+                className="p-4 sm:p-5 bg-[#bef264]/40 backdrop-blur-md border-2 border-[#84cc16] rounded-2xl text-[#14532d] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300"
+              >
+                <div className="flex items-start sm:items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-full bg-[#65a30d] text-white flex items-center justify-center shrink-0 shadow-sm ring-4 ring-[#bef264]/60">
+                    <Check className="w-6 h-6 stroke-[3]" />
                   </div>
+                  <div>
+                    <div className="text-base sm:text-lg font-black tracking-wide uppercase text-[#14532d] flex items-center gap-2">
+                      <span>orden creada correctamente</span>
+                      <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#65a30d] animate-ping" />
+                    </div>
+                    <div className="text-xs text-[#166534] font-medium mt-1">
+                      {ultimaOrdenCreada ? (
+                        <>
+                          Se registró la orden <strong className="font-mono text-[#14532d] font-bold">{ultimaOrdenCreada.id}</strong> para <strong>{ultimaOrdenCreada.cliente}</strong> ({ultimaOrdenCreada.cantidadBolsas} bolsas · {formatNumberArg(ultimaOrdenCreada.kgTotales, 0)} kg). El panel ha sido minimizado para continuar con la operativa de planta.
+                        </>
+                      ) : (
+                        'La orden fue creada exitosamente. El panel ha sido minimizado.'
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                   <button
                     type="button"
-                    onClick={() => setIsFullScreenGenerar(prev => !prev)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border ${
-                      isFullScreenGenerar
-                        ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
-                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                    }`}
-                    title={isFullScreenGenerar ? "Salir de pantalla completa (Esc)" : "Expandir interfaz a pantalla completa"}
+                    onClick={() => {
+                      setGenSuccess('');
+                      setUltimaOrdenCreada(null);
+                    }}
+                    className="px-3.5 py-1.5 bg-white/90 hover:bg-white text-[#14532d] text-xs font-bold uppercase tracking-wider rounded-xl border border-[#84cc16] shadow-2xs transition cursor-pointer"
                   >
-                    {isFullScreenGenerar ? (
+                    Aceptar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Panel Principal: Generación de Orden de Carga (Minimizado por defecto) */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200">
+              
+              {/* Encabezado con Botón Desplegable */}
+              <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-900/5 via-white to-amber-50/25 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#00603C] text-white flex items-center justify-center shadow-xs shrink-0">
+                    <ClipboardList className="w-5 h-5 text-amber-300" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-sans font-bold tracking-widest text-[#C9922E] uppercase block">
+                      OFICINA DE PLANTA / ADMINISTRATIVO
+                    </span>
+                    <h3 className="font-serif text-lg sm:text-xl font-bold text-[#1A1A1A] flex items-center gap-2">
+                      <span>Generación de Orden de Carga</span>
+                      {!isGenerarOrdenOpen && (
+                        <span className="text-[10px] font-sans font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider hidden sm:inline-block">
+                          Minimizado
+                        </span>
+                      )}
+                    </h3>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {isGenerarOrdenOpen && (
+                    <button
+                      type="button"
+                      onClick={() => setIsFullScreenGenerar(prev => !prev)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border ${
+                        isFullScreenGenerar
+                          ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                      }`}
+                      title={isFullScreenGenerar ? "Salir de pantalla completa (Esc)" : "Expandir interfaz a pantalla completa"}
+                    >
+                      {isFullScreenGenerar ? (
+                        <>
+                          <Minimize2 className="w-4 h-4 text-amber-700" />
+                          <span className="hidden sm:inline">Salir Pantalla Completa</span>
+                        </>
+                      ) : (
+                        <>
+                          <Maximize2 className="w-4 h-4 text-gray-600" />
+                          <span className="hidden sm:inline">Pantalla Completa</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Botón Desplegable para Maximizar / Minimizar */}
+                  <button
+                    type="button"
+                    onClick={() => setIsGenerarOrdenOpen(prev => !prev)}
+                    className={`px-4 py-2 text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-2 cursor-pointer ${
+                      isGenerarOrdenOpen
+                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                        : 'bg-[#00603C] hover:bg-[#004D30] text-white border border-[#00603C]'
+                    }`}
+                    title={isGenerarOrdenOpen ? "Minimizar panel de carga de datos" : "Desplegar para cargar datos de la orden"}
+                  >
+                    {isGenerarOrdenOpen ? (
                       <>
-                        <Minimize2 className="w-4 h-4 text-amber-700" />
-                        <span className="hidden sm:inline">Salir de Pantalla Completa (Esc)</span>
+                        <ChevronUp className="w-4 h-4 text-slate-600" />
+                        <span>Minimizar Panel</span>
                       </>
                     ) : (
                       <>
-                        <Maximize2 className="w-4 h-4 text-gray-600" />
-                        <span className="hidden sm:inline">Pantalla Completa</span>
+                        <ChevronDown className="w-4 h-4 text-amber-300 stroke-[2.5]" />
+                        <span>Cargar Datos / Desplegar</span>
                       </>
                     )}
                   </button>
                 </div>
+              </div>
 
-              {genError && (
-                <div className="p-4 bg-[#F5E5DC] border-l-4 border-[#A0522D] rounded-r-xl text-xs text-[#A0522D] flex items-start gap-2 animate-in fade-in">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold">Error:</span> {genError}
+              {/* Vista Minimizada (Por Defecto) */}
+              {!isGenerarOrdenOpen && (
+                <div className="p-5 md:p-6 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
+                  <div className="space-y-1">
+                    <p className="font-semibold text-slate-800 flex items-center gap-2">
+                      <span className="inline-block w-2 h-2 rounded-full bg-[#C9922E]" />
+                      Panel minimizado por defecto
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Haga clic en <strong>"Cargar Datos / Desplegar"</strong> cuando necesite generar una nueva orden de carga para camiones. Una vez generada la orden, el panel volverá a minimizarse automáticamente.
+                    </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsGenerarOrdenOpen(true)}
+                    className="self-start sm:self-center px-4 py-2 bg-white hover:bg-emerald-50 text-[#00603C] border border-[#00603C]/40 rounded-xl font-bold shadow-2xs transition flex items-center gap-2 cursor-pointer text-xs shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-[#00603C]" />
+                    <span>Cargar Datos de Orden</span>
+                  </button>
                 </div>
               )}
 
-              {genSuccess && (
-                <div
-                  id="banner-orden-creada-correctamente"
-                  className="p-4 sm:p-5 bg-[#bef264]/40 backdrop-blur-md border-2 border-[#84cc16] rounded-2xl text-[#14532d] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300"
-                >
-                  <div className="flex items-start sm:items-center gap-3.5">
-                    <div className="w-11 h-11 rounded-full bg-[#65a30d] text-white flex items-center justify-center shrink-0 shadow-sm ring-4 ring-[#bef264]/60">
-                      <Check className="w-6 h-6 stroke-[3]" />
-                    </div>
-                    <div>
-                      <div className="text-base sm:text-lg font-black tracking-wide uppercase text-[#14532d] flex items-center gap-2">
-                        <span>orden creada correctamente</span>
-                        <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#65a30d] animate-ping" />
-                      </div>
-                      <div className="text-xs text-[#166534] font-medium mt-1">
-                        {ultimaOrdenCreada ? (
-                          <>
-                            Se registró la orden <strong className="font-mono text-[#14532d] font-bold">{ultimaOrdenCreada.id}</strong> para <strong>{ultimaOrdenCreada.cliente}</strong> ({ultimaOrdenCreada.cantidadBolsas} bolsas · {formatNumberArg(ultimaOrdenCreada.kgTotales, 0)} kg). Los datos del dashboard han sido reestablecidos para crear una nueva orden.
-                          </>
-                        ) : (
-                          'La orden fue creada exitosamente. Los datos del dashboard han sido reestablecidos para crear una nueva orden.'
-                        )}
+              {/* Vista Maximizada (Formulario) */}
+              {isGenerarOrdenOpen && (
+                <div className="p-6 md:p-8 space-y-6">
+                  {genError && (
+                    <div className="p-4 bg-[#F5E5DC] border-l-4 border-[#A0522D] rounded-r-xl text-xs text-[#A0522D] flex items-start gap-2 animate-in fade-in">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold">Error:</span> {genError}
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGenSuccess('');
-                        setUltimaOrdenCreada(null);
-                      }}
-                      className="px-3.5 py-1.5 bg-white/90 hover:bg-white text-[#14532d] text-xs font-bold uppercase tracking-wider rounded-xl border border-[#84cc16] shadow-2xs transition cursor-pointer"
-                    >
-                      Aceptar
-                    </button>
-                  </div>
-                </div>
-              )}
+                  )}
 
-              <form onSubmit={handleGenerarOrden} className="space-y-6">
-                
-                {/* FILTROS PRINCIPALES Y VINCULADOS */}
-                <div className="bg-[#FAFBF9] p-5 rounded-2xl border border-gray-200 shadow-2xs space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-gray-200">
-                    <div>
-                      <span className="text-[10px] font-sans font-bold tracking-widest text-[#00603C] uppercase block">
-                        Filtros Vinculados de Selección
-                      </span>
-                      <p className="text-[11px] text-gray-500">
-                        Seleccione el cliente principal y los atributos requeridos. Los lotes disponibles se filtrarán dinámicamente.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsFilterPinned(prev => !prev)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
-                          isFilterPinned
-                            ? 'bg-[#00603C] text-white shadow-xs ring-1 ring-emerald-400'
-                            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
-                        }`}
-                        title={isFilterPinned ? "Filtros fijados (solo se quitan manualmente)" : "Fijar filtros para que se conserven al recargar o generar"}
-                      >
-                        {isFilterPinned ? <Pin className="w-3.5 h-3.5 text-amber-300 fill-amber-300" /> : <PinOff className="w-3.5 h-3.5 text-gray-400" />}
-                        <span>{isFilterPinned ? 'Filtros Fijados' : 'Fijar Filtros'}</span>
-                      </button>
-                    </div>
-                  </div>
+                  <form onSubmit={handleGenerarOrden} className="space-y-6">
+                    
+                    {/* FILTROS PRINCIPALES Y VINCULADOS: CLIENTE PRINCIPAL ARRIBA Y ATRIBUTOS AGRUPADOS POR DEBAJO */}
+                    <div className="bg-[#FAFBF9] p-5 rounded-2xl border border-gray-200 shadow-2xs space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-gray-200">
+                        <div>
+                          <span className="text-[10px] font-sans font-bold tracking-widest text-[#00603C] uppercase block">
+                            Filtros Vinculados de Selección
+                          </span>
+                          <p className="text-[11px] text-gray-500">
+                            Filtro principal por Cliente, con los filtros vinculados (especie, variedad, categoría, tipo y tratamiento) agrupados por debajo.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsFilterPinned(prev => !prev)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                              isFilterPinned
+                                ? 'bg-[#00603C] text-white shadow-xs ring-1 ring-emerald-400'
+                                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                            }`}
+                            title={isFilterPinned ? "Filtros fijados (solo se quitan manualmente)" : "Fijar filtros para que se conserven al recargar o generar"}
+                          >
+                            {isFilterPinned ? <Pin className="w-3.5 h-3.5 text-amber-300 fill-amber-300" /> : <PinOff className="w-3.5 h-3.5 text-gray-400" />}
+                            <span>{isFilterPinned ? 'Filtros Fijados' : 'Fijar Filtros'}</span>
+                          </button>
+                        </div>
+                      </div>
 
-                  {/* Grid de Filtros */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
-                    {/* Filtro Principal: Cliente (reemplaza cliente comitente) */}
-                    <div className="sm:col-span-2 md:col-span-2 lg:col-span-2">
-                      <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
-                        Filtro Principal: Cliente *
-                      </label>
-                      <select
-                        value={genCliente}
-                        onChange={(e) => handleClienteChange(e.target.value)}
-                        className="w-full h-9 px-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] font-semibold text-xs"
-                      >
-                        {clientesDisponibles.map(cli => (
-                          <option key={cli} value={cli}>{cli}</option>
-                        ))}
-                      </select>
-                      <span className="text-[10px] text-gray-400 mt-0.5 block">
-                        Determina las especies y variedades disponibles
-                      </span>
-                    </div>
-
-                    {/* Especie (vinculada al cliente) */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
-                        Especie
-                      </label>
-                      <select
-                        value={genEspecie}
-                        onChange={(e) => handleEspecieChange(e.target.value)}
-                        className="w-full h-9 px-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs font-medium"
-                      >
-                        <option value="Todos">Todas las especies</option>
-                        {especiesDisponiblesFiltro.map(esp => (
-                          <option key={esp} value={esp}>{esp}</option>
-                        ))}
-                      </select>
-                      <span className="text-[10px] text-gray-400 mt-0.5 block">
-                        {especiesDisponiblesFiltro.length} vinc. a {genCliente}
-                      </span>
-                    </div>
-
-                    {/* Variedad (vinculada al cliente y especie) */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
-                        Variedad
-                      </label>
-                      <select
-                        value={genVariedad}
-                        onChange={(e) => setGenVariedad(e.target.value)}
-                        className="w-full h-9 px-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs font-medium"
-                      >
-                        <option value="Todos">Todas las variedades</option>
-                        {variedadesDisponiblesFiltro.map(v => (
-                          <option key={v} value={v}>{v}</option>
-                        ))}
-                      </select>
-                      <span className="text-[10px] text-gray-400 mt-0.5 block">
-                        {variedadesDisponiblesFiltro.length} disponibles
-                      </span>
-                    </div>
-
-                    {/* Categoría */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
-                        Categoría *
-                      </label>
-                      <select
-                        value={genCategoria}
-                        onChange={(e) => setGenCategoria(e.target.value as any)}
-                        className="w-full h-9 px-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs font-medium"
-                      >
-                        {LISTA_CATEGORIAS.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Tipo & Tratamiento */}
-                    <div className="flex gap-2">
-                      <div className="flex-1">
-                        <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
-                          Tipo *
-                        </label>
+                      {/* 1. FILTRO PRINCIPAL: CLIENTE (ARRIBA) */}
+                      <div className="bg-white p-4 rounded-xl border border-emerald-900/15 shadow-2xs space-y-1.5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                          <label className="block text-[11px] font-black text-[#00603C] uppercase tracking-wide flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5 text-[#C9922E]" />
+                            <span>Filtro Principal: Cliente *</span>
+                          </label>
+                          <span className="text-[10px] text-gray-400">
+                            Determina las especies, variedades y lotes con stock disponibles
+                          </span>
+                        </div>
                         <select
-                          value={genTipo}
-                          onChange={(e) => setGenTipo(e.target.value as any)}
-                          className="w-full h-9 px-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs font-medium"
+                          value={genCliente}
+                          onChange={(e) => handleClienteChange(e.target.value)}
+                          className="w-full h-10 px-3.5 bg-[#FAFBF9] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] font-bold text-slate-900 text-xs shadow-2xs"
                         >
-                          {LISTA_TIPOS.map(t => (
-                            <option key={t} value={t}>{t}</option>
+                          {clientesDisponibles.map(cli => (
+                            <option key={cli} value={cli}>{cli}</option>
                           ))}
                         </select>
                       </div>
-                      <div className="flex-1">
-                        <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
-                          Tratamiento *
-                        </label>
-                        <select
-                          value={genTratamiento}
-                          onChange={(e) => setGenTratamiento(e.target.value as any)}
-                          className="w-full h-9 px-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs font-medium"
-                        >
-                          {LISTA_TRATAMIENTOS.map(tr => (
-                            <option key={tr} value={tr}>{tr}</option>
-                          ))}
-                        </select>
+
+                      {/* 2. FILTROS VINCULADOS AGRUPADOS POR DEBAJO DEL CLIENTE: Especie, Variedad, Categoría, Tipo y Tratamiento */}
+                      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-2xs space-y-3">
+                        <div className="flex items-center justify-between pb-1.5 border-b border-gray-100">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-[#00603C]">
+                            Filtros agrupados por debajo de Cliente ({genCliente})
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            5 atributos de clasificación vinculados
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+                          {/* Especie */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
+                              Especie
+                            </label>
+                            <select
+                              value={genEspecie}
+                              onChange={(e) => handleEspecieChange(e.target.value)}
+                              className="w-full h-9 px-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs font-medium"
+                            >
+                              <option value="Todos">Todas las especies</option>
+                              {especiesDisponiblesFiltro.map(esp => (
+                                <option key={esp} value={esp}>{esp}</option>
+                              ))}
+                            </select>
+                            <span className="text-[10px] text-gray-400 mt-0.5 block truncate">
+                              {especiesDisponiblesFiltro.length} vinc.
+                            </span>
+                          </div>
+
+                          {/* Variedad */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
+                              Variedad
+                            </label>
+                            <select
+                              value={genVariedad}
+                              onChange={(e) => setGenVariedad(e.target.value)}
+                              className="w-full h-9 px-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs font-medium"
+                            >
+                              <option value="Todos">Todas las variedades</option>
+                              {variedadesDisponiblesFiltro.map(v => (
+                                <option key={v} value={v}>{v}</option>
+                              ))}
+                            </select>
+                            <span className="text-[10px] text-gray-400 mt-0.5 block truncate">
+                              {variedadesDisponiblesFiltro.length} disponibles
+                            </span>
+                          </div>
+
+                          {/* Categoría */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
+                              Categoría *
+                            </label>
+                            <select
+                              value={genCategoria}
+                              onChange={(e) => setGenCategoria(e.target.value as any)}
+                              className="w-full h-9 px-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs font-medium"
+                            >
+                              {LISTA_CATEGORIAS.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Tipo */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
+                              Tipo *
+                            </label>
+                            <select
+                              value={genTipo}
+                              onChange={(e) => setGenTipo(e.target.value as any)}
+                              className="w-full h-9 px-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs font-medium"
+                            >
+                              {LISTA_TIPOS.map(t => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Tratamiento */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
+                              Tratamiento *
+                            </label>
+                            <select
+                              value={genTratamiento}
+                              onChange={(e) => setGenTratamiento(e.target.value as any)}
+                              className="w-full h-9 px-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs font-medium"
+                            >
+                              {LISTA_TRATAMIENTOS.map(tr => (
+                                <option key={tr} value={tr}>{tr}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
 
                   {/* Barra de estado de compatibilidad */}
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-200/70 text-xs">
@@ -2073,33 +2160,10 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
 
               </form>
             </div>
-
-            {/* Panel Informativo Lateral */}
-            <div className="bg-[#F6EFDC] p-6 rounded-2xl border border-amber-100 shadow-sm space-y-4 text-xs text-left self-start relative overflow-hidden">
-              <div className="absolute right-[-10px] top-[-10px] opacity-[0.07] pointer-events-none">
-                <LogoSiloLoose size={120} color="#C9922E" />
-              </div>
-              
-              <h4 className="font-serif text-base font-bold text-[#1A1A1A] border-b border-amber-200 pb-2 uppercase tracking-wider">
-                Control de Carga Seguro
-              </h4>
-              
-              <ol className="space-y-3 pl-4 list-decimal text-gray-700">
-                <li>
-                  <strong className="text-[#00603C]">Filtros obligatorios:</strong> Se seleccionan los 4 atributos exactos para evitar cargar granos de categorías erróneas.
-                </li>
-                <li>
-                  <strong className="text-[#00603C]">Control de Stock:</strong> No se pueden autorizar cargas por encima de la capacidad remanente del lote.
-                </li>
-                <li>
-                  <strong className="text-[#00603C]">Confirmación de Despacho:</strong> Una vez generada, el despachante en playa podrá acceder sin clave, cargar la foto del remito de salida y confirmar el despacho físico para dar de baja el stock y archivar la orden.
-                </li>
-              </ol>
-            </div>
-
-          </div>
+          )}
         </div>
-      )}
+      </div>
+    )}
 
         {/* B) MIS ÓRDENES (DESPACHANTE EN PLAYA DE CARGA) */}
         {subView === 'mis-ordenes' && (
