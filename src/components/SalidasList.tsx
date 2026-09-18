@@ -505,11 +505,11 @@ export const SalidasList: React.FC<SalidasListProps> = ({
       });
     });
 
-    // B) Incorporar órdenes de carga despachadas que aún no tengan documento en salidas
+    // B) Incorporar órdenes de carga despachadas (exclusivamente con stock descontado vía botón 'Despachado') que aún no tengan documento en salidas
     ordenes
-      .filter((o) => o.estado === 'Despachada')
+      .filter((o) => o.stockDescontado === true)
       .forEach((o) => {
-        if (registeredIds.has(o.id)) return; // Evitar duplicar si ya fue registrada con mismo ID
+        if (registeredIds.has(o.id) || salidas.some(s => s.ordenId === o.id || s.id.startsWith(`SAL-${o.id}`))) return; // Evitar duplicar si ya fue registrada con mismo ID o en salidas
 
         const matchingLote = lotes.find((l) => l.id === o.loteId);
         const remitoClienteVal =

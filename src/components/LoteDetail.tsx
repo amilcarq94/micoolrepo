@@ -8,7 +8,7 @@ import { Lote, MovimientoStock, EstadoLoteType, AuditLogEntry, MovimientoSilo, O
 import { getLoteAuditoria } from '../utils/audit';
 import { formatNumberArg, formatKg, formatBolsas, formatDateStr } from '../utils/formatters';
 import { LogoSiloLoose } from './Logo';
-import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, Calendar, User, Edit2, Edit3, KeyRound, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, CheckCircle2, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer, Settings, MapPin } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, Calendar, User, Edit2, Edit3, KeyRound, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, CheckCircle2, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer, Settings, MapPin, Scale } from 'lucide-react';
 import { db, mapLoteToFirestore, sanitizeForFirestore } from '../lib/firebase';
 import { collection, doc, writeBatch } from 'firebase/firestore';
 import { QrCodeModal } from './QrCodeModal';
@@ -33,6 +33,7 @@ interface LoteDetailProps {
   onRegistrarSalida?: (loteId: string) => void;
   onUpdateLoteLocation?: (loteId: string, ala: string, sector: string, ubicacionAcopio?: string) => Promise<void>;
   onUpdateLoteInase?: (loteId: string, inaseInicio: string, inaseFinal: string) => Promise<void> | void;
+  onUpdateLotePesoDeMil?: (loteId: string, nuevoPeso: number | undefined) => Promise<void> | void;
   onNavigateToSilos?: (siloId?: string) => void;
 }
 
@@ -48,6 +49,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   onRegistrarSalida,
   onUpdateLoteLocation,
   onUpdateLoteInase,
+  onUpdateLotePesoDeMil,
   onNavigateToSilos,
 }) => {
   const [showAddMovModal, setShowAddMovModal] = useState(false);
@@ -58,6 +60,17 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   const [inaseInicioVal, setInaseInicioVal] = useState(lote.inaseInicio || '');
   const [inaseFinalVal, setInaseFinalVal] = useState(lote.inaseFinal || '');
   const [isSavingInase, setIsSavingInase] = useState(false);
+
+  // Estados de Edición de Peso de 1000 (PMS en gramos)
+  const [showPesoDeMilModal, setShowPesoDeMilModal] = useState(false);
+  const [pesoDeMilVal, setPesoDeMilVal] = useState<string>(() =>
+    lote.pesoDeMil !== undefined && lote.pesoDeMil !== null ? String(lote.pesoDeMil) : ''
+  );
+  const [isSavingPesoDeMil, setIsSavingPesoDeMil] = useState(false);
+
+  useEffect(() => {
+    setPesoDeMilVal(lote.pesoDeMil !== undefined && lote.pesoDeMil !== null ? String(lote.pesoDeMil) : '');
+  }, [lote.pesoDeMil]);
 
   // Estados de Ubicación / Sector de Acopio
   const [selectedAla, setSelectedAla] = useState(lote.ala || '');
@@ -212,9 +225,16 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
     setFichaModificada(false);
   };
 
-  const handleConfirmarYPrevisualizar = () => {
+  const handleConfirmarYPrevisualizar = async () => {
     setShowEditFichaModal(false);
     setShowEditFichaDrawer(false);
+    if (draftFichaLote.pesoDeMil !== lote.pesoDeMil) {
+      if (onUpdateLotePesoDeMil) {
+        await onUpdateLotePesoDeMil(lote.id, draftFichaLote.pesoDeMil);
+      } else if (onSaveLote) {
+        await onSaveLote({ ...lote, pesoDeMil: draftFichaLote.pesoDeMil });
+      }
+    }
     setIsPrintingMode(true);
   };
 
@@ -1086,6 +1106,21 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                   />
                 </div>
 
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-emerald-800 mb-1">Peso de 1000 (g / PMS)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={draftFichaLote.pesoDeMil !== undefined && draftFichaLote.pesoDeMil !== null ? draftFichaLote.pesoDeMil : ''}
+                    onChange={(e) => {
+                      const val = e.target.value.trim().replace(',', '.');
+                      handleUpdateDraftField('pesoDeMil', val !== '' && !isNaN(Number(val)) ? Number(val) : undefined);
+                    }}
+                    placeholder="Ej: 165.4"
+                    className="w-full px-2.5 py-1.5 bg-white border border-emerald-300 rounded-lg font-bold text-emerald-900 font-mono"
+                  />
+                </div>
+
                 <div className="sm:col-span-2 md:col-span-3 lg:col-span-4">
                   <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Observaciones / Notas de la Ficha</label>
                   <textarea
@@ -1507,11 +1542,27 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                 </span>
               </div>
               <div className="text-right">
-                <span className="text-[9px] uppercase tracking-wider text-emerald-800 block font-bold">Peso de mil (g)</span>
-                <span className="font-mono font-bold text-emerald-900 text-sm block mt-0.5">
-                  {lote.pesoDeMil !== undefined && lote.pesoDeMil !== null ? `${lote.pesoDeMil} g` : '—'}
-                  <span className="text-[10px] text-emerald-600 font-normal ml-1.5">(PMS)</span>
-                </span>
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="text-[9px] uppercase tracking-wider text-emerald-800 block font-bold">Peso de mil (g)</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowPesoDeMilModal(true)}
+                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-950 underline flex items-center gap-0.5 cursor-pointer transition hover:scale-105"
+                    title="Editar Peso de 1000 semillas (PMS)"
+                  >
+                    <Edit3 className="w-3 h-3 text-[#00603C]" />
+                    <span>Editar</span>
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPesoDeMilModal(true)}
+                  className="font-mono font-bold text-emerald-900 text-sm mt-0.5 hover:text-[#00603C] hover:underline cursor-pointer text-right group flex items-center justify-end gap-1 ml-auto"
+                  title="Click para editar Peso de 1000 semillas (PMS)"
+                >
+                  <span>{lote.pesoDeMil !== undefined && lote.pesoDeMil !== null ? `${lote.pesoDeMil} g` : '—'}</span>
+                  <span className="text-[10px] text-emerald-600 font-normal group-hover:text-emerald-800">(PMS)</span>
+                </button>
               </div>
             </div>
 
@@ -3044,7 +3095,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                 <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2 border-b border-gray-100 pb-1">
                   3. Stock, Pesos y Observaciones
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3">
                   <div>
                     <label className="block text-[10px] font-bold uppercase text-gray-600 mb-1">Cantidad de Bolsas</label>
                     <input
@@ -3072,6 +3123,20 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                       value={draftFichaLote.fechaIngreso || ''}
                       onChange={(e) => handleUpdateDraftField('fechaIngreso', e.target.value)}
                       className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg font-semibold text-gray-800 focus:bg-white focus:border-[#00603C] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-emerald-800 mb-1">Peso de 1000 (g / PMS)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={draftFichaLote.pesoDeMil !== undefined && draftFichaLote.pesoDeMil !== null ? draftFichaLote.pesoDeMil : ''}
+                      onChange={(e) => {
+                        const val = e.target.value.trim().replace(',', '.');
+                        handleUpdateDraftField('pesoDeMil', val !== '' && !isNaN(Number(val)) ? Number(val) : undefined);
+                      }}
+                      placeholder="Ej: 165.4"
+                      className="w-full px-3 py-2 bg-gray-50 border border-emerald-300 rounded-lg font-bold text-emerald-900 font-mono focus:bg-white focus:border-[#00603C] focus:outline-none"
                     />
                   </div>
                 </div>
@@ -3215,6 +3280,112 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
                     <Check className="w-4 h-4 text-amber-300 stroke-[3]" />
                   )}
                   <span>{isSavingInase ? 'Guardando...' : 'Guardar Códigos INASE'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Carga / Edición Manual de Peso de 1000 (PMS en gramos) */}
+      {showPesoDeMilModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto print:hidden animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-gray-100 my-8">
+            <div className="bg-[#00603C] p-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl">
+                  <Scale className="w-5 h-5 text-amber-300" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-base uppercase tracking-wider">
+                    Peso de 1000 Semillas (PMS)
+                  </h3>
+                  <p className="text-xs text-emerald-100/90 font-mono">
+                    Lote {lote.loteNro || lote.id} · {lote.cliente}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPesoDeMilModal(false)}
+                className="p-1.5 rounded-lg text-emerald-100 hover:bg-white/10 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setIsSavingPesoDeMil(true);
+                try {
+                  const cleaned = pesoDeMilVal.trim().replace(',', '.');
+                  const parsedPeso = cleaned !== '' && !isNaN(Number(cleaned)) ? Number(cleaned) : undefined;
+                  if (onUpdateLotePesoDeMil) {
+                    await onUpdateLotePesoDeMil(lote.id, parsedPeso);
+                  } else if (onSaveLote) {
+                    await onSaveLote({
+                      ...lote,
+                      pesoDeMil: parsedPeso
+                    });
+                  }
+                  setShowPesoDeMilModal(false);
+                } catch (err) {
+                  console.error('Error guardando Peso de 1000:', err);
+                } finally {
+                  setIsSavingPesoDeMil(false);
+                }
+              }}
+              className="p-6 space-y-4"
+            >
+              <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 text-xs text-emerald-950 leading-relaxed">
+                Ingrese el <strong>Peso de 1000 semillas</strong> (PMS) en gramos (ej: <code>165.4</code>). Este valor se registrará en el lote y se sincronizará con la ficha técnica y los balances de producción.
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-700 mb-1 tracking-wider">
+                  Peso de 1000 (PMS)
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="2000"
+                    value={pesoDeMilVal}
+                    onChange={(e) => setPesoDeMilVal(e.target.value)}
+                    placeholder="Ej: 165.40"
+                    className="w-full pl-3 pr-14 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#00603C] focus:border-[#00603C] focus:outline-none text-base transition"
+                    autoFocus
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500 font-mono">
+                    gramos
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Deje el campo vacío si desea borrar el registro de peso de mil.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowPesoDeMilModal(false)}
+                  className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingPesoDeMil}
+                  className="px-5 py-2.5 bg-[#00603C] hover:bg-[#004D30] text-white rounded-lg text-xs font-bold uppercase tracking-wider transition shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingPesoDeMil ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
+                  ) : (
+                    <Check className="w-4 h-4 text-amber-300 stroke-[3]" />
+                  )}
+                  <span>{isSavingPesoDeMil ? 'Guardando...' : 'Guardar Peso de 1000'}</span>
                 </button>
               </div>
             </form>

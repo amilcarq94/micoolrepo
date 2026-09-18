@@ -12,7 +12,8 @@ import {
   getVariedadesVisibles,
   SalidaRegistrada,
   MovimientoSilo,
-  SiloId
+  SiloId,
+  OrdenCarga
 } from '../types';
 import { formatNumberArg } from '../utils/formatters';
 import {
@@ -69,6 +70,7 @@ import {
 export interface DashboardProduccionProps {
   lotes: Lote[];
   salidas?: SalidaRegistrada[];
+  ordenesCarga?: OrdenCarga[];
   movimientosSilo?: MovimientoSilo[];
   siloStocks?: Record<string, any>;
   plantaConfig?: PlantaConfig;
@@ -125,6 +127,7 @@ const COLOR_PALETTE = [
 export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
   lotes = [],
   salidas = [],
+  ordenesCarga = [],
   movimientosSilo = [],
   siloStocks: _siloStocks = {},
   plantaConfig,
@@ -355,7 +358,29 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
         const kgBolsa = m.kgPorBolsa || pesoBolsa;
         const cantKg = Math.abs(m.cantidadKg || 0) || cantBolsas * kgBolsa;
 
-        // A. Movimientos internos entre lotes (transferencias, curado desdoblado, orden de movimiento)
+        // A. Despacho comercial efectivo y egresos del stock por movimiento "despacho"
+        const esDespacho =
+          tipoSalida === 'despacho' ||
+          tipoSalida.includes('despacho') ||
+          tipoStr === 'Salida por despacho' ||
+          tipoStr === 'Despacho' ||
+          tipoLower.includes('despacho') ||
+          (m as any).motivo?.toLowerCase().includes('despacho') ||
+          detLower.includes('despacho') ||
+          Boolean(m.ordenId && (m.ordenId.startsWith('OC-') || m.ordenId.startsWith('ORD-') || m.ordenId.trim() !== '')) ||
+          Boolean(m.remitoCliente && m.remitoCliente.trim() !== '-' && m.remitoCliente.trim() !== '') ||
+          detLower.includes('remito') ||
+          detLower.includes('orden de carga') ||
+          detLower.includes('orden n°') ||
+          (tipoStr === 'Salida' && (Boolean(m.chofer) || detLower.includes('remito') || detLower.includes('despacho')));
+
+        if (esDespacho) {
+          bolsasDespachoHist += cantBolsas;
+          kgDespachoHist += cantKg;
+          return;
+        }
+
+        // B. Movimientos internos entre lotes (transferencias, curado desdoblado, orden de movimiento)
         const esMovimiento =
           tipoSalida === 'movimiento' ||
           tipoStr === 'Salida por movimiento' ||
@@ -375,7 +400,7 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
           return;
         }
 
-        // B. Pasado a Consumo / Mermas / Ajuste a consumo
+        // C. Pasado a Consumo / Mermas / Ajuste a consumo
         const esConsumo =
           tipoSalida === 'consumo' ||
           tipoStr === 'Pasado a Consumo' ||
@@ -391,33 +416,11 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
           return;
         }
 
-        // C. Salida manual sin remito de despacho comercial
+        // D. Salida manual sin remito de despacho comercial
         if (tipoStr === 'Salida manual' || tipoSalida === 'manual') {
-          const tieneRemito = Boolean(m.remitoCliente && m.remitoCliente.trim() !== '-' && m.remitoCliente.trim() !== '');
-          const mencionaDespacho = detLower.includes('despacho') || detLower.includes('remito') || detLower.includes('orden de carga');
-          if (!tieneRemito && !mencionaDespacho) {
-            bolsasConsumoHist += cantBolsas;
-            kgConsumoHist += cantKg;
-            return;
-          }
-        }
-
-        // D. Despacho comercial efectivo (con remito / orden de carga / chofer)
-        const esDespacho =
-          tipoSalida === 'despacho' ||
-          tipoStr === 'Salida por despacho' ||
-          tipoStr === 'Despacho' ||
-          Boolean(m.ordenId && (m.ordenId.startsWith('OC-') || m.ordenId.startsWith('ORD-'))) ||
-          Boolean(m.remitoCliente && m.remitoCliente.trim() !== '-' && m.remitoCliente.trim() !== '') ||
-          detLower.includes('despacho') ||
-          detLower.includes('remito') ||
-          detLower.includes('orden de carga') ||
-          detLower.includes('orden n°') ||
-          (tipoStr === 'Salida' && (Boolean(m.chofer) || detLower.includes('remito') || detLower.includes('despacho')));
-
-        if (esDespacho) {
-          bolsasDespachoHist += cantBolsas;
-          kgDespachoHist += cantKg;
+          bolsasConsumoHist += cantBolsas;
+          kgConsumoHist += cantKg;
+          return;
         }
       });
 
@@ -439,44 +442,17 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
         const detLower = (m.detalle || '').toLowerCase();
         const tipoSalida = (m.tipoSalida || '').toLowerCase();
 
-        // Omitir si es movimiento o consumo
-        const esMovimiento =
-          tipoSalida === 'movimiento' ||
-          tipoStr === 'Salida por movimiento' ||
-          tipoStr === 'Salida por movimientos' ||
-          tipoLower.includes('movimiento') ||
-          detLower.includes('movimiento') ||
-          detLower.includes('transferencia') ||
-          detLower.includes('hacia nuevo lote') ||
-          detLower.includes('desdoblamiento') ||
-          detLower.includes('curado') ||
-          detLower.includes('orden de movimiento') ||
-          detLower.includes('precarga de movimiento');
-        if (esMovimiento) return;
-
-        const esConsumo =
-          tipoSalida === 'consumo' ||
-          tipoStr === 'Pasado a Consumo' ||
-          tipoLower.includes('consumo') ||
-          detLower.includes('consumo') ||
-          detLower.includes('a consumo') ||
-          detLower.includes('descarte') ||
-          detLower.includes('merma');
-        if (esConsumo) return;
-
-        if (tipoStr === 'Salida manual' || tipoSalida === 'manual') {
-          const tieneRemito = Boolean(m.remitoCliente && m.remitoCliente.trim() !== '-' && m.remitoCliente.trim() !== '');
-          const mencionaDespacho = detLower.includes('despacho') || detLower.includes('remito') || detLower.includes('orden de carga');
-          if (!tieneRemito && !mencionaDespacho) return;
-        }
-
+        // Identificar si es un egreso por movimiento "despacho"
         const esDespacho =
           tipoSalida === 'despacho' ||
+          tipoSalida.includes('despacho') ||
           tipoStr === 'Salida por despacho' ||
           tipoStr === 'Despacho' ||
-          Boolean(m.ordenId && (m.ordenId.startsWith('OC-') || m.ordenId.startsWith('ORD-'))) ||
-          Boolean(m.remitoCliente && m.remitoCliente.trim() !== '-' && m.remitoCliente.trim() !== '') ||
+          tipoLower.includes('despacho') ||
+          (m as any).motivo?.toLowerCase().includes('despacho') ||
           detLower.includes('despacho') ||
+          Boolean(m.ordenId && (m.ordenId.startsWith('OC-') || m.ordenId.startsWith('ORD-') || m.ordenId.trim() !== '')) ||
+          Boolean(m.remitoCliente && m.remitoCliente.trim() !== '-' && m.remitoCliente.trim() !== '') ||
           detLower.includes('remito') ||
           detLower.includes('orden de carga') ||
           detLower.includes('orden n°') ||
@@ -492,7 +468,8 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
           const sRemito = (s.remitoCliente || '').trim().toUpperCase();
           if (sId && (mRemito === sId || detUpper.includes(sId))) return true;
           if (sRemito && sRemito !== '-' && (mRemito === sRemito || detUpper.includes(sRemito))) return true;
-          if (m.ordenId && s.id === m.ordenId) return true;
+          if (m.ordenId && (s.ordenId === m.ordenId || s.id === m.ordenId || s.id.includes(m.ordenId))) return true;
+          if (m.id && (s.id === m.id || s.id.includes(m.id))) return true;
           return false;
         });
 
@@ -505,10 +482,37 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
         }
       });
 
-      let bolsasDespachadas = bolsasSalidasExt + bolsasHistDespachoNoExt;
-      let kgDespachados = kgSalidasExt + kgHistDespachoNoExt;
+      // Incluir órdenes de carga con despacho activado (stockDescontado o Despachada)
+      let bolsasOrdenesNoExt = 0;
+      let kgOrdenesNoExt = 0;
+      (ordenesCarga || []).forEach((o) => {
+        if (!o.stockDescontado && o.estado !== 'Despachada') return;
+        const belongsToLote =
+          o.loteId === lote.id ||
+          o.loteId === lote.loteNro ||
+          (o.lotesOrigen && o.lotesOrigen.some((item) => item.loteId === lote.id || item.loteId === lote.loteNro));
+        if (!belongsToLote) return;
 
-      // Consolidación de seguridad para datos de despacho
+        const alreadyInSalidas = salidasExt.some((s) => s.ordenId === o.id || s.id.includes(o.id));
+        const alreadyInHist = (lote.historial || []).some((m) => m && (m.ordenId === o.id || (m.detalle && m.detalle.includes(o.id))));
+        if (!alreadyInSalidas && !alreadyInHist) {
+          if (o.lotesOrigen && o.lotesOrigen.length > 0) {
+            const item = o.lotesOrigen.find((it) => it.loteId === lote.id || it.loteId === lote.loteNro);
+            if (item) {
+              bolsasOrdenesNoExt += item.cantidadBolsas || 0;
+              kgOrdenesNoExt += item.kgTotales || (item.cantidadBolsas || 0) * pesoBolsa;
+            }
+          } else {
+            bolsasOrdenesNoExt += o.cantidadBolsas || 0;
+            kgOrdenesNoExt += o.kgTotales || (o.cantidadBolsas || 0) * pesoBolsa;
+          }
+        }
+      });
+
+      let bolsasDespachadas = bolsasSalidasExt + bolsasHistDespachoNoExt + bolsasOrdenesNoExt;
+      let kgDespachados = kgSalidasExt + kgHistDespachoNoExt + kgOrdenesNoExt;
+
+      // Consolidación de seguridad para datos de despacho (agregar todas aquellas bolsas que egresaron por movimiento despacho)
       bolsasDespachadas = Math.max(bolsasDespachadas, Math.max(bolsasSalidasExt, bolsasDespachoHist));
       kgDespachados = Math.max(kgDespachados, Math.max(kgSalidasExt, kgDespachoHist));
 

@@ -262,6 +262,7 @@ export function mapFirestoreToLote(id: string, data: any): Lote {
     bolsonOrigenNro: data.bolsonOrigenNro || data.numeroBolsonOrigen || '',
     sectorBolsonOrigen: data.sectorBolsonOrigen || '',
     humedad: data.humedad !== undefined ? Number(data.humedad) : undefined,
+    pesoDeMil: data.pesoDeMil !== undefined && data.pesoDeMil !== null && !isNaN(Number(data.pesoDeMil)) ? Number(data.pesoDeMil) : undefined,
     inaseInicio: data.inaseInicio || '',
     inaseFinal: data.inaseFinal || ''
   };
@@ -326,6 +327,7 @@ export function mapLoteToFirestore(lote: Lote): any {
     sector: lote.sector || '',
     ubicacionAcopio: lote.ubicacionAcopio || '',
     humedad: lote.humedad !== undefined && lote.humedad !== null ? Number(lote.humedad) : null,
+    pesoDeMil: lote.pesoDeMil !== undefined && lote.pesoDeMil !== null && !isNaN(Number(lote.pesoDeMil)) ? Number(lote.pesoDeMil) : null,
     inaseInicio: lote.inaseInicio || '',
     inaseFinal: lote.inaseFinal || '',
     silosOrigen: lote.silosOrigen || [],

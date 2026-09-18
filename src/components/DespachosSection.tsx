@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Lote, OrdenCarga, LoteOrigenItem } from '../types';
+import { Lote, OrdenCarga, LoteOrigenItem, SalidaRegistrada, Chofer, PlantaConfig } from '../types';
+import { SalidasList, SalidaUnifiedRow } from './SalidasList';
 import { getCampaniaIdFromDate } from '../utils/campanias';
 import { LogoSiloLoose } from './Logo';
 import { ClienteSelect } from './ClienteSelect';
@@ -36,13 +37,12 @@ import {
   RefreshCw,
   Plus,
   RotateCcw,
-  Maximize2,
-  Minimize2,
   CheckCircle,
   PackageCheck,
   Camera,
   ZoomIn,
-  MapPin
+  MapPin,
+  History
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -58,6 +58,9 @@ import { ConfirmationDialog } from './ConfirmationDialog';
 interface DespachosSectionProps {
   lotes: Lote[];
   ordenes: OrdenCarga[];
+  salidas?: SalidaRegistrada[];
+  choferes?: Chofer[];
+  plantaConfig?: PlantaConfig;
   onSaveOrden: (nuevaOrden: OrdenCarga) => void;
   onUpdateOrdenStatus: (
     ordenId: string,
@@ -73,6 +76,8 @@ interface DespachosSectionProps {
   ) => boolean | Promise<boolean>;
   onDeleteOrden?: (ordenId: string) => void;
   onDeleteMultipleOrdenes?: (ordenIds: string[]) => Promise<void> | void;
+  onDeleteDespacho?: (row: SalidaUnifiedRow) => Promise<boolean | void> | boolean | void;
+  onDeleteMultipleDespachos?: (rows: SalidaUnifiedRow[]) => Promise<boolean | void> | boolean | void;
   onRefresh?: () => Promise<void> | void;
   initialSubView?: 'generar' | 'mis-ordenes' | 'listado';
   onlyMisOrdenes?: boolean;
@@ -108,11 +113,16 @@ export const getLoteUbicacion = (loteObj?: Lote | null, fallbackUbicacion?: stri
 export const DespachosSection: React.FC<DespachosSectionProps> = ({
   lotes,
   ordenes,
+  salidas = [],
+  choferes = [],
+  plantaConfig,
   onSaveOrden,
   onUpdateOrdenStatus,
   onDespacharStock,
   onDeleteOrden,
   onDeleteMultipleOrdenes,
+  onDeleteDespacho,
+  onDeleteMultipleDespachos,
   onRefresh,
   initialSubView = 'generar',
   onlyMisOrdenes = false,
@@ -121,7 +131,14 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   const [subView, setSubView] = useState<'generar' | 'mis-ordenes' | 'listado'>(
     onlyMisOrdenes ? 'mis-ordenes' : initialSubView
   );
+  const [listadoTab, setListadoTab] = useState<'ordenes' | 'salidas-historial'>('ordenes');
   const [isNavCortinaOpen, setIsNavCortinaOpen] = useState(false);
+
+  useEffect(() => {
+    if (initialSubView) {
+      setSubView(initialSubView);
+    }
+  }, [initialSubView]);
 
   // Selección múltiple y eliminación de despachos en subview 'listado'
   const [selectedOrdenIds, setSelectedOrdenIds] = useState<Set<string>>(new Set());
@@ -144,19 +161,6 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     setSelectedOrdenIds(new Set());
   };
 
-  // Modo Pantalla Completa para Generación de Orden de Carga
-  const [isFullScreenGenerar, setIsFullScreenGenerar] = useState(false);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullScreenGenerar) {
-        setIsFullScreenGenerar(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullScreenGenerar]);
-
   // Clave para fijar filtros en Despachos (persistencia hasta ser eliminados manualmente)
   const PIN_STORAGE_KEY_DESPACHOS = 'agroabacus_pinned_despachos_filters_v1';
   const [isFilterPinned, setIsFilterPinned] = useState<boolean>(() => {
@@ -176,6 +180,11 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   const [genCategoria, setGenCategoria] = useState<'Preba' | 'Original' | 'Primu'>('Primu');
   const [genTipo, setGenTipo] = useState<'Intermedio' | 'Final'>('Final');
   const [genTratamiento, setGenTratamiento] = useState<'Tratado' | 'Sin Tratar'>('Sin Tratar');
+  const [genTamanoEnvase, setGenTamanoEnvase] = useState<string>('Todos');
+
+  // Estado para refresco manual de lotes desde el dashboard
+  const [isUpdatingLotes, setIsUpdatingLotes] = useState(false);
+  const [lastUpdatedLotesMsg, setLastUpdatedLotesMsg] = useState<string>('');
 
   // Lotes agregados al dashboard de "Lote de Origen & Bolsas a Cargar"
   // Precarga por defecto de 35 bolsas (28.000 kg) por lote
@@ -305,6 +314,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
           if (parsed.genCategoria !== undefined) setGenCategoria(parsed.genCategoria);
           if (parsed.genTipo !== undefined) setGenTipo(parsed.genTipo);
           if (parsed.genTratamiento !== undefined) setGenTratamiento(parsed.genTratamiento);
+          if (parsed.genTamanoEnvase !== undefined) setGenTamanoEnvase(parsed.genTamanoEnvase);
 
           if (parsed.criteriosCarga && Array.isArray(parsed.criteriosCarga) && parsed.criteriosCarga.length > 0) {
             const b = parsed.criteriosCarga[0];
@@ -314,6 +324,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
             if (b.tratamiento) setGenTratamiento(b.tratamiento);
             if (b.especie) setGenEspecie(b.especie);
             if (b.variedad) setGenVariedad(b.variedad);
+            if (b.tamanoEnvase) setGenTamanoEnvase(b.tamanoEnvase);
           }
         }
       }
@@ -339,13 +350,15 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
         genTratamiento,
         genEspecie,
         genVariedad,
+        genTamanoEnvase,
         criteriosCarga: [{
           cliente: genCliente,
           categoria: genCategoria,
           tipo: genTipo,
           tratamiento: genTratamiento,
           especie: genEspecie,
-          variedad: genVariedad
+          variedad: genVariedad,
+          tamanoEnvase: genTamanoEnvase
         }]
       };
       localStorage.setItem(PIN_STORAGE_KEY_DESPACHOS, JSON.stringify(toSave));
@@ -365,7 +378,8 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     genTipo,
     genTratamiento,
     genEspecie,
-    genVariedad
+    genVariedad,
+    genTamanoEnvase
   ]);
 
   const handleClearDespachosFilters = () => {
@@ -389,6 +403,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     setGenCategoria('Primu');
     setGenTipo('Final');
     setGenTratamiento('Sin Tratar');
+    setGenTamanoEnvase('Todos');
 
     // 2. Restablecer lotes slots y datos manuales de carga (precarga por defecto de 35 bolsas / 28.000 kg)
     setLotesCarga([
@@ -487,6 +502,33 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     return getVariedadesForClienteYEspecie(genCliente, genEspecie);
   }, [genCliente, genEspecie, lotes]);
 
+  // Tamaños de envase disponibles vinculados al cliente y especie seleccionados
+  const tamanosEnvaseDisponiblesFiltro = useMemo(() => {
+    const set = new Set<string>();
+    lotes.forEach(l => {
+      const matchCli = matchClienteHelper(l.cliente, genCliente);
+      const matchEsp = genEspecie === 'Todos' || l.especie === genEspecie;
+      if (matchCli && matchEsp && l.kgPorBolsa) {
+        set.add(String(l.kgPorBolsa));
+      }
+    });
+    if (set.size === 0) {
+      lotes.forEach(l => {
+        const matchCli = matchClienteHelper(l.cliente, genCliente);
+        if (matchCli && l.kgPorBolsa) set.add(String(l.kgPorBolsa));
+      });
+    }
+    if (set.size === 0) {
+      lotes.forEach(l => {
+        if (l.kgPorBolsa) set.add(String(l.kgPorBolsa));
+      });
+    }
+    if (set.size === 0) {
+      set.add('40');
+    }
+    return Array.from(set).sort((a, b) => Number(a) - Number(b));
+  }, [genCliente, genEspecie, lotes]);
+
   // Lotes que responden exactamente a los filtros vinculados
   const candidateLotes = useMemo(() => {
     return lotes.filter(l => {
@@ -496,12 +538,32 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       const matchTratamiento = l.tratamiento.includes(genTratamiento as any);
       const matchEspecie = genEspecie === 'Todos' || l.especie === genEspecie;
       const matchVariedad = genVariedad === 'Todos' || l.variedad?.trim() === genVariedad;
+      const matchTamanoEnvase = genTamanoEnvase === 'Todos' || String(l.kgPorBolsa || 40) === genTamanoEnvase;
       const hasStock = l.stockBolsas > 0;
       const isDisponible = l.estado === 'Disponible';
 
-      return matchCliente && matchCategoria && matchTipo && matchTratamiento && matchEspecie && matchVariedad && hasStock && isDisponible;
+      return matchCliente && matchCategoria && matchTipo && matchTratamiento && matchEspecie && matchVariedad && matchTamanoEnvase && hasStock && isDisponible;
     });
-  }, [lotes, genCliente, genEspecie, genVariedad, genCategoria, genTipo, genTratamiento]);
+  }, [lotes, genCliente, genEspecie, genVariedad, genCategoria, genTipo, genTratamiento, genTamanoEnvase]);
+
+  // Función para refrescar y actualizar datos de lotes del sistema según filtros aplicados
+  const handleActualizarLotesSistema = async () => {
+    setIsUpdatingLotes(true);
+    setLastUpdatedLotesMsg('');
+    try {
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setLastUpdatedLotesMsg('Datos de lotes actualizados con éxito');
+      setTimeout(() => {
+        setLastUpdatedLotesMsg('');
+      }, 3500);
+    } catch (err) {
+      console.error('Error actualizando lotes del sistema:', err);
+    } finally {
+      setIsUpdatingLotes(false);
+    }
+  };
 
   // Auto-seleccionar primer lote disponible para slot 0 si no tiene lote o el que tiene ya no es candidato
   useEffect(() => {
@@ -535,7 +597,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   const handleClienteChange = (newCliente: string) => {
     setGenCliente(newCliente);
     const especies = getEspeciesForCliente(newCliente);
-    const nextEspecie = especies.includes(genEspecie) ? genEspecie : 'Todos';
+    const nextEspecie = (especies as string[]).includes(genEspecie) ? genEspecie : 'Todos';
     setGenEspecie(nextEspecie);
     const variedades = getVariedadesForClienteYEspecie(newCliente, nextEspecie);
     const nextVariedad = variedades.includes(genVariedad) ? genVariedad : 'Todos';
@@ -1298,13 +1360,13 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                     ? 'bg-[#00603C] text-white border-[#00603C] ring-2 ring-emerald-300'
                     : 'bg-white hover:bg-emerald-50/70 border-emerald-300 text-[#00603C]'
                 }`}
-                title="Desplegar menú en cortina para seleccionar 1. Crear Orden, 2. Mis Órdenes o 3. Salidas"
+                title="Desplegar menú en cortina para seleccionar 1. Crear Orden, 2. Mis Órdenes o Despachos"
               >
                 <Menu className="w-4 h-4 text-[#C9922E]" />
                 <span>
                   {subView === 'generar' && '1. Crear Orden'}
                   {subView === 'mis-ordenes' && '2. Mis Órdenes (Playa)'}
-                  {subView === 'listado' && '3. Salidas'}
+                  {subView === 'listado' && 'Despachos'}
                 </span>
                 {isNavCortinaOpen ? (
                   <ChevronUp className="w-4 h-4 text-[#C9922E]" />
@@ -1400,9 +1462,9 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                     <div className="flex items-center gap-3">
                       <FileText className={`w-5 h-5 ${subView === 'listado' ? 'text-amber-300' : 'text-emerald-700'}`} />
                       <div>
-                        <div className="text-xs font-bold uppercase tracking-wide">3. Salidas</div>
+                        <div className="text-xs font-bold uppercase tracking-wide">Despachos</div>
                         <div className={`text-[11px] ${subView === 'listado' ? 'text-emerald-100' : 'text-slate-500'}`}>
-                          Histórico consolidado con comprobantes y exportación a PDF
+                          Historial unificado de salidas, remitos y control de carga en planta
                         </div>
                       </div>
                     </div>
@@ -1420,7 +1482,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
         
         {/* A) GENERAR ORDEN DE CARGA */}
         {subView === 'generar' && (
-          <div className={isFullScreenGenerar ? "fixed inset-0 z-50 bg-[#F4F6F4] overflow-y-auto p-4 md:p-8 flex flex-col" : "space-y-6"}>
+          <div className="space-y-6">
             
             {/* Banner de Confirmación de Orden Creada (visible aún con panel minimizado) */}
             {genSuccess && (
@@ -1491,25 +1553,12 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                   {isGenerarOrdenOpen && (
                     <button
                       type="button"
-                      onClick={() => setIsFullScreenGenerar(prev => !prev)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border ${
-                        isFullScreenGenerar
-                          ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                      }`}
-                      title={isFullScreenGenerar ? "Salir de pantalla completa (Esc)" : "Expandir interfaz a pantalla completa"}
+                      onClick={handleResetForm}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border border-gray-200 bg-white hover:bg-gray-100 text-gray-700 shadow-2xs"
+                      title="Limpiar formulario y restablecer valores por defecto"
                     >
-                      {isFullScreenGenerar ? (
-                        <>
-                          <Minimize2 className="w-4 h-4 text-amber-700" />
-                          <span className="hidden sm:inline">Salir Pantalla Completa</span>
-                        </>
-                      ) : (
-                        <>
-                          <Maximize2 className="w-4 h-4 text-gray-600" />
-                          <span className="hidden sm:inline">Pantalla Completa</span>
-                        </>
-                      )}
+                      <RotateCcw className="w-3.5 h-3.5 text-gray-500" />
+                      <span>Limpiar Formulario</span>
                     </button>
                   )}
 
@@ -1626,18 +1675,18 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                         </select>
                       </div>
 
-                      {/* 2. FILTROS VINCULADOS AGRUPADOS POR DEBAJO DEL CLIENTE: Especie, Variedad, Categoría, Tipo y Tratamiento */}
+                      {/* 2. FILTROS VINCULADOS AGRUPADOS POR DEBAJO DEL CLIENTE: Especie, Variedad, Categoría, Tipo, Tratamiento y Tamaño de Envase */}
                       <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-2xs space-y-3">
                         <div className="flex items-center justify-between pb-1.5 border-b border-gray-100">
                           <span className="text-[10px] font-black uppercase tracking-wider text-[#00603C]">
                             Filtros agrupados por debajo de Cliente ({genCliente})
                           </span>
                           <span className="text-[10px] text-gray-400">
-                            5 atributos de clasificación vinculados
+                            6 atributos de clasificación vinculados
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
                           {/* Especie */}
                           <div>
                             <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
@@ -1725,6 +1774,26 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                               ))}
                             </select>
                           </div>
+
+                          {/* Tamaño de Envase */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">
+                              Tamaño Envase
+                            </label>
+                            <select
+                              value={genTamanoEnvase}
+                              onChange={(e) => setGenTamanoEnvase(e.target.value)}
+                              className="w-full h-9 px-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs font-medium"
+                            >
+                              <option value="Todos">Todos los envases</option>
+                              {tamanosEnvaseDisponiblesFiltro.map(tam => (
+                                <option key={tam} value={tam}>{tam} kg</option>
+                              ))}
+                            </select>
+                            <span className="text-[10px] text-gray-400 mt-0.5 block truncate">
+                              {tamanosEnvaseDisponiblesFiltro.length} dispon.
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -1766,17 +1835,38 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                       </p>
                     </div>
 
-                    {/* Botón '+' para agregar más lotes */}
-                    <button
-                      type="button"
-                      onClick={handleAddLoteSlot}
-                      disabled={candidateLotes.length === 0}
-                      className="px-4 py-2 bg-emerald-50 hover:bg-[#00603C] text-[#00603C] hover:text-white border border-emerald-300 hover:border-[#00603C] rounded-xl font-bold text-xs flex items-center gap-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
-                      title="Agregar otro lote de origen a esta misma orden"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>+ Agregar Lote de Origen</span>
-                    </button>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      {lastUpdatedLotesMsg && (
+                        <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                          <CheckCircle className="w-3.5 h-3.5 text-[#00603C]" />
+                          {lastUpdatedLotesMsg}
+                        </span>
+                      )}
+
+                      {/* Botón para actualizar datos de lotes del sistema */}
+                      <button
+                        type="button"
+                        onClick={handleActualizarLotesSistema}
+                        disabled={isUpdatingLotes}
+                        className="px-3.5 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-300 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                        title="Actualizar datos de lotes del sistema para refrescar los resultados de los filtros aplicados"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 text-[#00603C] ${isUpdatingLotes ? 'animate-spin' : ''}`} />
+                        <span>{isUpdatingLotes ? 'Actualizando...' : 'Actualizar datos'}</span>
+                      </button>
+
+                      {/* Botón '+' para agregar más lotes */}
+                      <button
+                        type="button"
+                        onClick={handleAddLoteSlot}
+                        disabled={candidateLotes.length === 0}
+                        className="px-4 py-2 bg-emerald-50 hover:bg-[#00603C] text-[#00603C] hover:text-white border border-emerald-300 hover:border-[#00603C] rounded-xl font-bold text-xs flex items-center gap-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+                        title="Agregar otro lote de origen a esta misma orden"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>+ Agregar Lote de Origen</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Estado si no hay lotes candidatos */}
@@ -2119,17 +2209,8 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                   </div>
                 </div>
 
-                {/* BOTONERA DE ACCIONES (ORDENADA Y REORGANIZADA) */}
-                <div className="border-t border-gray-200 pt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={handleResetForm}
-                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-100 text-gray-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5 text-gray-500" />
-                    <span>Limpiar Formulario</span>
-                  </button>
-
+                {/* BOTONERA DE ACCIONES */}
+                <div className="border-t border-gray-200 pt-4 flex flex-col sm:flex-row items-center justify-end gap-3">
                   <div className="flex flex-wrap items-center justify-end gap-3 w-full sm:w-auto">
                     {stockInsuficienteAlerta && (
                       <span className="text-xs font-bold text-[#A0522D] bg-[#F5E5DC] px-3 py-1.5 rounded-lg flex items-center gap-1">
@@ -2696,12 +2777,58 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
           </div>
         )}
 
-        {/* C) LISTADO GENERAL DE DESPACHOS */}
+        {/* C) LISTADO GENERAL DE DESPACHOS Y SALIDAS */}
         {subView === 'listado' && (
           <div className="space-y-6 text-left">
-            
-            {/* Filtros de la Tabla con Fijar Filtros */}
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+            {/* Barra de Unificación de Despachos */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-gray-200 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="tab-ordenes-despacho"
+                  onClick={() => setListadoTab('ordenes')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold font-sans uppercase tracking-wider flex items-center gap-2 transition cursor-pointer ${
+                    listadoTab === 'ordenes'
+                      ? 'bg-[#00603C] text-white shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <ClipboardList className="w-4 h-4" />
+                  <span>Órdenes y Salida de Stock</span>
+                </button>
+                <button
+                  type="button"
+                  id="tab-historial-salidas-unificado"
+                  onClick={() => setListadoTab('salidas-historial')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold font-sans uppercase tracking-wider flex items-center gap-2 transition cursor-pointer ${
+                    listadoTab === 'salidas-historial'
+                      ? 'bg-[#00603C] text-white shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <History className="w-4 h-4" />
+                  <span>Historial de Salidas & Remitos</span>
+                </button>
+              </div>
+              <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider pr-2">
+                {listadoTab === 'ordenes' ? 'Gestión Operativa de Despacho' : 'Comprobantes Oficiales y Planillas'}
+              </div>
+            </div>
+
+            {listadoTab === 'salidas-historial' ? (
+              <SalidasList
+                salidas={salidas}
+                lotes={lotes}
+                choferes={choferes}
+                ordenes={ordenes}
+                plantaConfig={plantaConfig}
+                onDeleteDespacho={onDeleteDespacho}
+                onDeleteMultipleDespachos={onDeleteMultipleDespachos}
+              />
+            ) : (
+              <>
+                {/* Filtros de la Tabla con Fijar Filtros */}
+                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-100">
                 <span className="text-[10px] font-sans font-bold tracking-wider text-gray-500 uppercase">
                   Filtrar Órdenes de Carga Registradas
@@ -3020,10 +3147,15 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                         <th className="py-3 px-4">Fecha</th>
                         <th className="py-3 px-4">Cliente Comitente</th>
                         <th className="py-3 px-4">ID Lote</th>
+                        <th className="py-3 px-4">Especie</th>
+                        <th className="py-3 px-4">Variedad</th>
+                        <th className="py-3 px-4">Tipo Lote</th>
+                        <th className="py-3 px-4">Tratamiento</th>
+                        <th className="py-3 px-4 text-center">Bolsa / Envase</th>
+                        <th className="py-3 px-4 text-right">Bolsas Despachadas</th>
+                        <th className="py-3 px-4 text-right">Total Kg</th>
                         <th className="py-3 px-4">Autorizado por</th>
                         <th className="py-3 px-4">Despachante</th>
-                        <th className="py-3 px-4 text-right">Bolsas</th>
-                        <th className="py-3 px-4 text-right">Total Kg</th>
                         <th className="py-3 px-4">Destino / Chofer</th>
                         <th className="py-3 px-4 text-center">Remito / Foto</th>
                         <th className="py-3 px-4 text-center">Firma Chofer</th>
@@ -3036,6 +3168,30 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                         const hasFoto = !!(tempFotos[o.id] || o.fotoRemito);
                         const hasFirma = !!(tempFirmas[o.id] || o.firmaChofer);
                         const isSelected = selectedOrdenIds.has(o.id);
+
+                        const singleLoteMatch = lotes.find(l => l.id === o.loteId || l.loteNro === o.loteId);
+
+                        const rowEspecie = o.lotesOrigen && o.lotesOrigen.length > 0
+                          ? Array.from(new Set(o.lotesOrigen.map(lo => {
+                              const lm = lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro);
+                              return lm?.especie;
+                            }).filter(Boolean))).join(', ') || singleLoteMatch?.especie || '—'
+                          : singleLoteMatch?.especie || '—';
+
+                        const rowVariedad = o.lotesOrigen && o.lotesOrigen.length > 0
+                          ? Array.from(new Set(o.lotesOrigen.map(lo => {
+                              const lm = lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro);
+                              return lo.variedad || lm?.variedad;
+                            }).filter(Boolean))).join(', ') || singleLoteMatch?.variedad || '—'
+                          : singleLoteMatch?.variedad || '—';
+
+                        const rowTipoLote = singleLoteMatch?.tipo || o.tipo || 'Original';
+
+                        const rowTratamiento = Array.isArray(singleLoteMatch?.tratamiento) && singleLoteMatch.tratamiento.length > 0
+                          ? singleLoteMatch.tratamiento.join(', ')
+                          : (o.tratamiento || (typeof singleLoteMatch?.tratamiento === 'string' ? singleLoteMatch.tratamiento : 'Sin tratamiento'));
+
+                        const rowEnvase = singleLoteMatch?.envase || (singleLoteMatch?.kgPorBolsa ? `Bolsa ${singleLoteMatch.kgPorBolsa} kg` : (o.tamanoEnvase ? `Bolsa ${o.tamanoEnvase} kg` : 'Bolsa'));
 
                         return (
                           <tr
@@ -3163,19 +3319,52 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                               )}
                             </td>
 
-                            {/* 7 - Autorizado por */}
-                            <td className="py-3.5 px-4 font-semibold text-gray-700">{o.autor || '—'}</td>
+                            {/* Especie */}
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded bg-emerald-50 text-[#00603C] border border-emerald-200 text-xs font-bold">
+                                {rowEspecie}
+                              </span>
+                            </td>
 
-                            {/* 8 - Despachante */}
-                            <td className="py-3.5 px-4 font-semibold text-gray-900">{o.despachante}</td>
+                            {/* Variedad */}
+                            <td className="py-3.5 px-4 font-bold text-gray-900 whitespace-nowrap">
+                              {rowVariedad}
+                            </td>
 
-                            {/* 9 - Bolsas */}
-                            <td className="py-3.5 px-4 text-right font-bold text-gray-800">{o.cantidadBolsas} b.</td>
+                            {/* Tipo Lote */}
+                            <td className="py-3.5 px-4 text-xs font-semibold text-gray-700 whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                                {rowTipoLote}
+                              </span>
+                            </td>
 
-                            {/* 10 - Total Kg */}
-                            <td className="py-3.5 px-4 text-right font-mono font-bold text-[#00603C]">
+                            {/* Tratamiento */}
+                            <td className="py-3.5 px-4 text-xs text-gray-700 max-w-[150px] truncate" title={rowTratamiento}>
+                              {rowTratamiento}
+                            </td>
+
+                            {/* Bolsa / Envase */}
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 text-xs font-bold font-mono">
+                                {rowEnvase}
+                              </span>
+                            </td>
+
+                            {/* Bolsas Despachadas */}
+                            <td className="py-3.5 px-4 text-right font-bold text-gray-900 whitespace-nowrap">
+                              {o.cantidadBolsas} b.
+                            </td>
+
+                            {/* Total Kg */}
+                            <td className="py-3.5 px-4 text-right font-mono font-bold text-[#00603C] whitespace-nowrap">
                               {formatNumberArg(o.kgTotales, 0)} kg
                             </td>
+
+                            {/* Autorizado por */}
+                            <td className="py-3.5 px-4 font-semibold text-gray-700">{o.autor || '—'}</td>
+
+                            {/* Despachante */}
+                            <td className="py-3.5 px-4 font-semibold text-gray-900">{o.despachante}</td>
 
                             {/* 11 - Destino / Chofer */}
                             <td className="py-3.5 px-4 text-left">
@@ -3281,6 +3470,8 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                   </table>
                 </div>
               </div>
+            )}
+              </>
             )}
 
           </div>

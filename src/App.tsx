@@ -325,6 +325,7 @@ export default function App() {
   const [preselectedLoteId, setPreselectedLoteId] = useState<string | undefined>(undefined);
   const [publicLote, setPublicLote] = useState<Lote | null>(null);
   const [precargaConfigFromCalculo, setPrecargaConfigFromCalculo] = useState<CalculoTransferConfig | null>(null);
+  const [despachosInitialSubView, setDespachosInitialSubView] = useState<'generar' | 'mis-ordenes' | 'listado'>('generar');
 
   // Notificaciones temporales de éxito
   const [notificacion, setNotificacion] = useState('');
@@ -806,6 +807,7 @@ export default function App() {
       try {
         const batch = writeBatch(db);
         const fechaHoy = new Date().toISOString().split('T')[0];
+        const creadasSalidas: SalidaRegistrada[] = [];
 
         for (const item of orden.lotesOrigen) {
           const targetLote = lotes.find(l => l.id === item.loteId)!;
@@ -850,21 +852,67 @@ export default function App() {
             estado: nuevoEstado,
             auditoria: [auditEvent, ...(targetLote.auditoria || [])]
           });
+
+          // CREAR DOCUMENTO EN SALIDAS VINCULANDO DATOS DEL LOTE
+          const choferMatch = choferes.find(c => c.nombre && orden?.chofer && c.nombre.trim().toLowerCase() === orden.chofer.trim().toLowerCase());
+          const tratamientoStr = Array.isArray(targetLote.tratamiento) && targetLote.tratamiento.length > 0
+            ? targetLote.tratamiento.join(', ')
+            : (orden?.tratamiento || (typeof targetLote.tratamiento === 'string' ? targetLote.tratamiento : 'Sin tratamiento'));
+          const envaseStr = targetLote.envase || `Bolsa ${targetLote.kgPorBolsa} kg`;
+          const nuevaSalidaId = `SAL-${ordenId ? ordenId : Date.now()}-${targetLote.loteNro || targetLote.id}`.replace(/\s+/g, '_');
+
+          const salidaDoc: SalidaRegistrada = {
+            id: nuevaSalidaId,
+            fecha: fechaHoy,
+            campaniaId: targetLote.campaniaId || orden?.campaniaId || currentCampaniaId,
+            choferNombre: orden?.chofer || orden?.despachante || 'Chofer no especificado',
+            choferDni: choferMatch?.cuit || '-',
+            patenteCamion: choferMatch?.patentes || '-',
+            cliente: targetLote.cliente || orden?.cliente || '—',
+            especie: targetLote.especie || '—',
+            variedad: targetLote.variedad || item.variedad || '—',
+            loteId: targetLote.loteNro || targetLote.id,
+            tipoLote: (targetLote.tipo || orden?.tipo || 'Original') as TipoLoteType,
+            producto: tratamientoStr !== 'Sin tratamiento' ? tratamientoStr : (targetLote.especie || 'Semilla'),
+            categoria: (targetLote.categoria || orden?.categoria || '1ra') as CategoriaType,
+            tratamiento: tratamientoStr,
+            cantidadBolsas: item.cantidadBolsas,
+            envase: envaseStr,
+            kgPorBolsa: targetLote.kgPorBolsa,
+            tamanoBolsa: `${targetLote.kgPorBolsa} kg`,
+            totalKg: item.kgTotales,
+            taraCamion: choferMatch?.tara || 0,
+            brutoCamion: (choferMatch?.tara || 0) + item.kgTotales,
+            remitoCliente: orden?.remitoCliente || '-',
+            destino: orden?.destino || '-',
+            ordenId: orden?.id || ordenId,
+            remitoClienteAdjunto: orden?.fotoRemito ? { nombre: `Remito-${orden.remitoCliente || orden.id}.jpg`, data: orden.fotoRemito, type: 'image/jpeg' } : undefined,
+            choferFirma: orden?.firmaChofer || undefined
+          };
+
+          const salidaRef = doc(db, 'salidas', nuevaSalidaId);
+          batch.set(salidaRef, sanitizeForFirestore(salidaDoc));
+          creadasSalidas.push(salidaDoc);
         }
 
-        // Marcar la orden como con stock descontado
+        // Marcar la orden como con stock descontado y estado Despachada
         if (ordenId) {
           const ocRef = doc(db, 'ordenesCarga', ordenId);
           batch.update(ocRef, {
             stockDescontado: true,
-            fechaBajaStock: new Date().toISOString()
+            fechaBajaStock: new Date().toISOString(),
+            estado: 'Despachada'
           });
         }
 
         await batch.commit();
 
+        if (creadasSalidas.length > 0) {
+          setSalidas(prev => [...creadasSalidas, ...prev.filter(s => !creadasSalidas.some(cs => cs.id === s.id))]);
+        }
+
         if (ordenId) {
-          setOrdenesCarga(prev => prev.map(o => o.id === ordenId ? { ...o, stockDescontado: true, fechaBajaStock: new Date().toISOString() } : o));
+          setOrdenesCarga(prev => prev.map(o => o.id === ordenId ? { ...o, stockDescontado: true, fechaBajaStock: new Date().toISOString(), estado: 'Despachada' } : o));
         }
 
         return true;
@@ -882,9 +930,10 @@ export default function App() {
       return false; // stock insuficiente
     }
 
+    const fechaHoy = new Date().toISOString().split('T')[0];
     const nuevoMov: MovimientoStock = {
       id: `MOV-OC-${Date.now()}`,
-      fecha: new Date().toISOString().split('T')[0],
+      fecha: fechaHoy,
       tipo: 'Salida por despacho',
       cantidadBolsas: bolsas,
       kgPorBolsa: lote.kgPorBolsa,
@@ -899,17 +948,63 @@ export default function App() {
 
     try {
       await registrarMovimientoTransaccion(loteId, nuevoMov);
+
+      // CREAR DOCUMENTO EN SALIDAS VINCULANDO DATOS DEL LOTE
+      const choferMatch = choferes.find(c => c.nombre && orden?.chofer && c.nombre.trim().toLowerCase() === orden.chofer.trim().toLowerCase());
+      const tratamientoStr = Array.isArray(lote.tratamiento) && lote.tratamiento.length > 0
+        ? lote.tratamiento.join(', ')
+        : (orden?.tratamiento || (typeof lote.tratamiento === 'string' ? lote.tratamiento : 'Sin tratamiento'));
+      const envaseStr = lote.envase || `Bolsa ${lote.kgPorBolsa} kg`;
+      const nuevaSalidaId = `SAL-${ordenId ? ordenId : Date.now()}-${lote.loteNro || lote.id}`.replace(/\s+/g, '_');
+
+      const salidaDoc: SalidaRegistrada = {
+        id: nuevaSalidaId,
+        fecha: fechaHoy,
+        campaniaId: lote.campaniaId || orden?.campaniaId || currentCampaniaId,
+        choferNombre: orden?.chofer || orden?.despachante || 'Chofer no especificado',
+        choferDni: choferMatch?.cuit || '-',
+        patenteCamion: choferMatch?.patentes || '-',
+        cliente: lote.cliente || orden?.cliente || '—',
+        especie: lote.especie || '—',
+        variedad: lote.variedad || '—',
+        loteId: lote.loteNro || lote.id,
+        tipoLote: (lote.tipo || orden?.tipo || 'Original') as TipoLoteType,
+        producto: tratamientoStr !== 'Sin tratamiento' ? tratamientoStr : (lote.especie || 'Semilla'),
+        categoria: (lote.categoria || orden?.categoria || '1ra') as CategoriaType,
+        tratamiento: tratamientoStr,
+        cantidadBolsas: bolsas,
+        envase: envaseStr,
+        kgPorBolsa: lote.kgPorBolsa,
+        tamanoBolsa: `${lote.kgPorBolsa} kg`,
+        totalKg: kg,
+        taraCamion: choferMatch?.tara || 0,
+        brutoCamion: (choferMatch?.tara || 0) + kg,
+        remitoCliente: orden?.remitoCliente || '-',
+        destino: orden?.destino || '-',
+        ordenId: orden?.id || ordenId,
+        remitoClienteAdjunto: orden?.fotoRemito ? { nombre: `Remito-${orden.remitoCliente || orden.id}.jpg`, data: orden.fotoRemito, type: 'image/jpeg' } : undefined,
+        choferFirma: orden?.firmaChofer || undefined
+      };
+
+      try {
+        await setDoc(doc(db, 'salidas', nuevaSalidaId), sanitizeForFirestore(salidaDoc));
+      } catch (eSal) {
+        console.warn('Error guardando doc de salida en Firestore:', eSal);
+      }
+      setSalidas(prev => [salidaDoc, ...prev.filter(s => s.id !== nuevaSalidaId)]);
+
       if (ordenId) {
         try {
           const ocRef = doc(db, 'ordenesCarga', ordenId);
           await updateDoc(ocRef, {
             stockDescontado: true,
-            fechaBajaStock: new Date().toISOString()
+            fechaBajaStock: new Date().toISOString(),
+            estado: 'Despachada'
           });
         } catch (eOc) {
           console.warn('Error al actualizar orden como stockDescontado:', eOc);
         }
-        setOrdenesCarga(prev => prev.map(o => o.id === ordenId ? { ...o, stockDescontado: true, fechaBajaStock: new Date().toISOString() } : o));
+        setOrdenesCarga(prev => prev.map(o => o.id === ordenId ? { ...o, stockDescontado: true, fechaBajaStock: new Date().toISOString(), estado: 'Despachada' } : o));
       }
       return true;
     } catch (e) {
@@ -923,6 +1018,19 @@ export default function App() {
       const orden = ordenesCarga.find(o => o.id === ordenId);
       // Si la orden tenía stock descontado, reintegrar stock a los lotes
       if (orden && orden.stockDescontado) {
+        // Eliminar salidas registradas asociadas a esta orden
+        const salidasAEliminar = salidas.filter(s => s.ordenId === ordenId || s.id.startsWith(`SAL-${ordenId}`));
+        for (const sal of salidasAEliminar) {
+          try {
+            await deleteDoc(doc(db, 'salidas', sal.id));
+          } catch (eDelSal) {
+            console.warn('Error eliminando doc de salida asociado:', eDelSal);
+          }
+        }
+        if (salidasAEliminar.length > 0) {
+          setSalidas(prev => prev.filter(s => s.ordenId !== ordenId && !s.id.startsWith(`SAL-${ordenId}`)));
+        }
+
         if (orden.lotesOrigen && orden.lotesOrigen.length > 0) {
           for (const item of orden.lotesOrigen) {
             const targetLote = lotes.find(l => l.id === item.loteId);
@@ -1703,6 +1811,43 @@ export default function App() {
         setLoteSeleccionado(prev => prev ? { ...prev, inaseInicio, inaseFinal } : null);
       }
       showNotification('Código INASE guardado localmente.');
+    }
+  };
+
+  const handleUpdateLotePesoDeMil = async (loteId: string, nuevoPeso: number | undefined) => {
+    try {
+      const loteRef = doc(db, 'lotes', loteId);
+      const loteAnterior = lotes.find(l => l.id === loteId);
+      const currentAuditoria = loteAnterior?.auditoria || [];
+
+      const auditEntry: AuditLogEntry = {
+        id: `AUD-PMS-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Edición',
+        usuario: currentUser?.nombre || 'Jefe de Planta',
+        descripcion: `Peso de 1000 (PMS) actualizado a ${nuevoPeso !== undefined ? `${nuevoPeso} g` : 'sin especificar'}.`,
+        detalles: `Modificación manual de peso de mil semillas.`
+      };
+
+      await updateDoc(loteRef, {
+        pesoDeMil: nuevoPeso !== undefined ? nuevoPeso : null,
+        auditoria: [auditEntry, ...currentAuditoria]
+      });
+
+      setLotes(prev => prev.map(l => l.id === loteId ? { ...l, pesoDeMil: nuevoPeso, auditoria: [auditEntry, ...currentAuditoria] } : l));
+      if (loteSeleccionado?.id === loteId) {
+        setLoteSeleccionado(prev => prev ? { ...prev, pesoDeMil: nuevoPeso, auditoria: [auditEntry, ...currentAuditoria] } : null);
+      }
+
+      showNotification(`Peso de mil (PMS) actualizado a ${nuevoPeso !== undefined ? `${nuevoPeso} g` : '—'}.`);
+    } catch (e) {
+      console.error('Error al guardar Peso de 1000:', e);
+      // Actualización optimista local
+      setLotes(prev => prev.map(l => l.id === loteId ? { ...l, pesoDeMil: nuevoPeso } : l));
+      if (loteSeleccionado?.id === loteId) {
+        setLoteSeleccionado(prev => prev ? { ...prev, pesoDeMil: nuevoPeso } : null);
+      }
+      showNotification('Peso de mil guardado localmente.');
     }
   };
 
@@ -2579,35 +2724,20 @@ export default function App() {
           {/* Tab 8: Despachos */}
           <button
             id="nav-tab-despachos"
-            onClick={() => navigateTo('despachos')}
+            onClick={() => {
+              navigateTo('despachos');
+            }}
             className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transition-all duration-200 cursor-pointer ${
               sidebarCollapsed ? 'justify-center p-3' : 'gap-2.5 px-3 py-2.5'
             } ${
-              activeView === 'despachos'
+              activeView === 'despachos' || activeView === 'salidas-registradas'
                 ? 'bg-[#F6EFDC] text-[#00603C] shadow-sm font-bold ring-1.5 ring-[#C9922E]/60'
                 : 'text-white hover:bg-white/10'
             }`}
-            title="Despachos y Órdenes de Carga"
+            title="Despachos"
           >
             <ClipboardCheck className="w-5 h-5 shrink-0" />
             {!sidebarCollapsed && <span className="truncate">Despachos</span>}
-          </button>
-
-          {/* Tab 9: Salidas */}
-          <button
-            id="nav-tab-historial-salidas"
-            onClick={() => navigateTo('salidas-registradas')}
-            className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transition-all duration-200 cursor-pointer ${
-              sidebarCollapsed ? 'justify-center p-3' : 'gap-2.5 px-3 py-2.5'
-            } ${
-              activeView === 'salidas-registradas'
-                ? 'bg-[#F6EFDC] text-[#00603C] shadow-sm font-bold ring-1.5 ring-[#C9922E]/60'
-                : 'text-white hover:bg-white/10'
-            }`}
-            title="Salidas Registradas"
-          >
-            <History className="w-5 h-5 shrink-0" />
-            {!sidebarCollapsed && <span className="truncate">Salidas</span>}
           </button>
 
           {/* Separador de Sección: Datos & Sistema */}
@@ -2928,34 +3058,20 @@ export default function App() {
                 <span>Generar Lote</span>
               </button>
 
+              {/* Despachos */}
               <button
                 onClick={() => {
                   navigateTo('despachos');
                   setMobileNavOpen(false);
                 }}
                 className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
-                  activeView === 'despachos'
+                  activeView === 'despachos' || activeView === 'salidas-registradas'
                     ? 'bg-[#F6EFDC] text-[#00603C] font-bold'
                     : 'text-white hover:bg-white/10'
                 }`}
               >
                 <ClipboardCheck className="w-4 h-4" />
                 <span>Despachos</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  navigateTo('salidas-registradas');
-                  setMobileNavOpen(false);
-                }}
-                className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
-                  activeView === 'salidas-registradas'
-                    ? 'bg-[#F6EFDC] text-[#00603C] font-bold'
-                    : 'text-white hover:bg-white/10'
-                }`}
-              >
-                <History className="w-4 h-4" />
-                <span>Salidas</span>
               </button>
 
               {/* Separador de Sección: Datos & Sistema */}
@@ -3097,6 +3213,7 @@ export default function App() {
             } : undefined}
             onUpdateLoteLocation={isLoggedIn ? handleUpdateLoteLocation : undefined}
             onUpdateLoteInase={isLoggedIn ? handleUpdateLoteInase : undefined}
+            onUpdateLotePesoDeMil={handleUpdateLotePesoDeMil}
           />
         ) : (
           <>
@@ -3144,6 +3261,7 @@ export default function App() {
               <DashboardProduccion
                 lotes={filteredLotesByCampania}
                 salidas={filteredSalidasByCampania}
+                ordenesCarga={filteredOrdenesByCampania}
                 movimientosSilo={movimientosSilo}
                 siloStocks={siloStocks}
                 plantaConfig={plantaConfig}
@@ -3267,15 +3385,21 @@ export default function App() {
             onSaveChofer={handleSaveChofer}
             onImportChoferes={handleImportChoferes}
           />
-        ) : activeView === 'despachos' ? (
+        ) : activeView === 'despachos' || activeView === 'salidas-registradas' ? (
           <DespachosSection
             lotes={filteredLotesByCampania}
             ordenes={filteredOrdenesByCampania}
+            salidas={filteredSalidasByCampania}
+            choferes={choferes}
+            plantaConfig={plantaConfig}
+            initialSubView={activeView === 'salidas-registradas' ? 'listado' : despachosInitialSubView}
             onSaveOrden={handleSaveOrden}
             onUpdateOrdenStatus={handleUpdateOrdenStatus}
             onDespacharStock={handleDespacharStock}
             onDeleteOrden={handleDeleteOrden}
             onDeleteMultipleOrdenes={handleDeleteMultipleOrdenes}
+            onDeleteDespacho={handleDeleteDespacho}
+            onDeleteMultipleDespachos={handleDeleteMultipleDespachos}
             onRefresh={handleRefreshData}
           />
         ) : activeView === 'modo-planta' ? (
@@ -3302,16 +3426,6 @@ export default function App() {
             onUpdateOrdenStatus={handleUpdateOrdenStatus}
             onDespacharStock={handleDespacharStock}
             onDeleteOrdenCarga={handleDeleteOrden}
-          />
-        ) : activeView === 'salidas-registradas' ? (
-          <SalidasList
-            salidas={filteredSalidasByCampania}
-            lotes={filteredLotesByCampania}
-            choferes={choferes}
-            ordenes={filteredOrdenesByCampania}
-            plantaConfig={plantaConfig}
-            onDeleteDespacho={handleDeleteDespacho}
-            onDeleteMultipleDespachos={handleDeleteMultipleDespachos}
           />
         ) : activeView === 'silos' ? (
           <IngresoSilosView

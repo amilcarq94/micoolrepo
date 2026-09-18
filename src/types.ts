@@ -503,6 +503,11 @@ export interface SalidaRegistrada {
   remitoClienteAdjunto?: { nombre: string; data: string; type: string }; // Remito adjunto por el cliente
   remitoCliente?: string; // N° de remito (cliente)
   destino?: string; // Destino de la mercadería
+  especie?: string; // Especie del lote
+  variedad?: string; // Variedad del lote
+  tratamiento?: string; // Tratamiento del lote
+  tamanoBolsa?: string; // Tamaño de bolsa ej: 40 kg
+  ordenId?: string; // ID de la orden de carga asociada
 }
 
 export interface LoteOrigenItem {
