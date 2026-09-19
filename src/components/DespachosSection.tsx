@@ -711,10 +711,11 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       }
     }
 
-    // Mapear el desglose de lotes de origen incluyendo su ubicación en planta
+    // Mapear el desglose de lotes de origen incluyendo su ubicación en planta, especie y variedad
     const lotesOrigen: LoteOrigenItem[] = allSelectedSlots.map(item => ({
       loteId: item.lote.id,
       loteNro: item.lote.loteNro,
+      especie: item.lote.especie,
       variedad: item.lote.variedad,
       cantidadBolsas: item.bolsas,
       kgTotales: item.kg,
@@ -726,6 +727,11 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     const primerLote = allSelectedSlots[0].lote;
     const ubicacionConsolidada = lotesOrigen.map(lo => `${lo.loteNro}: ${lo.ubicacion}`).join(' | ');
 
+    const uniqueEspecies = Array.from(new Set(allSelectedSlots.map(item => item.lote.especie).filter(Boolean)));
+    const uniqueVariedades = Array.from(new Set(allSelectedSlots.map(item => item.lote.variedad).filter(Boolean)));
+    const especieConsolidada = uniqueEspecies.join(' / ') || primerLote.especie;
+    const variedadConsolidada = uniqueVariedades.join(' / ') || primerLote.variedad;
+
     const fechaOrden = new Date().toISOString().split('T')[0];
     // Crear la Orden
     const nuevaOrden: OrdenCarga = {
@@ -734,6 +740,8 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       campaniaId: getCampaniaIdFromDate(fechaOrden),
       cliente: clienteConsolidado,
       loteId: lotesOrigen.map(lo => lo.loteNro).join(', '),
+      especie: especieConsolidada,
+      variedad: variedadConsolidada,
       cantidadBolsas: totalBolsasSeleccionadas,
       kgTotales: totalKgSeleccionados,
       tipo: primerLote.tipo,
@@ -935,12 +943,22 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       return;
     }
 
+    const especieInfo = orden.especie || (orden.lotesOrigen && orden.lotesOrigen.length > 0
+      ? Array.from(new Set(orden.lotesOrigen.map(lo => lo.especie || lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro)?.especie).filter(Boolean))).join(', ')
+      : lotes.find(l => l.id === orden.loteId || l.loteNro === orden.loteId)?.especie) || '—';
+
+    const variedadInfo = orden.variedad || (orden.lotesOrigen && orden.lotesOrigen.length > 0
+      ? Array.from(new Set(orden.lotesOrigen.map(lo => lo.variedad || lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro)?.variedad).filter(Boolean))).join(', ')
+      : lotes.find(l => l.id === orden.loteId || l.loteNro === orden.loteId)?.variedad) || '—';
+
     const confirmar = window.confirm(
       `¿Confirmar salida por despacho de stock?\n\n` +
       `• N° Orden: ${orden.id}\n` +
       `• Lote de Origen: ${orden.loteId}\n` +
+      `• Especie: ${especieInfo}\n` +
+      `• Variedad: ${variedadInfo}\n` +
       `• Cantidad de Bolsas a descontar: ${orden.cantidadBolsas} bolsas (${formatNumberArg(orden.kgTotales, 0)} kg)\n\n` +
-      `Al presionar Aceptar, se marcará la salida y se descontará del stock del lote utilizado.`
+      `Al presionar Aceptar, se registrará la salida con los datos de especie y variedad del lote y se descontará del stock disponible.`
     );
 
     if (!confirmar) return;
@@ -2060,11 +2078,23 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
                       <div>
                         <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Clientes</span>
                         <span className="font-bold text-gray-800 truncate block" title={Array.from(new Set(allSelectedSlots.map(s => s.lote.cliente))).join(', ')}>
                           {Array.from(new Set(allSelectedSlots.map(s => s.lote.cliente))).join(' / ')}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-bold text-[#00603C] uppercase tracking-wider block">Especie</span>
+                        <span className="font-bold text-gray-800 truncate block" title={Array.from(new Set(allSelectedSlots.map(s => s.lote.especie).filter(Boolean))).join(', ') || '—'}>
+                          {Array.from(new Set(allSelectedSlots.map(s => s.lote.especie).filter(Boolean))).join(' / ') || '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-bold text-[#C9922E] uppercase tracking-wider block">Variedad</span>
+                        <span className="font-bold text-gray-800 truncate block" title={Array.from(new Set(allSelectedSlots.map(s => s.lote.variedad).filter(Boolean))).join(', ') || '—'}>
+                          {Array.from(new Set(allSelectedSlots.map(s => s.lote.variedad).filter(Boolean))).join(' / ') || '—'}
                         </span>
                       </div>
                       <div>
@@ -2087,25 +2117,40 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                       </div>
                     </div>
 
-                    {/* Desglose individual de cada lote */}
+                    {/* Desglose individual de cada lote con Especie y Variedad */}
                     <div className="pt-2 border-t border-amber-200/50">
-                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
+                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">
                         Desglose de Lotes
                       </span>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                         {allSelectedSlots.map((item, i) => (
                           <div
                             key={i}
-                            className="bg-white p-2 rounded-lg border border-gray-100 flex items-center justify-between text-xs"
+                            className="bg-white p-2.5 rounded-lg border border-gray-100 flex items-center justify-between text-xs shadow-2xs"
                           >
-                            <div className="truncate pr-2">
-                              <span className="font-mono font-bold text-gray-800 block">Lote {item.lote.loteNro}</span>
-                              <span className="text-[10px] text-gray-500 truncate block">
-                                {item.lote.cliente} • {item.lote.variedad || item.lote.especie}
-                              </span>
+                            <div className="truncate pr-2 space-y-1">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-mono font-black text-gray-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 text-xs">
+                                  L-{item.lote.loteNro}
+                                </span>
+                                {item.lote.especie && (
+                                  <span className="text-[10px] font-bold text-[#00603C] bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                    🌾 {item.lote.especie}
+                                  </span>
+                                )}
+                                {item.lote.variedad && (
+                                  <span className="text-[10px] font-bold text-[#C9922E] bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                    🌱 {item.lote.variedad}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-gray-500 truncate">
+                                <span>{item.lote.cliente}</span>
+                                <span className="text-gray-400 font-semibold ml-1.5">📍 {getLoteUbicacion(item.lote)}</span>
+                              </div>
                             </div>
                             <div className="text-right shrink-0">
-                              <span className="font-bold text-[#00603C] block">{item.bolsas} b.</span>
+                              <span className="font-bold text-[#00603C] block text-xs">{item.bolsas} b.</span>
                               <span className="text-[10px] text-gray-400 font-mono block">
                                 {formatNumberArg(item.kg, 0)} kg
                               </span>
@@ -2339,7 +2384,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                 {(() => {
                   const ordenesPendientes = ordenes.filter(o => {
                     const matchDespachante = (o.despachante || '').trim().toLowerCase() === (despIdentificado || '').trim().toLowerCase();
-                    const isPendiente = (o.estado === 'Disponible' || o.estado === 'Aceptada') && o.estado !== 'Despachada' && !confirmedLocally[o.id];
+                    const isPendiente = (o.estado === 'Disponible' || o.estado === 'Aceptada') && (o.estado as string) !== 'Despachada' && !confirmedLocally[o.id];
                     return matchDespachante && isPendiente;
                   });
                   const ordenesTotalesDespachante = ordenes.filter(o => {
@@ -2528,32 +2573,64 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                     </div>
 
                                     {o.lotesOrigen && o.lotesOrigen.length > 0 ? (
-                                      <div className="col-span-2 bg-[#E3EFE7] bg-opacity-30 p-2.5 rounded-lg border border-[#00603C]/10 space-y-1.5 my-1">
-                                        <span className="text-[9px] font-bold text-[#00603C] uppercase tracking-wider block">Desglose de Carga ({o.lotesOrigen.length} lotes)</span>
-                                        <div className="space-y-1.5">
-                                          {o.lotesOrigen.map((lo, idx) => {
-                                            const loteMatch = lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro);
-                                            const ubi = getLoteUbicacion(loteMatch, lo.ubicacion);
-                                            return (
-                                              <div key={idx} className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-b border-dashed border-gray-200 pb-1 last:border-0 last:pb-0 gap-1">
-                                                <div className="flex items-center gap-1.5">
-                                                  <span className="font-mono font-black text-sm text-gray-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
-                                                    L-{lo.loteNro}
-                                                  </span>
-                                                  <span className="text-[11px] font-black text-[#00603C]">
-                                                    📍 {ubi}
+                                      <>
+                                        <div>
+                                          <span className="text-[8px] text-gray-400 font-bold uppercase block tracking-wider">Especie</span>
+                                          <span className="font-semibold text-gray-800 text-xs">
+                                            {o.especie || Array.from(new Set(o.lotesOrigen.map(lo => lo.especie || lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro)?.especie).filter(Boolean))).join(' / ') || '—'}
+                                          </span>
+                                        </div>
+                                        <div>
+                                          <span className="text-[8px] text-gray-400 font-bold uppercase block tracking-wider">Variedad</span>
+                                          <span className="font-semibold text-gray-800 text-xs">
+                                            {o.variedad || Array.from(new Set(o.lotesOrigen.map(lo => lo.variedad || lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro)?.variedad).filter(Boolean))).join(' / ') || '—'}
+                                          </span>
+                                        </div>
+
+                                        <div className="col-span-2 bg-[#E3EFE7] bg-opacity-30 p-2.5 rounded-lg border border-[#00603C]/10 space-y-1.5 my-1">
+                                          <div className="flex items-center justify-between pb-1 border-b border-[#00603C]/10">
+                                            <span className="text-[9px] font-bold text-[#00603C] uppercase tracking-wider block">
+                                              Desglose de Lotes ({o.lotesOrigen.length} lote{o.lotesOrigen.length === 1 ? '' : 's'})
+                                            </span>
+                                            <span className="text-[9px] font-bold text-[#00603C] bg-white px-2 py-0.5 rounded border border-emerald-200">
+                                              {o.cantidadBolsas} b. / {formatNumberArg(o.kgTotales, 0)} kg
+                                            </span>
+                                          </div>
+                                          <div className="space-y-1.5">
+                                            {o.lotesOrigen.map((lo, idx) => {
+                                              const loteMatch = lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro);
+                                              const ubi = getLoteUbicacion(loteMatch, lo.ubicacion);
+                                              const esp = lo.especie || loteMatch?.especie || o.especie || '—';
+                                              const varName = lo.variedad || loteMatch?.variedad || o.variedad || '—';
+                                              return (
+                                                <div key={idx} className="bg-white p-2 rounded-lg border border-emerald-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1.5 shadow-2xs">
+                                                  <div className="flex flex-wrap items-center gap-1.5">
+                                                    <span className="font-mono font-black text-xs sm:text-sm text-gray-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
+                                                      L-{lo.loteNro}
+                                                    </span>
+                                                    <span className="text-[10px] sm:text-[11px] font-bold text-[#00603C] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                                      📍 {ubi}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-[#00603C] bg-emerald-100/70 px-2 py-0.5 rounded" title="Especie">
+                                                      🌾 {esp}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-[#C9922E] bg-amber-50 px-2 py-0.5 rounded border border-amber-200" title="Variedad">
+                                                      🌱 {varName}
+                                                    </span>
+                                                  </div>
+                                                  <span className="font-bold text-gray-800 text-xs shrink-0">
+                                                    {lo.cantidadBolsas} b. / {formatNumberArg(lo.kgTotales, 0)} kg
                                                   </span>
                                                 </div>
-                                                <span className="font-bold text-gray-800 text-xs">{lo.cantidadBolsas} b. / {formatNumberArg(lo.kgTotales, 0)} kg</span>
-                                              </div>
-                                            );
-                                          })}
+                                              );
+                                            })}
+                                          </div>
+                                          <div className="flex justify-between items-center pt-1.5 border-t border-[#00603C]/10 text-[10px] font-bold text-[#00603C]">
+                                            <span>TOTAL CARGA</span>
+                                            <span>{o.cantidadBolsas} b. / {formatNumberArg(o.kgTotales, 0)} kg</span>
+                                          </div>
                                         </div>
-                                        <div className="flex justify-between items-center pt-1.5 border-t border-[#00603C]/10 text-[10px] font-bold text-[#00603C]">
-                                          <span>TOTAL CARGA</span>
-                                          <span>{o.cantidadBolsas} b. / {formatNumberArg(o.kgTotales, 0)} kg</span>
-                                        </div>
-                                      </div>
+                                      </>
                                     ) : (
                                       <>
                                         <div className="col-span-2 bg-amber-50/60 p-2.5 rounded-lg border border-amber-200 flex items-center justify-between">
@@ -2578,11 +2655,11 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                         </div>
                                         <div>
                                           <span className="text-[8px] text-gray-400 font-bold uppercase block tracking-wider">Especie</span>
-                                          <span className="font-semibold text-gray-800">{lote?.especie || '—'}</span>
+                                          <span className="font-semibold text-gray-800">{lote?.especie || o.especie || '—'}</span>
                                         </div>
                                         <div>
                                           <span className="text-[8px] text-gray-400 font-bold uppercase block tracking-wider">Variedad</span>
-                                          <span className="font-semibold text-gray-800">{lote?.variedad || '—'}</span>
+                                          <span className="font-semibold text-gray-800">{lote?.variedad || o.variedad || '—'}</span>
                                         </div>
                                         <div>
                                           <span className="text-[8px] text-gray-400 font-bold uppercase block tracking-wider">Cantidad de Bolsas</span>
@@ -3191,7 +3268,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                           ? singleLoteMatch.tratamiento.join(', ')
                           : (o.tratamiento || (typeof singleLoteMatch?.tratamiento === 'string' ? singleLoteMatch.tratamiento : 'Sin tratamiento'));
 
-                        const rowEnvase = singleLoteMatch?.envase || (singleLoteMatch?.kgPorBolsa ? `Bolsa ${singleLoteMatch.kgPorBolsa} kg` : (o.tamanoEnvase ? `Bolsa ${o.tamanoEnvase} kg` : 'Bolsa'));
+                        const rowEnvase = (singleLoteMatch as any)?.envase || (singleLoteMatch?.kgPorBolsa ? `Bolsa ${singleLoteMatch.kgPorBolsa} kg` : ((o as any).tamanoEnvase ? `Bolsa ${(o as any).tamanoEnvase} kg` : 'Bolsa'));
 
                         return (
                           <tr
@@ -3563,6 +3640,22 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                   </span>
                 </p>
                 <p className="text-gray-700">
+                  Especie:{" "}
+                  <span className="font-semibold text-gray-800">
+                    {comprobanteSeleccionado.especie || (comprobanteSeleccionado.lotesOrigen && comprobanteSeleccionado.lotesOrigen.length > 0
+                      ? Array.from(new Set(comprobanteSeleccionado.lotesOrigen.map(lo => lo.especie || lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro)?.especie).filter(Boolean))).join(', ')
+                      : lotes.find(l => l.id === comprobanteSeleccionado.loteId || l.loteNro === comprobanteSeleccionado.loteId)?.especie) || '—'}
+                  </span>
+                </p>
+                <p className="text-gray-700">
+                  Variedad:{" "}
+                  <span className="font-semibold text-gray-800">
+                    {comprobanteSeleccionado.variedad || (comprobanteSeleccionado.lotesOrigen && comprobanteSeleccionado.lotesOrigen.length > 0
+                      ? Array.from(new Set(comprobanteSeleccionado.lotesOrigen.map(lo => lo.variedad || lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro)?.variedad).filter(Boolean))).join(', ')
+                      : lotes.find(l => l.id === comprobanteSeleccionado.loteId || l.loteNro === comprobanteSeleccionado.loteId)?.variedad) || '—'}
+                  </span>
+                </p>
+                <p className="text-gray-700">
                   Ubicación en Planta:{" "}
                   <span className="font-sans font-black text-xs text-[#00603C]">
                     📍 {comprobanteSeleccionado.ubicacionLote || (comprobanteSeleccionado.lotesOrigen && comprobanteSeleccionado.lotesOrigen.length > 0
@@ -3593,7 +3686,14 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                       <tr key={idx}>
                         <td className="py-3 px-4 text-gray-900">
                           <span className="font-bold block">Expedición de Semillas Clasificadas</span>
-                          <span className="text-[10px] text-gray-400">Origen Lote: <span className="font-bold font-mono">{lo.loteNro}</span></span>
+                          <span className="text-[10px] text-gray-400">
+                            Origen Lote: <span className="font-bold font-mono">{lo.loteNro}</span>
+                            {(lo.especie || lo.variedad) && (
+                              <span className="ml-1.5 text-gray-600 font-semibold">
+                                ({[lo.especie, lo.variedad].filter(Boolean).join(' • ')})
+                              </span>
+                            )}
+                          </span>
                         </td>
                         <td className="py-3 px-4 text-center text-gray-600">Bolsa Standard</td>
                         <td className="py-3 px-4 text-right font-bold text-gray-900">{lo.cantidadBolsas} bolsas</td>

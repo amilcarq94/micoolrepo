@@ -513,6 +513,7 @@ export interface SalidaRegistrada {
 export interface LoteOrigenItem {
   loteId: string;
   loteNro: string;
+  especie?: string;
   variedad?: string;
   cantidadBolsas: number;
   kgTotales: number;
@@ -529,6 +530,8 @@ export interface OrdenCarga {
   campaniaId?: string; // ID de campaña ej: '2026-2027'
   cliente: 'San Diego Semilla' | 'Eco Rural' | 'Pampa' | 'Stine' | 'Elementa Foods' | string;
   loteId: string;
+  especie?: string; // Especie consolidada o del lote
+  variedad?: string; // Variedad consolidada o del lote
   cantidadBolsas: number;
   kgTotales: number;
   tipo: TipoLoteType; // Heredado del lote

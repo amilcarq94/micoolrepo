@@ -793,9 +793,9 @@ export default function App() {
       // Flujo de múltiples lotes de origen
       // Validar stock de todos los lotes involucrados primero
       for (const item of orden.lotesOrigen) {
-        const targetLote = lotes.find(l => l.id === item.loteId);
+        const targetLote = lotes.find(l => l.id === item.loteId || l.loteNro === item.loteNro || l.id === item.loteNro);
         if (!targetLote) {
-          console.error(`Lote con ID ${item.loteId} no encontrado en el estado actual.`);
+          console.error(`Lote con ID ${item.loteId} (N° ${item.loteNro}) no encontrado en el estado actual.`);
           return false;
         }
         if (item.cantidadBolsas > targetLote.stockBolsas) {
@@ -810,7 +810,7 @@ export default function App() {
         const creadasSalidas: SalidaRegistrada[] = [];
 
         for (const item of orden.lotesOrigen) {
-          const targetLote = lotes.find(l => l.id === item.loteId)!;
+          const targetLote = lotes.find(l => l.id === item.loteId || l.loteNro === item.loteNro || l.id === item.loteNro)!;
           const nuevoMov: MovimientoStock = {
             id: `MOV-OC-${Date.now()}-${item.loteId}`,
             fecha: fechaHoy,
@@ -827,7 +827,7 @@ export default function App() {
           };
 
           // Registrar el movimiento en la subcolección del lote
-          const movRef = doc(collection(db, 'lotes', item.loteId, 'movimientos'), nuevoMov.id);
+          const movRef = doc(collection(db, 'lotes', targetLote.id, 'movimientos'), nuevoMov.id);
           batch.set(movRef, nuevoMov);
 
           // Calcular nuevos stocks del lote padre
@@ -837,15 +837,15 @@ export default function App() {
 
           // Registrar evento de auditoría para el lote
           const auditEvent: AuditLogEntry = {
-            id: `AUD-MOV-OC-${Date.now()}-${item.loteId}`,
+            id: `AUD-MOV-OC-${Date.now()}-${targetLote.id}`,
             fechaHora: new Date().toISOString(),
             tipo: 'Stock',
             usuario: currentUser?.nombre || 'Despachante de Planta',
             descripcion: `Despacho de stock registrado por Orden de Carga N° ${ordenId}: -${item.cantidadBolsas} b. (${item.kgTotales} kg).`,
-            detalles: `Lote de origen: ${targetLote.loteNro}.`
+            detalles: `Lote de origen: ${targetLote.loteNro} - Especie: ${targetLote.especie} - Variedad: ${targetLote.variedad}.`
           };
 
-          const loteRef = doc(db, 'lotes', item.loteId);
+          const loteRef = doc(db, 'lotes', targetLote.id);
           batch.update(loteRef, {
             stockBolsas: nuevoStockBolsas,
             stockKgTotal: nuevoStockKgTotal,
@@ -853,13 +853,16 @@ export default function App() {
             auditoria: [auditEvent, ...(targetLote.auditoria || [])]
           });
 
-          // CREAR DOCUMENTO EN SALIDAS VINCULANDO DATOS DEL LOTE
+          // CREAR DOCUMENTO EN SALIDAS VINCULANDO DATOS DEL LOTE DE ORIGEN (ESPECIE Y VARIEDAD)
           const choferMatch = choferes.find(c => c.nombre && orden?.chofer && c.nombre.trim().toLowerCase() === orden.chofer.trim().toLowerCase());
           const tratamientoStr = Array.isArray(targetLote.tratamiento) && targetLote.tratamiento.length > 0
             ? targetLote.tratamiento.join(', ')
             : (orden?.tratamiento || (typeof targetLote.tratamiento === 'string' ? targetLote.tratamiento : 'Sin tratamiento'));
           const envaseStr = targetLote.envase || `Bolsa ${targetLote.kgPorBolsa} kg`;
           const nuevaSalidaId = `SAL-${ordenId ? ordenId : Date.now()}-${targetLote.loteNro || targetLote.id}`.replace(/\s+/g, '_');
+
+          const salidaEspecie = targetLote.especie || item.especie || orden?.especie || '—';
+          const salidaVariedad = targetLote.variedad || item.variedad || orden?.variedad || '—';
 
           const salidaDoc: SalidaRegistrada = {
             id: nuevaSalidaId,
@@ -869,11 +872,11 @@ export default function App() {
             choferDni: choferMatch?.cuit || '-',
             patenteCamion: choferMatch?.patentes || '-',
             cliente: targetLote.cliente || orden?.cliente || '—',
-            especie: targetLote.especie || '—',
-            variedad: targetLote.variedad || item.variedad || '—',
+            especie: salidaEspecie,
+            variedad: salidaVariedad,
             loteId: targetLote.loteNro || targetLote.id,
             tipoLote: (targetLote.tipo || orden?.tipo || 'Original') as TipoLoteType,
-            producto: tratamientoStr !== 'Sin tratamiento' ? tratamientoStr : (targetLote.especie || 'Semilla'),
+            producto: tratamientoStr !== 'Sin tratamiento' ? tratamientoStr : (salidaEspecie !== '—' ? salidaEspecie : 'Semilla'),
             categoria: (targetLote.categoria || orden?.categoria || '1ra') as CategoriaType,
             tratamiento: tratamientoStr,
             cantidadBolsas: item.cantidadBolsas,
@@ -923,7 +926,7 @@ export default function App() {
     }
 
     // Flujo legacy para un único lote de origen
-    const lote = lotes.find(l => l.id === loteId);
+    const lote = lotes.find(l => l.id === loteId || l.loteNro === loteId);
     if (!lote) return false;
 
     if (bolsas > lote.stockBolsas) {
@@ -947,15 +950,18 @@ export default function App() {
     };
 
     try {
-      await registrarMovimientoTransaccion(loteId, nuevoMov);
+      await registrarMovimientoTransaccion(lote.id, nuevoMov);
 
-      // CREAR DOCUMENTO EN SALIDAS VINCULANDO DATOS DEL LOTE
+      // CREAR DOCUMENTO EN SALIDAS VINCULANDO DATOS DEL LOTE DE ORIGEN (ESPECIE Y VARIEDAD)
       const choferMatch = choferes.find(c => c.nombre && orden?.chofer && c.nombre.trim().toLowerCase() === orden.chofer.trim().toLowerCase());
       const tratamientoStr = Array.isArray(lote.tratamiento) && lote.tratamiento.length > 0
         ? lote.tratamiento.join(', ')
         : (orden?.tratamiento || (typeof lote.tratamiento === 'string' ? lote.tratamiento : 'Sin tratamiento'));
       const envaseStr = lote.envase || `Bolsa ${lote.kgPorBolsa} kg`;
       const nuevaSalidaId = `SAL-${ordenId ? ordenId : Date.now()}-${lote.loteNro || lote.id}`.replace(/\s+/g, '_');
+
+      const salidaEspecie = lote.especie || orden?.especie || '—';
+      const salidaVariedad = lote.variedad || orden?.variedad || '—';
 
       const salidaDoc: SalidaRegistrada = {
         id: nuevaSalidaId,
@@ -965,11 +971,11 @@ export default function App() {
         choferDni: choferMatch?.cuit || '-',
         patenteCamion: choferMatch?.patentes || '-',
         cliente: lote.cliente || orden?.cliente || '—',
-        especie: lote.especie || '—',
-        variedad: lote.variedad || '—',
+        especie: salidaEspecie,
+        variedad: salidaVariedad,
         loteId: lote.loteNro || lote.id,
         tipoLote: (lote.tipo || orden?.tipo || 'Original') as TipoLoteType,
-        producto: tratamientoStr !== 'Sin tratamiento' ? tratamientoStr : (lote.especie || 'Semilla'),
+        producto: tratamientoStr !== 'Sin tratamiento' ? tratamientoStr : (salidaEspecie !== '—' ? salidaEspecie : 'Semilla'),
         categoria: (lote.categoria || orden?.categoria || '1ra') as CategoriaType,
         tratamiento: tratamientoStr,
         cantidadBolsas: bolsas,

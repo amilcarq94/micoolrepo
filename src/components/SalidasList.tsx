@@ -482,8 +482,8 @@ export const SalidasList: React.FC<SalidasListProps> = ({
         remitoCliente: remitoClienteVal,
         fecha: s.fecha || '',
         cliente: s.cliente || matchingLote?.cliente || '—',
-        especie: matchingLote?.especie || '—',
-        variedad: matchingLote?.variedad || '—',
+        especie: s.especie || matchingLote?.especie || '—',
+        variedad: s.variedad || matchingLote?.variedad || '—',
         loteId: s.loteId || matchingLote?.loteNro || '—',
         alaStr: matchingLote?.ala ? `ALA ${matchingLote.ala}` : '—',
         sectorStr: matchingLote?.sector ? `SEC ${matchingLote.sector}` : '—',
@@ -531,13 +531,21 @@ export const SalidasList: React.FC<SalidasListProps> = ({
             ? matchingLote.tratamiento.join(', ')
             : '—');
 
+        const ordenEspecie = o.especie || (o.lotesOrigen && o.lotesOrigen.length > 0
+          ? Array.from(new Set(o.lotesOrigen.map(lo => lo.especie || lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro)?.especie).filter(Boolean))).join(', ')
+          : matchingLote?.especie) || '—';
+
+        const ordenVariedad = o.variedad || (o.lotesOrigen && o.lotesOrigen.length > 0
+          ? Array.from(new Set(o.lotesOrigen.map(lo => lo.variedad || lotes.find(l => l.id === lo.loteId || l.loteNro === lo.loteNro)?.variedad).filter(Boolean))).join(', ')
+          : matchingLote?.variedad) || '—';
+
         rows.push({
           id: o.id,
           remitoCliente: remitoClienteVal,
           fecha: o.fecha || '',
           cliente: o.cliente || matchingLote?.cliente || '—',
-          especie: matchingLote?.especie || '—',
-          variedad: matchingLote?.variedad || '—',
+          especie: ordenEspecie,
+          variedad: ordenVariedad,
           loteId: o.loteId || matchingLote?.loteNro || '—',
           alaStr: matchingLote?.ala ? `ALA ${matchingLote.ala}` : '—',
           sectorStr: matchingLote?.sector ? `SEC ${matchingLote.sector}` : '—',
