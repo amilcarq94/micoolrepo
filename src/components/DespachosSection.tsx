@@ -259,14 +259,16 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   // Panel Generación de Orden de Carga: minimizado por defecto, maximizar para cargar datos
   const [isGenerarOrdenOpen, setIsGenerarOrdenOpen] = useState<boolean>(false);
 
-  // Estados de datos de carga manual (Despacho: Remito, Destino, Chofer)
+  // Estados de datos de carga manual (Despacho: Remito, Cliente, Chofer)
   const [genRemitoCliente, setGenRemitoCliente] = useState('');
+  const [genCargaCliente, setGenCargaCliente] = useState('');
   const [genDestino, setGenDestino] = useState('');
   const [genChofer, setGenChofer] = useState('');
 
   // Estados para modal de edición de datos de despacho
   const [ordenEditandoDespacho, setOrdenEditandoDespacho] = useState<OrdenCarga | null>(null);
   const [editRemitoCliente, setEditRemitoCliente] = useState('');
+  const [editCliente, setEditCliente] = useState('');
   const [editDestino, setEditDestino] = useState('');
   const [editChofer, setEditChofer] = useState('');
   const [editSuccessMsg, setEditSuccessMsg] = useState('');
@@ -410,6 +412,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       { id: `slot-${Date.now()}-1`, loteId: '', bolsas: 35, searchTerm: '' }
     ]);
     setGenRemitoCliente('');
+    setGenCargaCliente('');
     setGenDestino('');
     setGenChofer('');
 
@@ -738,7 +741,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       id: `OC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       fecha: fechaOrden,
       campaniaId: getCampaniaIdFromDate(fechaOrden),
-      cliente: clienteConsolidado,
+      cliente: genCargaCliente.trim() || clienteConsolidado,
       loteId: lotesOrigen.map(lo => lo.loteNro).join(', '),
       especie: especieConsolidada,
       variedad: variedadConsolidada,
@@ -779,6 +782,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   const handleOpenEditDespacho = (orden: OrdenCarga) => {
     setOrdenEditandoDespacho(orden);
     setEditRemitoCliente(orden.remitoCliente || '');
+    setEditCliente(orden.cliente || '');
     setEditDestino(orden.destino || '');
     setEditChofer(orden.chofer || '');
     setEditSuccessMsg('');
@@ -791,6 +795,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     const ordenActualizada: OrdenCarga = {
       ...ordenEditandoDespacho,
       remitoCliente: editRemitoCliente.trim() || undefined,
+      cliente: editCliente.trim() || ordenEditandoDespacho.cliente,
       destino: editDestino.trim() || undefined,
       chofer: editChofer.trim() || undefined,
     };
@@ -920,6 +925,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   const [bajaStockLoading, setBajaStockLoading] = useState<Record<string, boolean>>({});
   const [bajaStockFeedback, setBajaStockFeedback] = useState<{ ordenId: string; msg: string; type: 'success' | 'error' } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [resumenActualizadoMsg, setResumenActualizadoMsg] = useState(false);
   const [isConfirmingMap, setIsConfirmingMap] = useState<Record<string, boolean>>({});
   const [confirmedLocally, setConfirmedLocally] = useState<Record<string, boolean>>({});
   const [despachoExitoMsg, setDespachoExitoMsg] = useState<string | null>(null);
@@ -931,6 +937,20 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       if (onRefresh) {
         await onRefresh();
       }
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 600);
+    }
+  };
+
+  // Manejador de actualización específica del Resumen Consolidado de la Orden
+  const handleRefreshResumen = async () => {
+    setIsRefreshing(true);
+    try {
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setResumenActualizadoMsg(true);
+      setTimeout(() => setResumenActualizadoMsg(false), 3000);
     } finally {
       setTimeout(() => setIsRefreshing(false), 600);
     }
@@ -2070,9 +2090,28 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                 {allSelectedSlots.length > 0 && (
                   <div className="bg-[#F6EFDC]/60 p-4 rounded-xl border border-[#C9922E]/30 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#C9922E]/20 pb-2">
-                      <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
-                        Resumen Consolidado de la Orden
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                          Resumen Consolidado de la Orden
+                        </span>
+                        <button
+                          type="button"
+                          id="btn-actualizar-resumen-consolidado"
+                          onClick={handleRefreshResumen}
+                          disabled={isRefreshing}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-[#00603C] bg-white hover:bg-emerald-50 active:bg-emerald-100 border border-emerald-300 hover:border-emerald-400 rounded-lg transition cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Actualizar datos de lotes, stock disponible y recálculo consolidado de la orden de carga"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 text-[#00603C] ${isRefreshing ? 'animate-spin' : ''}`} />
+                          <span>{isRefreshing ? 'Actualizando...' : 'Actualizar Datos'}</span>
+                        </button>
+                        {resumenActualizadoMsg && (
+                          <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100/90 px-2 py-0.5 rounded border border-emerald-300 flex items-center gap-1 animate-in fade-in duration-200">
+                            <Check className="w-3 h-3 text-emerald-700 stroke-[3]" />
+                            Datos actualizados
+                          </span>
+                        )}
+                      </div>
                       <span className="text-xs font-bold text-[#00603C] bg-white px-2 py-0.5 rounded-md border border-emerald-200">
                         {allSelectedSlots.length} Lote{allSelectedSlots.length === 1 ? '' : 's'} a Cargar
                       </span>
@@ -2228,13 +2267,13 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                       </div>
                       <div>
                         <label className="block text-[9px] font-bold text-gray-600 uppercase mb-0.5">
-                          Destino
+                          Cliente
                         </label>
                         <input
                           type="text"
-                          value={genDestino}
-                          onChange={(e) => setGenDestino(e.target.value)}
-                          placeholder="Ej: Quequén"
+                          value={genCargaCliente}
+                          onChange={(e) => setGenCargaCliente(e.target.value)}
+                          placeholder={Array.from(new Set(allSelectedSlots.map(s => s.lote.cliente))).join(' / ') || "Nombre del cliente"}
                           className="w-full h-8 px-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00603C] text-xs"
                         />
                       </div>
@@ -2712,9 +2751,9 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                           </span>
                                         </div>
                                         <div>
-                                          <span className="text-[8px] text-gray-400 font-bold uppercase block">Destino</span>
+                                          <span className="text-[8px] text-gray-400 font-bold uppercase block">Cliente</span>
                                           <span className="font-semibold text-gray-800 truncate block">
-                                            {o.destino || <span className="text-gray-400 italic font-normal">Sin asignar</span>}
+                                            {o.cliente || <span className="text-gray-400 italic font-normal">Sin asignar</span>}
                                           </span>
                                         </div>
                                         <div>
@@ -3967,7 +4006,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                   Editar Datos de Despacho
                 </h4>
                 <p className="text-[11px] text-gray-500">
-                  Modifique los datos manuales de remito, destino y chofer en cualquier momento.
+                  Modifique los datos manuales de remito, cliente y chofer en cualquier momento.
                 </p>
               </div>
               <button
@@ -4001,13 +4040,13 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
 
               <div>
                 <label className="block text-[10px] font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  Destino
+                  Cliente
                 </label>
                 <input
                   type="text"
-                  value={editDestino}
-                  onChange={(e) => setEditDestino(e.target.value)}
-                  placeholder="Ej: Puerto Quequén / Acopio San Cayetano"
+                  value={editCliente}
+                  onChange={(e) => setEditCliente(e.target.value)}
+                  placeholder="Ej: San Diego Semilla"
                   className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] text-xs"
                 />
               </div>
