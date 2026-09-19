@@ -102,6 +102,9 @@ export const LoteForm: React.FC<LoteFormProps> = ({
   const [ala, setAla] = useState('');
   const [sector, setSector] = useState('');
   const [humedad, setHumedad] = useState<number | ''>(13.5);
+  const [pesoDeMil, setPesoDeMil] = useState<string>(() =>
+    loteAEditar?.pesoDeMil !== undefined && loteAEditar?.pesoDeMil !== null ? String(loteAEditar.pesoDeMil) : ''
+  );
   const [fechaTratamiento, setFechaTratamiento] = useState<string>(() => loteAEditar?.fechaTratamiento || getTodayDateStr());
 
   // Gestión de movimientos al editar lote (Entradas, Salidas, Alta)
@@ -278,6 +281,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       sector,
       ubicacionAcopio: ala && sector ? `Ala ${ala} - Sector ${sector}` : '',
       humedad: humedad !== '' ? Number(humedad) : undefined,
+      pesoDeMil: pesoDeMil.trim() !== '' && !isNaN(Number(pesoDeMil.trim().replace(',', '.'))) ? Number(pesoDeMil.trim().replace(',', '.')) : undefined,
       silosOrigen: [],
       historial: isEditing ? movimientosLote : (loteAEditar?.historial || []),
       auditoria: loteAEditar?.auditoria || [],
@@ -313,6 +317,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       setAla(loteAEditar.ala || '');
       setSector(loteAEditar.sector || '');
       setHumedad(loteAEditar.humedad !== undefined ? loteAEditar.humedad : 13.5);
+      setPesoDeMil(loteAEditar.pesoDeMil !== undefined && loteAEditar.pesoDeMil !== null ? String(loteAEditar.pesoDeMil) : '');
       
       let initialHistorial = loteAEditar.historial ? [...loteAEditar.historial] : [];
       if (initialHistorial.length === 0 && loteAEditar.stockBolsas > 0) {
@@ -341,6 +346,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       setObservaciones('');
       setAla('');
       setSector('');
+      setPesoDeMil('');
       setMovimientosLote([]);
     }
   }, [loteAEditar, existingLotes]);
@@ -487,6 +493,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
         sector: sector || existingLoteRepetido.sector,
         ubicacionAcopio: ubicacionStr || existingLoteRepetido.ubicacionAcopio,
         humedad: humedad !== '' ? Number(humedad) : existingLoteRepetido.humedad,
+        pesoDeMil: pesoDeMil.trim() !== '' && !isNaN(Number(pesoDeMil.trim().replace(',', '.'))) ? Number(pesoDeMil.trim().replace(',', '.')) : existingLoteRepetido.pesoDeMil,
         silosOrigen: [],
         historial: [nuevoMov, ...(existingLoteRepetido.historial || [])]
       };
@@ -528,6 +535,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       sector: sector,
       ubicacionAcopio: ubicacionStr,
       humedad: humedad !== '' ? Number(humedad) : undefined,
+      pesoDeMil: pesoDeMil.trim() !== '' && !isNaN(Number(pesoDeMil.trim().replace(',', '.'))) ? Number(pesoDeMil.trim().replace(',', '.')) : undefined,
       fechaTratamiento: tratamientos.includes('Tratado') ? (fechaTratamiento || getTodayDateStr()) : undefined,
       silosOrigen: [],
       historial: isEditing ? movimientosLote : (loteAEditar ? loteAEditar.historial : [
@@ -962,6 +970,31 @@ export const LoteForm: React.FC<LoteFormProps> = ({
             </div>
             <p className="text-[10px] text-gray-500 mt-1">
               * Dato informativo. El % de humedad no modifica el peso total ni los kg del lote.
+            </p>
+          </div>
+
+          {/* Peso de 1000 (PMS) - Carga Manual */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-2 flex items-center justify-between">
+              <span>Peso de 1000:</span>
+              <span className="text-[10px] text-amber-800 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                Manual (PMS)
+              </span>
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                inputMode="decimal"
+                id="loteform-peso-de-mil"
+                value={pesoDeMil}
+                onChange={(e) => setPesoDeMil(e.target.value)}
+                placeholder="Ej: 165.4"
+                className="w-full px-4 py-2.5 bg-white text-gray-800 text-sm font-semibold rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
+              />
+              <span className="absolute right-3 top-2.5 text-xs text-gray-400 font-bold">gramos</span>
+            </div>
+            <p className="text-[10px] text-gray-500 mt-1">
+              * Carga manual del peso de mil semillas en gramos (PMS) para la ficha técnica del lote.
             </p>
           </div>
 

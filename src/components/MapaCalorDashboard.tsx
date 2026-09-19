@@ -187,6 +187,7 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
     variedad: string;
     categoria: string;
     estado: string;
+    pesoDeMil?: string;
   }>({
     loteNro: '',
     stockBolsas: 0,
@@ -194,6 +195,7 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
     variedad: '',
     categoria: 'Original',
     estado: 'Disponible',
+    pesoDeMil: '',
   });
   const [isSavingEditModal, setIsSavingEditModal] = useState(false);
 
@@ -206,6 +208,7 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
       variedad: lote.variedad || '',
       categoria: lote.categoria || 'Original',
       estado: lote.estado || 'Disponible',
+      pesoDeMil: lote.pesoDeMil !== undefined && lote.pesoDeMil !== null ? String(lote.pesoDeMil) : '',
     });
   };
 
@@ -215,13 +218,16 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
 
     try {
       setIsSavingEditModal(true);
+      const cleanP1000 = editFormData.pesoDeMil ? editFormData.pesoDeMil.trim().replace(',', '.') : '';
+      const parsedP1000 = cleanP1000 !== '' && !isNaN(Number(cleanP1000)) ? Number(cleanP1000) : undefined;
+
       const auditEntry: AuditLogEntry = {
         id: `AUD-MC-EDIT-${Date.now()}`,
         fechaHora: new Date().toISOString(),
         tipo: 'Edición',
         usuario: 'Operador Galpón',
         descripcion: `Edición de lote ${editFormData.loteNro} desde Mapa de Calor`,
-        detalles: `Bolsas: ${editFormData.stockBolsas}, Variedad: ${editFormData.variedad}, Estado: ${editFormData.estado}`
+        detalles: `Bolsas: ${editFormData.stockBolsas}, Variedad: ${editFormData.variedad}, Estado: ${editFormData.estado}${parsedP1000 !== undefined ? `, Peso 1000: ${parsedP1000}g` : ''}`
       };
 
       const updatedLote: Lote = {
@@ -232,6 +238,7 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
         variedad: editFormData.variedad.trim() || loteToEditInModal.variedad,
         categoria: (editFormData.categoria as any) || loteToEditInModal.categoria,
         estado: (editFormData.estado as any) || loteToEditInModal.estado,
+        pesoDeMil: parsedP1000,
         auditoria: [...(loteToEditInModal.auditoria || []), auditEntry]
       };
 
@@ -1860,7 +1867,7 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
                   />
                 </div>
 
-                <div className="col-span-2">
+                <div>
                   <label className="block text-gray-700 font-semibold mb-1">Estado del Lote</label>
                   <select
                     value={editFormData.estado}
@@ -1872,6 +1879,26 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
                     <option value="Agotado">Agotado</option>
                     <option value="A Consumo">A Consumo</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-1 flex items-center justify-between">
+                    <span>Peso de 1000:</span>
+                    <span className="text-[10px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded font-bold border border-amber-200">
+                      Manual (PMS)
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={editFormData.pesoDeMil || ''}
+                      onChange={(e) => setEditFormData((prev) => ({ ...prev, pesoDeMil: e.target.value }))}
+                      placeholder="Ej: 165.4"
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-gray-800 focus:ring-2 focus:ring-[#00603C] outline-hidden pr-16"
+                    />
+                    <span className="absolute right-3 top-2 text-xs text-gray-400 font-bold">gramos</span>
+                  </div>
                 </div>
               </div>
 

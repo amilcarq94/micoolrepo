@@ -754,12 +754,14 @@ export const LotesView: React.FC<LotesViewProps> = ({
     estado: EstadoLoteType;
     tipo: TipoLoteType;
     estadoRegistro?: EstadoRegistroLote;
+    pesoDeMil?: string;
   }>({
     loteNro: '',
     stockBolsas: 0,
     categoria: 'Original',
     estado: 'Disponible',
     tipo: 'Final',
+    pesoDeMil: '',
   });
   const [isSavingInline, setIsSavingInline] = useState(false);
   const [inlineSaveError, setInlineSaveError] = useState<string | null>(null);
@@ -838,6 +840,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
       estado: l.estado || 'Disponible',
       tipo: l.tipo || 'Final',
       estadoRegistro: l.estadoRegistro || 'REALIZADO',
+      pesoDeMil: l.pesoDeMil !== undefined && l.pesoDeMil !== null ? String(l.pesoDeMil) : '',
     });
     setInlineSaveError(null);
     setInlineSaveSuccess(null);
@@ -852,6 +855,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
       estado: l.estado || 'Disponible',
       tipo: l.tipo || 'Final',
       estadoRegistro: l.estadoRegistro || 'REALIZADO',
+      pesoDeMil: l.pesoDeMil !== undefined && l.pesoDeMil !== null ? String(l.pesoDeMil) : '',
     });
     setInlineSaveError(null);
   };
@@ -897,6 +901,12 @@ export const LotesView: React.FC<LotesViewProps> = ({
         cambios.push(`Categoría: "${originalLote.categoria || 'Original'}" ➔ "${inlineEditData.categoria}"`);
       }
 
+      const cleanedPeso = inlineEditData.pesoDeMil !== undefined && inlineEditData.pesoDeMil !== null ? inlineEditData.pesoDeMil.trim().replace(',', '.') : '';
+      const parsedPeso = cleanedPeso !== '' && !isNaN(Number(cleanedPeso)) ? Number(cleanedPeso) : undefined;
+      if (parsedPeso !== originalLote.pesoDeMil) {
+        cambios.push(`Peso de 1000 (PMS): ${originalLote.pesoDeMil !== undefined && originalLote.pesoDeMil !== null ? `${originalLote.pesoDeMil} g` : 'Sin asignar'} ➔ ${parsedPeso !== undefined ? `${parsedPeso} g` : 'Sin asignar'}`);
+      }
+
       const auditEntry: AuditLogEntry = {
         id: `AUD-EDIT-TABLA-${Date.now()}`,
         fechaHora: new Date().toISOString(),
@@ -939,6 +949,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
         stockKg: nuevoStockKg,
         estado: nuevoEstado,
         estadoRegistro: inlineEditData.estadoRegistro || originalLote.estadoRegistro,
+        pesoDeMil: parsedPeso,
         historial: nuevoHistorial,
         auditoria: [auditEntry, ...(originalLote.auditoria || [])]
       };
@@ -2850,6 +2861,11 @@ export const LotesView: React.FC<LotesViewProps> = ({
                       <span className="text-[10px] font-mono text-gray-500 font-semibold">
                         ID: {l.id}
                       </span>
+                      {l.pesoDeMil !== undefined && l.pesoDeMil !== null && (
+                        <span className="px-2 py-0.5 bg-amber-100/90 text-amber-900 border border-amber-300 text-[10px] font-mono font-bold rounded shadow-2xs" title={`Peso de 1000 semillas: ${l.pesoDeMil} g`}>
+                          P1000: {l.pesoDeMil}g
+                        </span>
+                      )}
                     </div>
                     <h4 className="font-serif text-base font-bold text-[#1A1A1A] mt-1 group-hover:text-[#00603C] transition">
                       {l.especie} · <span className="font-sans font-normal text-sm text-gray-600">{l.variedad}</span>
@@ -4690,6 +4706,12 @@ export const LotesView: React.FC<LotesViewProps> = ({
                   <span className="text-[10px] uppercase font-bold text-slate-400 block">Peso por Bolsa</span>
                   <span className="font-extrabold text-slate-800 font-mono">{quickEditModalLote.kgPorBolsa || 40} kg/b</span>
                 </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Peso 1000 Actual</span>
+                  <span className="font-extrabold text-amber-800 font-mono">
+                    {quickEditModalLote.pesoDeMil !== undefined && quickEditModalLote.pesoDeMil !== null ? `${quickEditModalLote.pesoDeMil} g` : 'Sin cargar'}
+                  </span>
+                </div>
               </div>
 
               {/* 1. Nombre de Lote */}
@@ -4788,6 +4810,40 @@ export const LotesView: React.FC<LotesViewProps> = ({
                   <option value="Agotado">Agotado</option>
                   <option value="A Consumo">A Consumo</option>
                 </select>
+              </div>
+
+              {/* 6. Peso de 1000 (PMS) - Carga Manual */}
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label htmlFor="quick-edit-peso-mil" className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <span>Peso de 1000:</span>
+                    <span className="text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded font-bold border border-amber-200">
+                      manual (PMS)
+                    </span>
+                  </label>
+                  <span className="text-xs font-mono font-bold text-emerald-800">
+                    {inlineEditData.pesoDeMil && !isNaN(Number(inlineEditData.pesoDeMil.replace(',', '.')))
+                      ? `${inlineEditData.pesoDeMil} g`
+                      : 'Sin cargar'}
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    id="quick-edit-peso-mil"
+                    value={inlineEditData.pesoDeMil || ''}
+                    onChange={(e) => setInlineEditData(prev => ({ ...prev, pesoDeMil: e.target.value }))}
+                    placeholder="Ej: 165.4"
+                    className="w-full px-3 py-2 text-sm font-bold font-mono text-slate-900 bg-white border-2 border-slate-300 focus:border-amber-400 focus:ring-2 focus:ring-emerald-600 rounded-xl outline-none shadow-xs pr-16"
+                  />
+                  <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 pointer-events-none">
+                    gramos
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  * Ingrese de forma manual el peso de mil semillas en gramos (PMS) para la ficha técnica del lote.
+                </p>
               </div>
 
               {inlineSaveError && (
