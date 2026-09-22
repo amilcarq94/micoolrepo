@@ -2083,12 +2083,28 @@ export default function App() {
     try {
       const docRef = doc(db, 'movimientos_silo', movimiento.id);
       await setDoc(docRef, mapMovimientoSiloToFirestore(movimiento), { merge: true });
-      setMovimientosSilo((prev) => prev.map((m) => m.id === movimiento.id ? movimiento : m));
-      showNotification(`Movimiento ${movimiento.id} actualizado correctamente.`);
+      setMovimientosSilo((prev) => {
+        const next = prev.map((m) => m.id === movimiento.id ? movimiento : m);
+        try {
+          localStorage.setItem('agro_movimientos_silo_v2', JSON.stringify(next));
+        } catch (err) {
+          console.error('Error al persistir movimientos de silos en local:', err);
+        }
+        return next;
+      });
+      showNotification(`Movimiento de ${movimiento.siloId} (${movimiento.fecha}) actualizado correctamente.`);
     } catch (e) {
       console.error('Error al editar movimiento de silo:', e);
-      setMovimientosSilo((prev) => prev.map((m) => m.id === movimiento.id ? movimiento : m));
-      showNotification(`Movimiento ${movimiento.id} actualizado.`);
+      setMovimientosSilo((prev) => {
+        const next = prev.map((m) => m.id === movimiento.id ? movimiento : m);
+        try {
+          localStorage.setItem('agro_movimientos_silo_v2', JSON.stringify(next));
+        } catch (err) {
+          console.error('Error al persistir movimientos de silos en local:', err);
+        }
+        return next;
+      });
+      showNotification(`Movimiento de ${movimiento.siloId} actualizado.`);
     }
   };
 

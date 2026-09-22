@@ -22,7 +22,8 @@ import {
   FileText,
   Activity,
   Trash2,
-  RotateCcw
+  RotateCcw,
+  Pencil
 } from 'lucide-react';
 
 interface SiloVinculadoDashboardProps {
@@ -33,6 +34,7 @@ interface SiloVinculadoDashboardProps {
   onUpdateEstado?: (nuevoEstado: EstadoSiloManual) => void;
   onDescontaminarVarietal?: () => void;
   onVerFichaCompleta?: () => void;
+  onEditarMovimiento?: (movimiento: MovimientoSilo) => void;
   onEliminarMovimiento?: (movimiento: MovimientoSilo) => void;
   compactMode?: boolean; // Para vista móvil
 }
@@ -45,6 +47,7 @@ export const SiloVinculadoDashboard: React.FC<SiloVinculadoDashboardProps> = ({
   onUpdateEstado,
   onDescontaminarVarietal,
   onVerFichaCompleta,
+  onEditarMovimiento,
   onEliminarMovimiento,
   compactMode = false
 }) => {
@@ -283,8 +286,8 @@ export const SiloVinculadoDashboard: React.FC<SiloVinculadoDashboardProps> = ({
                     <th className="py-2 px-3">Cliente</th>
                     <th className="py-2 px-3">Humedad</th>
                     <th className="py-2 px-3">Detalle</th>
-                    {onEliminarMovimiento && (
-                      <th className="py-2 px-3 text-center">Acción</th>
+                    {(onEditarMovimiento || onEliminarMovimiento) && (
+                      <th className="py-2 px-3 text-center">Acciones</th>
                     )}
                   </tr>
                 </thead>
@@ -325,16 +328,30 @@ export const SiloVinculadoDashboard: React.FC<SiloVinculadoDashboardProps> = ({
                         <td className="py-2 px-3 text-slate-500 truncate max-w-[160px]">
                           {mov.chofer || mov.remito || mov.cartaPorte || '-'}
                         </td>
-                        {onEliminarMovimiento && (
-                          <td className="py-2 px-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => onEliminarMovimiento(mov)}
-                              className="p-1 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition cursor-pointer"
-                              title="Eliminar carga de silo"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                        {(onEditarMovimiento || onEliminarMovimiento) && (
+                          <td className="py-2 px-3 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1">
+                              {onEditarMovimiento && (
+                                <button
+                                  type="button"
+                                  onClick={() => onEditarMovimiento(mov)}
+                                  className="p-1 text-slate-400 hover:text-[#00603C] hover:bg-emerald-50 rounded-lg transition cursor-pointer"
+                                  title="Editar movimiento de silo"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {onEliminarMovimiento && (
+                                <button
+                                  type="button"
+                                  onClick={() => onEliminarMovimiento(mov)}
+                                  className="p-1 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                                  title="Eliminar carga de silo"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         )}
                       </tr>

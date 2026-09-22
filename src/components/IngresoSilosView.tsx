@@ -57,7 +57,8 @@ import {
   RefreshCw,
   FileText,
   Check,
-  Loader2
+  Loader2,
+  Pencil
 } from 'lucide-react';
 import { exportElementAsJpg } from '../utils/exportImage';
 import { FichaTecnicaSiloModal } from './FichaTecnicaSiloModal';
@@ -65,6 +66,7 @@ import { GrillaSeisSilosModal } from './GrillaSeisSilosModal';
 import { ReportePlanillaExcelSilosModal } from './ReportePlanillaExcelSilosModal';
 import { CircularSiloCard } from './CircularSiloCard';
 import { SiloVinculadoDashboard } from './SiloVinculadoDashboard';
+import { EditarMovimientoSiloModal } from './EditarMovimientoSiloModal';
 import { verifyAutorizadorPassword } from '../utils/despachantes';
 import {
   ResponsiveContainer,
@@ -127,6 +129,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
   onRegistrarSalidaManualSilo,
   onPonerEnCero,
   onPonerSiloEnCero,
+  onEditarMovimientoSilo,
   onEliminarMovimientoSilo,
   onNavigateToPlanta,
   lotes = []
@@ -144,6 +147,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
   const [fichaModalSilo, setFichaModalSilo] = useState<SiloId | null>(null);
   const [showModalDescontaminacion, setShowModalDescontaminacion] = useState(false);
   const [showModalSalidaManual, setShowModalSalidaManual] = useState(false);
+  const [movimientoAEditar, setMovimientoAEditar] = useState<MovimientoSilo | null>(null);
   const [movimientoAEliminar, setMovimientoAEliminar] = useState<MovimientoSilo | null>(null);
   const [fraseConfirmacionEliminar, setFraseConfirmacionEliminar] = useState('');
   const [errorFraseEliminar, setErrorFraseEliminar] = useState('');
@@ -903,6 +907,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
             onUpdateEstado={(nuevo) => onUpdateSiloEstadoManual?.(activeSilo, nuevo)}
             onDescontaminarVarietal={handleAbrirModalDescontaminacion}
             onVerFichaCompleta={() => setFichaModalSilo(activeSilo)}
+            onEditarMovimiento={(mov) => setMovimientoAEditar(mov)}
             onEliminarMovimiento={(mov) => {
               setMovimientoAEliminar(mov);
               setFraseConfirmacionEliminar('');
@@ -1677,20 +1682,30 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
 
                       {/* Acciones */}
                       <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                        {onEliminarMovimientoSilo && (
+                        <div className="flex items-center justify-center gap-1">
                           <button
                             type="button"
-                            onClick={() => {
-                              setMovimientoAEliminar(m);
-                              setFraseConfirmacionEliminar('');
-                              setErrorFraseEliminar('');
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition cursor-pointer"
-                            title="Eliminar carga de silo (requiere confirmación de frase)"
+                            onClick={() => setMovimientoAEditar(m)}
+                            className="p-1.5 text-slate-400 hover:text-[#00603C] hover:bg-emerald-50 rounded-lg transition cursor-pointer"
+                            title="Editar movimiento de silo (fecha, hora, cliente, variedad, bolsa, tipo)"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Pencil className="w-3.5 h-3.5" />
                           </button>
-                        )}
+                          {onEliminarMovimientoSilo && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMovimientoAEliminar(m);
+                                setFraseConfirmacionEliminar('');
+                                setErrorFraseEliminar('');
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                              title="Eliminar carga de silo (requiere confirmación de frase)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -2129,6 +2144,22 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
           onClose={() => setShowPlanillaExcelModal(false)}
         />
       )}
+
+      {/* Modal para Editar Movimiento de Silo */}
+      <EditarMovimientoSiloModal
+        isOpen={!!movimientoAEditar}
+        movimiento={movimientoAEditar}
+        onClose={() => setMovimientoAEditar(null)}
+        onSave={async (updatedMov) => {
+          if (onEditarMovimientoSilo) {
+            await onEditarMovimientoSilo(updatedMov);
+          }
+        }}
+        clientes={clientes}
+        especies={especies}
+        bolsones={bolsones}
+        plantaConfig={plantaConfig}
+      />
     </div>
   );
 };

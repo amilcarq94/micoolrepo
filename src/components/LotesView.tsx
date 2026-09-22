@@ -1727,134 +1727,62 @@ export const LotesView: React.FC<LotesViewProps> = ({
   };
 
 
-  // Exportar CSV delimitado por punto y coma (;) respetando las columnas
-  const handleExportCSV = () => {
-    const lotesRealizados = filteredLotes.filter(
-      l => (l.estadoRegistro || 'REALIZADO') === 'REALIZADO' && l.estadoRegistro !== 'PRE-CARGA'
-    );
-
-    if (lotesRealizados.length === 0) {
-      alert('No hay lotes con estado "Realizado" para exportar con los filtros seleccionados.');
+  // Exportar listado actual de lotes filtrados a un archivo CSV
+  // Columnas requeridas: ID, Lote N°, Cliente, Especie, Variedad, Bolsas y Kg Totales
+  const handleExportCSV = (lotesToExport: Lote[] = filteredLotes, customFilename?: string) => {
+    if (!lotesToExport || lotesToExport.length === 0) {
+      alert('No hay lotes en el listado actual para exportar a CSV.');
       return;
     }
 
-    const headers = [
-      'Fecha de realizado',
-      'Cliente',
-      'Especie',
-      'Variedad',
-      'Número de lote',
-      'Bolsas realizadas',
-      'Kg por bolsa',
-      'Stock total',
-      'Tipo de lote',
-      'Categoría',
-      'Tratamiento',
-      'Peso de 1000',
-      'Silo de Origen',
-      'INASE incio',
-      'INASE final'
-    ];
+    const headers = ['ID', 'Lote N°', 'Cliente', 'Especie', 'Variedad', 'Bolsas', 'Kg Totales'];
 
-    const rows = lotesRealizados.map(l => {
-      let cliente = normalizeCliente(l.cliente) || 'Sin cliente';
-
-      let fechaRealizadoStr = '—';
-      if (l.fechaHoraProduccion) {
-        if (l.fechaHoraProduccion.includes('T')) {
-          const [d, t] = l.fechaHoraProduccion.split('T');
-          fechaRealizadoStr = `${formatDateStr(d)} ${t}`;
-        } else {
-          fechaRealizadoStr = formatDateStr(l.fechaHoraProduccion);
-        }
-      } else if (l.fechaIngreso) {
-        fechaRealizadoStr = formatDateStr(l.fechaIngreso);
-      }
-
-      const tratamientoStr = (l.tratamiento && l.tratamiento.length > 0)
-        ? l.tratamiento.join(', ')
-        : 'Sin tratar';
-
-      const siloOrigenStr = l.siloOrigen
-        ? String(l.siloOrigen)
-        : l.silosOrigen && l.silosOrigen.length > 0
-        ? l.silosOrigen.map(s => s.siloId).join(', ')
-        : 'Sin dato';
-
-      const targetSilosCsv = new Set<string>();
-      if (l.siloOrigen) targetSilosCsv.add(String(l.siloOrigen));
-      if (l.silosOrigen) l.silosOrigen.forEach(s => targetSilosCsv.add(s.siloId));
-
-      const ingresoPrevioSiloCsv = movimientosSilo
-        ?.filter(m => m.tipo === 'INGRESO' && targetSilosCsv.has(m.siloId) && m.bolsonOrigenNro)
-        .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))[0];
-
-      let bolsonOrigenStr = 'Sin dato';
-      let sectorBolsonOrigenStr = '—';
-
-      if (l.origenesBolson && l.origenesBolson.length > 0) {
-        const origenesValidos = l.origenesBolson.filter(o => o.bolsonNro && o.bolsonNro.trim() !== '');
-        if (origenesValidos.length > 0) {
-          bolsonOrigenStr = origenesValidos.map(o => o.bolsonNro!.trim()).join(', ');
-          sectorBolsonOrigenStr = origenesValidos.map(o => (o.sector && o.sector.trim()) ? o.sector.trim() : '—').join(', ');
-        }
-      }
-
-      if (bolsonOrigenStr === 'Sin dato') {
-        bolsonOrigenStr =
-          l.numeroBolsonOrigen ||
-          l.bolsonOrigenNro ||
-          ingresoPrevioSiloCsv?.bolsonOrigenNro ||
-          'Sin dato';
-      }
-
-      if (sectorBolsonOrigenStr === '—') {
-        sectorBolsonOrigenStr =
-          l.sectorBolsonOrigen ||
-          ingresoPrevioSiloCsv?.bolsonOrigenSector ||
-          '—';
-      }
+    const rows = lotesToExport.map(l => {
+      const id = l.id || '';
+      const loteNro = l.loteNro || l.id || '';
+      const cliente = normalizeCliente(l.cliente) || l.cliente || 'Sin cliente';
+      const especie = l.especie || 'Sin especie';
+      const variedad = l.variedad || 'Sin variedad';
+      const bolsas = l.stockBolsas !== undefined && l.stockBolsas !== null ? Number(l.stockBolsas) : 0;
+      const kgTotales = l.stockKg !== undefined && l.stockKg !== null
+        ? Number(l.stockKg)
+        : (Number(l.stockBolsas || 0) * Number(l.kgPorBolsa || 0));
 
       return [
-        fechaRealizadoStr,
+        id,
+        loteNro,
         cliente,
-        l.especie || 'Sin especificar',
-        l.variedad || 'Sin variedad',
-        l.loteNro || l.id,
-        l.stockBolsas,
-        l.kgPorBolsa,
-        l.stockKg,
-        l.tipo || 'Final',
-        l.categoria || 'PRIMU',
-        tratamientoStr,
-        (l.pesoDeMil !== undefined && l.pesoDeMil !== null && !isNaN(Number(l.pesoDeMil))) ? l.pesoDeMil : '—',
-        siloOrigenStr,
-        l.inaseInicio || '—',
-        l.inaseFinal || '—'
+        especie,
+        variedad,
+        bolsas,
+        kgTotales
       ];
     });
 
+    const escapeCsv = (val: any): string => {
+      const str = String(val !== undefined && val !== null ? val : '');
+      if (str.includes(',') || str.includes(';') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
     const csvContent = [
-      'sep=;',
-      headers.join(';'),
-      ...rows.map(row => row.map(val => {
-        const str = String(val !== undefined && val !== null ? val : '');
-        if (str.includes(';') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      }).join(';'))
+      headers.map(escapeCsv).join(','),
+      ...rows.map(r => r.map(escapeCsv).join(','))
     ].join('\r\n');
 
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `Reporte_Lotes_Filtrados_${new Date().toISOString().split('T')[0]}.csv`);
+    const dateStr = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', customFilename || `Lotes_Filtrados_${dateStr}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
@@ -1918,11 +1846,12 @@ export const LotesView: React.FC<LotesViewProps> = ({
             </button>
             <button
               id="btn-exportar-lotes-csv"
-              onClick={handleExportCSV}
-              className="flex items-center gap-1 px-2.5 py-2 text-xs font-semibold font-sans uppercase tracking-wider text-[#00603C] hover:bg-[#00603C]/10 rounded-lg transition cursor-pointer"
-              title="Exportar como CSV delimitado por punto y coma (;)"
+              onClick={() => handleExportCSV(filteredLotes)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold font-sans uppercase tracking-wider bg-white text-[#00603C] hover:bg-[#00603C] hover:text-white border border-[#00603C]/30 rounded-lg transition cursor-pointer shadow-2xs group"
+              title="Exportar listado actual de lotes filtrados a CSV (ID, Lote N°, Cliente, Especie, Variedad, Bolsas, Kg Totales)"
             >
-              <span>CSV</span>
+              <Download className="w-4 h-4 text-[#00603C] group-hover:text-white transition-colors" />
+              <span>Exportar CSV</span>
             </button>
           </div>
         </div>
@@ -2510,132 +2439,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
           </div>
         )}
 
-        {/* Panel de Resumen Consolidado de Existencias y Lotes */}
-        {(() => {
-          const totalBolsasRealizadas = filteredLotes
-            .filter(l => (l.estadoRegistro || 'REALIZADO') === 'REALIZADO' && l.estadoRegistro !== 'PRE-CARGA')
-            .reduce((acc, l) => acc + (Number(l.stockBolsas) || 0), 0);
-          
-          const totalBolsasFiltradas = filteredLotes
-            .reduce((acc, l) => acc + (Number(l.stockBolsas) || 0), 0);
-
-          const totalKgFiltrados = filteredLotes
-            .reduce((acc, l) => acc + (Number(l.stockKg) || 0), 0);
-
-          const lotesListStr = filteredLotes
-            .map(l => l.loteNro || l.id)
-            .filter(Boolean)
-            .join(', ');
-
-          const handleCopyLotesList = () => {
-            navigator.clipboard.writeText(lotesListStr);
-            setCopiedLotesSuccess(true);
-            setTimeout(() => setCopiedLotesSuccess(false), 2500);
-          };
-
-          return (
-            <div className="mt-2 bg-gradient-to-br from-[#00603C]/5 via-white to-[#C9922E]/10 rounded-2xl p-4 border border-[#00603C]/20 shadow-2xs space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <Package className="w-5 h-5 text-[#00603C]" />
-                  <h3 className="text-xs font-black uppercase text-[#00603C] tracking-wider font-sans">
-                    Resumen de Existencias Seleccionadas
-                  </h3>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowLotesIntegrantesModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold text-[#00603C] bg-white hover:bg-[#00603C] hover:text-white border border-[#00603C]/30 rounded-xl transition shadow-2xs cursor-pointer"
-                    title="Ver listado detallado de números de lotes que integran este stock"
-                  >
-                    <ListFilter className="w-3.5 h-3.5" />
-                    <span>Ver Lotes Integrantes ({filteredLotes.length})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleCopyLotesList}
-                    disabled={filteredLotes.length === 0}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-700 bg-white hover:bg-gray-100 border border-gray-200 rounded-xl transition shadow-2xs cursor-pointer disabled:opacity-50"
-                    title="Copiar lista de números de lotes al portapapeles"
-                  >
-                    {copiedLotesSuccess ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-700 font-extrabold">¡Copiados!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5 text-gray-500" />
-                        <span>Copiar Lotes</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Tarjetas de Métricas de Existencias */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* Bolsas Realizadas */}
-                <div className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block font-sans">
-                      Bolsas Realizadas
-                    </span>
-                    <span className="text-xl font-serif font-bold text-emerald-800">
-                      {formatNumberArg(totalBolsasRealizadas, 0)}
-                    </span>
-                    <span className="text-[10px] text-gray-400 block mt-0.5">
-                      Total producción terminada ({formatNumberArg(totalBolsasFiltradas, 0)} bolsas totales)
-                    </span>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-black">
-                    <CheckCircle2 className="w-5 h-5" />
-                  </div>
-                </div>
-
-                {/* Kilos Totales */}
-                <div className="bg-white p-3.5 rounded-xl border border-amber-100 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block font-sans">
-                      Kilos Totales en Stock
-                    </span>
-                    <span className="text-xl font-serif font-bold text-[#C9922E]">
-                      {formatNumberArg(totalKgFiltrados, 0)} <span className="text-xs font-sans text-gray-500 font-semibold">kg</span>
-                    </span>
-                    <span className="text-[10px] text-gray-400 block mt-0.5">
-                      {(totalKgFiltrados / 1000).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Tn métricas
-                    </span>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-amber-50 text-[#C9922E] flex items-center justify-center font-black">
-                    <Scale className="w-5 h-5" />
-                  </div>
-                </div>
-
-                {/* Lotes que integran este stock */}
-                <div className="bg-white p-3.5 rounded-xl border border-gray-100 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block font-sans">
-                      Lotes que Integran el Stock
-                    </span>
-                    <span className="text-xl font-serif font-bold text-slate-800">
-                      {filteredLotes.length} <span className="text-xs font-sans text-gray-500 font-semibold">lotes</span>
-                    </span>
-                    <span className="text-[10px] text-gray-400 block mt-0.5 truncate max-w-[200px]" title={lotesListStr || 'Ningún lote'}>
-                      {lotesListStr ? lotesListStr : 'Sin lotes'}
-                    </span>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-black">
-                    <Layers className="w-5 h-5" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
         {/* Barra de Acciones Múltiples para Lotes Seleccionados */}
         {selectedLoteIds.length > 0 && (
           <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-[#00603C] text-white p-3.5 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-200 border border-amber-400/30">
@@ -2681,6 +2484,22 @@ export const LotesView: React.FC<LotesViewProps> = ({
               >
                 <Tag className="w-4 h-4 text-slate-950 stroke-[2.5]" />
                 <span>Vista Previa / Descargar ID Bolsas ({selectedLoteIds.length})</span>
+              </button>
+
+              {/* Botón Exportar CSV de Lotes Seleccionados */}
+              <button
+                type="button"
+                id="btn-exportar-csv-seleccionados"
+                onClick={() => {
+                  const selected = lotes.filter((l) => selectedLoteIds.includes(l.id));
+                  const dateStr = new Date().toISOString().split('T')[0];
+                  handleExportCSV(selected, `Lotes_Seleccionados_${dateStr}.csv`);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-800 font-black text-xs rounded-xl shadow-md hover:shadow-lg transition cursor-pointer tracking-wider uppercase font-sans active:scale-95 border border-slate-300"
+                title={`Exportar a CSV los ${selectedLoteIds.length} lotes seleccionados (ID, Lote N°, Cliente, Especie, Variedad, Bolsas, Kg Totales)`}
+              >
+                <Download className="w-4 h-4 text-[#00603C] stroke-[2.5]" />
+                <span>Exportar CSV ({selectedLoteIds.length})</span>
               </button>
 
               {/* Botón Eliminar Seleccionados con Validación Estricta por Prompt */}
@@ -2817,10 +2636,17 @@ export const LotesView: React.FC<LotesViewProps> = ({
       <LotesUnifiedDashboard
         lotes={lotes}
         filteredLotes={filteredLotes}
+        selectedLoteIds={selectedLoteIds}
+        onSelectAll={() => {
+          const currentFilteredIds = filteredLotes.map(l => l.id);
+          setSelectedLoteIds(prev => Array.from(new Set([...prev, ...currentFilteredIds])));
+        }}
+        onDeselectAll={() => setSelectedLoteIds([])}
+        onToggleSelectLote={toggleSelectLote}
         activeFilterDimensions={activeFilterDimensions}
         hasActiveFilters={hasActiveFilters}
         activeFiltersCount={activeFiltersCount}
-        onLoteClick={onSelectLote}
+        onSelectLote={onSelectLote}
         onQuickFilter={handleQuickFilter}
       />
 

@@ -45,6 +45,10 @@ export type DashboardDimension =
 interface LotesUnifiedDashboardProps {
   lotes: Lote[];
   filteredLotes: Lote[];
+  selectedLoteIds?: string[];
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
+  onToggleSelectLote?: (id: string) => void;
   hasActiveFilters: boolean;
   activeFiltersCount?: number;
   activeFilterDimensions?: {
@@ -74,12 +78,31 @@ interface GroupSummary {
 export const LotesUnifiedDashboard: React.FC<LotesUnifiedDashboardProps> = ({
   lotes,
   filteredLotes,
+  selectedLoteIds = [],
+  onSelectAll,
+  onDeselectAll,
+  onToggleSelectLote,
   hasActiveFilters,
   activeFiltersCount = 0,
   activeFilterDimensions,
   onSelectLote,
   onQuickFilter,
 }) => {
+  // DIRECTIVA: El Dashboard & Resumen General de Lotes solo debe arrojar datos de los lotes seleccionados
+  const targetLotes = useMemo(() => {
+    if (!selectedLoteIds || selectedLoteIds.length === 0) return [];
+    const idSet = new Set(selectedLoteIds);
+    if (hasActiveFilters) {
+      return filteredLotes.filter((l) => idSet.has(l.id));
+    }
+    return lotes.filter((l) => idSet.has(l.id));
+  }, [filteredLotes, lotes, selectedLoteIds, hasActiveFilters]);
+
+  const isAllSelected = useMemo(() => {
+    if (filteredLotes.length === 0) return false;
+    return filteredLotes.every((l) => (selectedLoteIds || []).includes(l.id));
+  }, [filteredLotes, selectedLoteIds]);
+
   // Estados de control interactivo del dashboard
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<DashboardDimension>('ESPECIE');
@@ -94,7 +117,7 @@ export const LotesUnifiedDashboard: React.FC<LotesUnifiedDashboardProps> = ({
   const [isIdsExpanded, setIsIdsExpanded] = useState(false);
   const [searchIdQuery, setSearchIdQuery] = useState('');
 
-  // 1. Cálculos de Totales Globales y Lista de Lotes
+  // 1. Cálculos de Totales Globales y Lista de Lotes (Basados estrictamente en los lotes seleccionados)
   const {
     totalBolsas,
     totalKg,
@@ -110,7 +133,7 @@ export const LotesUnifiedDashboard: React.FC<LotesUnifiedDashboardProps> = ({
     const alaMap: Record<string, number> = { A: 0, B: 0, C: 0, D: 0 };
     const envMap: Record<number, { bolsas: number; kg: number }> = {};
 
-    const list = filteredLotes.map((lote) => {
+    const list = targetLotes.map((lote) => {
       const b = Number(lote.stockBolsas) || 0;
       const k = lote.stockKg !== undefined ? Number(lote.stockKg) : b * (Number(lote.kgPorBolsa) || 0);
       const ala = (lote.ala || '').toUpperCase();
@@ -157,9 +180,9 @@ export const LotesUnifiedDashboard: React.FC<LotesUnifiedDashboardProps> = ({
       promedioBolsasPorLote: list.length > 0 ? (bolsas / list.length).toFixed(0) : '0',
       envasesSummary: envasesArr,
     };
-  }, [filteredLotes]);
+  }, [targetLotes]);
 
-  // 2. Desglose analítico de todas las dimensiones
+  // 2. Desglose analítico de todas las dimensiones (Basado en lotes seleccionados)
   const allDimensionsData = useMemo(() => {
     const mapCliente: Record<string, GroupSummary> = {};
     const mapEspecie: Record<string, GroupSummary> = {};
@@ -171,7 +194,7 @@ export const LotesUnifiedDashboard: React.FC<LotesUnifiedDashboardProps> = ({
     const mapEnvase: Record<string, GroupSummary> = {};
     const mapAla: Record<string, GroupSummary> = {};
 
-    filteredLotes.forEach((lote) => {
+    targetLotes.forEach((lote) => {
       const b = Number(lote.stockBolsas) || 0;
       const k = lote.stockKg !== undefined ? Number(lote.stockKg) : b * (Number(lote.kgPorBolsa) || 0);
 
@@ -363,7 +386,7 @@ export const LotesUnifiedDashboard: React.FC<LotesUnifiedDashboardProps> = ({
 
   // Copiar Resumen Ejecutivo de Texto (ideal para WhatsApp / Email)
   const handleCopyExecutiveSummary = async () => {
-    if (filteredLotes.length === 0) return;
+    if (targetLotes.length === 0) return;
 
     const especiesLines = allDimensionsData.ESPECIE.slice(0, 5)
       .map((e) => {
@@ -372,12 +395,12 @@ export const LotesUnifiedDashboard: React.FC<LotesUnifiedDashboardProps> = ({
       })
       .join('\n');
 
-    const summaryText = `📊 *RESUMEN DE LOTES EN PLANTA - AGRO ABACUS*
+    const summaryText = `📊 *RESUMEN DE LOTES SELECCIONADOS - AGRO ABACUS*
 📅 Fecha: ${new Date().toLocaleDateString('es-AR')}
-🔍 Estado: ${hasActiveFilters ? `Filtrado (${activeFiltersCount} filtros activos)` : 'Total Planta General'}
+🔍 Selección: ${targetLotes.length} lotes seleccionados ${hasActiveFilters ? `(con ${activeFiltersCount} filtros activos)` : ''}
 
 📦 *Totales Consolidados:*
-• Lotes Visibles: ${filteredLotes.length} de ${lotes.length}
+• Lotes Seleccionados: ${targetLotes.length} de ${lotes.length}
 • Bolsas Totales: ${formatNumberArg(totalBolsas, 0)} bolsas
 • Kilos Totales: ${formatNumberArg(totalKg, 0)} kg (${totalTn.toFixed(2)} Tn)
 • Promedio: ~${promedioKgPorBolsa} kg/bolsa
@@ -434,30 +457,54 @@ ${especiesLines}
               <h2 className="text-base sm:text-lg font-bold tracking-tight font-sans text-white">
                 Dashboard & Resumen General de Lotes
               </h2>
-              {hasActiveFilters ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full shadow-2xs">
+              <span
+                className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-2xs ${
+                  targetLotes.length > 0
+                    ? 'bg-amber-400 text-slate-950 font-black'
+                    : 'bg-white/15 text-emerald-100 border border-white/15'
+                }`}
+              >
+                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                {targetLotes.length} {targetLotes.length === 1 ? 'lote seleccionado' : 'lotes seleccionados'}
+              </span>
+              {hasActiveFilters && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-white/15 text-emerald-100 px-2 py-0.5 rounded-full border border-white/10">
                   <Filter className="w-3 h-3 fill-current" />
-                  Filtrado ({activeFiltersCount} activo{activeFiltersCount === 1 ? '' : 's'})
-                </span>
-              ) : (
-                <span className="text-[11px] font-semibold bg-white/15 text-emerald-100 px-2.5 py-0.5 rounded-full border border-white/10">
-                  Total Acumulado en Planta
+                  {activeFiltersCount} filtro{activeFiltersCount === 1 ? '' : 's'}
                 </span>
               )}
             </div>
             <p className="text-xs text-emerald-100/90 mt-0.5">
-              Consolidación interactiva y dinámica de existencias, bolsas, peso y dimensiones operativas.
+              Consolidación interactiva y dinámica calculada exclusivamente sobre los lotes seleccionados.
             </p>
           </div>
         </div>
 
         {/* Acciones y Controles Rápidos */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Botón Seleccionar Todos / Deseleccionar */}
+          {onSelectAll && (
+            <button
+              type="button"
+              onClick={isAllSelected ? onDeselectAll : onSelectAll}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-white/15 hover:bg-white/25 text-white rounded-xl border border-white/20 transition cursor-pointer shadow-xs active:scale-95"
+              title={isAllSelected ? 'Deseleccionar todos los lotes' : 'Seleccionar todos los lotes visibles'}
+            >
+              <Check className="w-3.5 h-3.5 text-amber-300" />
+              <span>
+                {isAllSelected
+                  ? 'Deseleccionar todos'
+                  : `Seleccionar todos (${filteredLotes.length})`}
+              </span>
+            </button>
+          )}
+
           {/* Botón Copiar Resumen Ejecutivo */}
           <button
             type="button"
             onClick={handleCopyExecutiveSummary}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 text-white rounded-xl border border-white/20 transition cursor-pointer shadow-xs active:scale-95"
+            disabled={targetLotes.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-white/10 hover:bg-white/20 text-white rounded-xl border border-white/20 transition cursor-pointer shadow-xs active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
             title="Copiar texto resumen consolidado para WhatsApp o reportes ejecutivos"
           >
             {copiedSummary ? (
@@ -485,6 +532,27 @@ ${especiesLines}
           </button>
         </div>
       </div>
+
+      {/* AVISO INFORMATIVO SI NO HAY LOTES SELECCIONADOS */}
+      {targetLotes.length === 0 && (
+        <div className="p-4 bg-amber-50 border-b border-amber-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 text-amber-950">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-200 text-amber-900 font-bold shrink-0">!</span>
+            <span>
+              <strong>Ningún lote seleccionado:</strong> El Dashboard & Resumen General muestra exclusivamente los datos de los <strong>lotes seleccionados</strong> mediante las casillas de verificación. Marque lotes en la lista o pulse <em>"Seleccionar todos"</em> para ver su consolidación.
+            </span>
+          </div>
+          {onSelectAll && filteredLotes.length > 0 && (
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="shrink-0 px-3.5 py-1.5 bg-[#00603C] hover:bg-[#005233] text-white font-bold rounded-lg shadow-xs transition cursor-pointer"
+            >
+              Seleccionar todos los visibles ({filteredLotes.length})
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 2. GRID DE METRICAS CLAVE / HERO KPI CARDS */}
       <div className="p-4 sm:p-5 bg-gradient-to-b from-gray-50/70 via-white to-white border-b border-gray-100">
@@ -550,7 +618,7 @@ ${especiesLines}
             </div>
           </div>
 
-          {/* TARJETA 3: LOTES VISIBLES & DISTRIBUCIÓN POR ALA */}
+          {/* TARJETA 3: LOTES SELECCIONADOS & DISTRIBUCIÓN POR ALA */}
           <div
             id="kpi-lotes-distribucion-ala"
             className="bg-white p-4 rounded-xl border border-blue-900/15 shadow-2xs hover:border-blue-500/40 hover:shadow-xs transition relative overflow-hidden flex flex-col justify-between"
@@ -558,16 +626,16 @@ ${especiesLines}
             <div className="flex justify-between items-start mb-2">
               <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                 <Warehouse className="w-4 h-4 text-[#00603C]" />
-                Lotes en Vista & Alas
+                Lotes Seleccionados & Alas
               </span>
               <span className="text-[10px] font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
-                {((filteredLotes.length / (lotes.length || 1)) * 100).toFixed(0)}% del total
+                {((targetLotes.length / (lotes.length || 1)) * 100).toFixed(0)}% del total
               </span>
             </div>
 
             <div className="my-1 flex items-baseline gap-1.5">
               <span className="text-3xl sm:text-4xl font-black font-mono text-[#00603C] tracking-tight">
-                {filteredLotes.length}
+                {targetLotes.length}
               </span>
               <span className="text-sm font-bold text-gray-500 font-sans">
                 / {lotes.length} lotes
@@ -614,7 +682,7 @@ ${especiesLines}
                   type="button"
                   onClick={handleCopyIds}
                   className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-[#00603C] hover:text-white bg-[#E3EFE7] hover:bg-[#00603C] rounded-md transition cursor-pointer shadow-2xs active:scale-95"
-                  title="Copiar todos los números de lote visibles al portapapeles"
+                  title="Copiar todos los números de lote seleccionados al portapapeles"
                 >
                   {copiedIds ? (
                     <>
@@ -635,7 +703,7 @@ ${especiesLines}
             <div className="my-1">
               {lotesList.length === 0 ? (
                 <p className="text-xs text-gray-400 italic py-2">
-                  No hay lotes con los filtros aplicados.
+                  No hay lotes seleccionados.
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-0.5">
@@ -859,7 +927,16 @@ ${especiesLines}
           {currentGroups.length === 0 ? (
             <div className="py-8 text-center bg-gray-50/70 rounded-2xl border border-dashed border-gray-200 space-y-2">
               <p className="text-xs font-semibold text-gray-500">
-                No hay elementos en <span className="font-bold text-gray-700">"{activeTab}"</span> que coincidan con la búsqueda o filtros activos.
+                {targetLotes.length === 0 ? (
+                  <>
+                    No hay lotes seleccionados para generar el desglose de{' '}
+                    <span className="font-bold text-gray-700">"{activeTab}"</span>. Seleccione lotes en la tabla para ver sus estadísticas.
+                  </>
+                ) : (
+                  <>
+                    No hay elementos en <span className="font-bold text-gray-700">"{activeTab}"</span> que coincidan con la búsqueda o filtros activos.
+                  </>
+                )}
               </p>
               {searchBreakdown && (
                 <button

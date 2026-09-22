@@ -40,8 +40,16 @@
         "id": { "type": "string" },
         "siloId": { "type": "string" },
         "fecha": { "type": "string" },
+        "hora": { "type": "string" },
         "tipo": { "type": "string" },
-        "kg": { "type": "number" }
+        "kg": { "type": "number" },
+        "cliente": { "type": "string" },
+        "variedad": { "type": "string" },
+        "especie": { "type": "string" },
+        "bolsonOrigenNro": { "type": "string" },
+        "depositoOrigen": { "type": "string" },
+        "humedad": { "type": "number" },
+        "observaciones": { "type": "string" }
       },
       "required": ["id", "siloId", "fecha", "tipo", "kg"]
     },
