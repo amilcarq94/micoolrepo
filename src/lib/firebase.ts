@@ -264,7 +264,14 @@ export function mapFirestoreToLote(id: string, data: any): Lote {
     humedad: data.humedad !== undefined ? Number(data.humedad) : undefined,
     pesoDeMil: data.pesoDeMil !== undefined && data.pesoDeMil !== null && !isNaN(Number(data.pesoDeMil)) ? Number(data.pesoDeMil) : undefined,
     inaseInicio: data.inaseInicio || '',
-    inaseFinal: data.inaseFinal || ''
+    inaseFinal: data.inaseFinal || '',
+    esMovimiento: Boolean(data.esMovimiento),
+    loteOrigen: data.loteOrigen || '',
+    tipoMovimiento: data.tipoMovimiento || '',
+    fechaMovimiento: data.fechaMovimiento || '',
+    fechaRealizacionMovimiento: data.fechaRealizacionMovimiento || '',
+    estadoMovimiento: data.estadoMovimiento || undefined,
+    preMovimientos: data.preMovimientos || []
   };
 }
 
@@ -335,7 +342,14 @@ export function mapLoteToFirestore(lote: Lote): any {
     origenesBolson: lote.origenesBolson || [],
     numeroBolsonOrigen: lote.numeroBolsonOrigen || lote.bolsonOrigenNro || '',
     bolsonOrigenNro: lote.bolsonOrigenNro || lote.numeroBolsonOrigen || '',
-    sectorBolsonOrigen: lote.sectorBolsonOrigen || ''
+    sectorBolsonOrigen: lote.sectorBolsonOrigen || '',
+    esMovimiento: lote.esMovimiento || false,
+    loteOrigen: lote.loteOrigen || '',
+    tipoMovimiento: lote.tipoMovimiento || '',
+    fechaMovimiento: lote.fechaMovimiento || '',
+    fechaRealizacionMovimiento: lote.fechaRealizacionMovimiento || '',
+    estadoMovimiento: lote.estadoMovimiento || null,
+    preMovimientos: lote.preMovimientos || []
   };
 
   return sanitizeForFirestore(raw);

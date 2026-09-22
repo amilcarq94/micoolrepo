@@ -7,6 +7,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Lote, OrdenProceso, EstadoOrdenProceso } from '../types';
 import { formatNumberArg, formatKg } from '../utils/formatters';
+import { isLoteOriginadoPorMovimiento } from '../utils/loteOriginHelper';
 import { OrdenProcesoGauge } from './OrdenProcesoGauge';
 import { EditarCumplimientoModal } from './EditarCumplimientoModal';
 import {
@@ -498,6 +499,17 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
       // Must be REALIZADO
       if (l.estadoRegistro !== 'REALIZADO') return false;
 
+      // DIRECTIVA DE NEGOCIO: No tomar movimientos con el origen de un lote nuevo
+      if (
+        isLoteOriginadoPorMovimiento(l) ||
+        l.esMovimiento ||
+        l.estadoMovimiento === 'PRE-MOVIMIENTO' ||
+        l.estadoMovimiento === 'REALIZADO' ||
+        Boolean(l.loteOrigen && l.loteOrigen !== '-')
+      ) {
+        return false;
+      }
+
       // Date filter
       if (filtrarPorFecha) {
         const fechaLote = getFechaStr(l.fechaHoraProduccion) || getFechaStr(l.fechaIngreso);
@@ -556,7 +568,7 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
         String(t).toLowerCase() === 'tratado' ||
         String(t).toLowerCase() === 'curado' ||
         (t && t !== 'Sin Tratar' && t !== 'Sin Tratamiento' && t !== 'Ninguno')
-      ) || l.estado === 'Tratado';
+      ) || (l.estado as string) === 'Tratado';
 
       if (!isTratado) return false;
 
@@ -610,13 +622,23 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
   // Selección activa de lote filtrados según subreporte
   const activeLotesFiltrados = activeSubReporte === 'clasificacion' ? lotesClasificados : lotesCurados;
 
-  // KPIs
+  // KPIs: bolsas y kilos en "Realizado", sin contar aquellas en "movimiento"
   const totalKg = useMemo(() => {
-    return activeLotesFiltrados.reduce((acc, l) => acc + (l.stockKg || 0), 0);
+    return activeLotesFiltrados.reduce((acc, l) => {
+      const kgEnPreMov = (l.preMovimientos || [])
+        .filter((pm) => pm.estado === 'PRE-MOVIMIENTO')
+        .reduce((sum, pm) => sum + (pm.kgExtraidos || (pm.cantidadBolsas ? pm.cantidadBolsas * (l.kgPorBolsa || 40) : 0) || 0), 0);
+      return acc + Math.max(0, (l.stockKg || 0) - kgEnPreMov);
+    }, 0);
   }, [activeLotesFiltrados]);
 
   const totalBolsas = useMemo(() => {
-    return activeLotesFiltrados.reduce((acc, l) => acc + (l.stockBolsas || 0), 0);
+    return activeLotesFiltrados.reduce((acc, l) => {
+      const bEnPreMov = (l.preMovimientos || [])
+        .filter((pm) => pm.estado === 'PRE-MOVIMIENTO')
+        .reduce((sum, pm) => sum + (pm.cantidadBolsas || (pm.kgExtraidos && l.kgPorBolsa ? Math.round(pm.kgExtraidos / l.kgPorBolsa) : 0) || 0), 0);
+      return acc + Math.max(0, (l.stockBolsas || 0) - bEnPreMov);
+    }, 0);
   }, [activeLotesFiltrados]);
 
   const totalLotes = activeLotesFiltrados.length;
@@ -658,7 +680,7 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
         if (f) setF.add(f);
       });
     } else {
-      lotes.filter(l => l.tratamiento?.includes('Tratado') || l.estado === 'Tratado').forEach(l => {
+      lotes.filter(l => l.tratamiento?.includes('Tratado') || (l.estado as string) === 'Tratado').forEach(l => {
         const f = getFechaStr(l.fechaTratamiento) || getFechaStr(l.fechaHoraProduccion) || getFechaStr(l.fechaIngreso);
         if (f) setF.add(f);
       });
@@ -716,7 +738,7 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
       'Peso de 1000': (l.pesoDeMil !== undefined && l.pesoDeMil !== null && !isNaN(Number(l.pesoDeMil))) ? Number(l.pesoDeMil) : '—',
       'Silo de Origen': l.siloOrigen ? String(l.siloOrigen) : (l.silosOrigen && l.silosOrigen.length > 0 ? l.silosOrigen.map(s => s.siloId).join(', ') : 'Sin dato'),
       'Fecha': activeSubReporte === 'clasificacion' ? (getFechaStr(l.fechaHoraProduccion) || l.fechaIngreso) : (getFechaStr(l.fechaTratamiento) || l.fechaIngreso),
-      'Orden Movimiento': l.numeroOrdenMovimiento || l.ordenProcesoId || 'N/A',
+      'Orden Movimiento': (l as any).numeroOrdenMovimiento || (l as any).ordenProcesoId || (l as any).tipoMovimiento || 'N/A',
       'Ubicación': l.ala && l.sector ? `Ala ${l.ala} - Sector ${l.sector}` : (l.ubicacionAcopio || 'Acopio General')
     }));
 
@@ -1304,7 +1326,7 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
                         {fechaDisplay}
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-600">
-                        {lote.numeroOrdenMovimiento || lote.ordenProcesoId || 'N/A'}
+                        {(lote as any).numeroOrdenMovimiento || (lote as any).ordenProcesoId || (lote as any).tipoMovimiento || 'N/A'}
                       </td>
                       <td className="py-3 px-4 text-slate-600">
                         {lote.ala && lote.sector ? (

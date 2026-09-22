@@ -16,6 +16,7 @@ import {
   OrdenCarga
 } from '../types';
 import { formatNumberArg } from '../utils/formatters';
+import { isLoteOriginadoPorMovimiento, getLoteOrigenId } from '../utils/loteOriginHelper';
 import {
   Factory,
   Layers,
@@ -106,9 +107,16 @@ export interface ProductionItemRecord {
   bolsasPasadasConsumo: number;
   bolsasMovimientos?: number;
   kgMovimientos?: number;
+  bolsasEnPreMovimiento?: number;
+  kgEnPreMovimiento?: number;
   estadoLote: string; // 'Disponible' | 'Reservado' | 'Agotado' | 'A Consumo'
   ubicacion: string;
   loteOriginal: Lote;
+  esOrigenMovimiento: boolean;
+  esLoteDeMovimiento: boolean;
+  esRealizado: boolean;
+  loteOrigen?: string;
+  tipoMovimiento?: string;
 }
 
 const STORAGE_PRODUCCION_PINNED_FILTERS = 'agro_abacus_produccion_pinned_filters_v2';
@@ -318,11 +326,25 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
     return lotes.map((lote) => {
       const pesoBolsa = lote.kgPorBolsa || 40;
 
-      // 1. Entradas registradas en el historial del lote
+      // 1. Entradas registradas en el historial del lote (excluyendo entradas por movimiento / transferencia entre lotes)
       const entradas =
         lote.historial?.filter((m) => {
           if (!m) return false;
           const tipoStr = (m.tipo || '').trim();
+          const tipoLower = tipoStr.toLowerCase();
+          const detLower = (m.detalle || '').toLowerCase();
+          // Excluir si la entrada proviene de un movimiento o transferencia cualitativa
+          if (
+            tipoLower.includes('movimiento') ||
+            detLower.includes('movimiento') ||
+            detLower.includes('desde lote') ||
+            detLower.includes('a partir de') ||
+            detLower.includes('transferencia') ||
+            detLower.includes('curado parcial') ||
+            detLower.includes('desdoblamiento')
+          ) {
+            return false;
+          }
           return (
             tipoStr.startsWith('Entrada') ||
             tipoStr.startsWith('Alta') ||
@@ -543,27 +565,102 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
       const bolsasPasadasConsumo = pesoBolsa > 0 ? Math.round(kgPasadosConsumo / pesoBolsa) : 0;
 
       // 5. Bolsas y Kg Producidos
-      // La confección total integra el stock en nave + las salidas SOLO por despacho + salidas por movimiento + pasado a consumo
-      const totalEgresosBolsas = bolsasDespachadas + bolsasMovimientos + bolsasPasadasConsumo;
-      const totalEgresosKg = kgDespachados + kgMovimientos + kgPasadosConsumo;
+      // Identificar si este lote fue originado a partir de un movimiento desde un lote previo
+      const esOrigenMovimiento = isLoteOriginadoPorMovimiento(lote);
+      const loteOrigenNombre = getLoteOrigenId(lote);
+      const esLoteDeMovimiento =
+        esOrigenMovimiento ||
+        lote.esMovimiento === true ||
+        Boolean(lote.tipoMovimiento && lote.tipoMovimiento.trim() !== '') ||
+        Boolean(lote.estadoMovimiento && lote.estadoMovimiento.trim() !== '') ||
+        Boolean(lote.loteOrigen && lote.loteOrigen.trim() !== '' && lote.loteOrigen.trim() !== '-');
+
+      // Verificación estricta de estado de registro: Solo contabilizar bolsas y kilos pasados a "REALIZADO"
+      // Aplica a todos los clientes y variedades. Si está en PRE-CARGA o pendiente, no computa producción.
+      const esRealizado =
+        (lote.estadoRegistro || 'REALIZADO') === 'REALIZADO' &&
+        lote.estadoRegistro !== 'PRE-CARGA' &&
+        lote.estadoRegistro !== 'EN_CURSO';
+
+      // Bolsas y Kg en Pre-Movimiento / Órdenes de movimiento activas en el lote
+      const bolsasEnPreMovimiento = (lote.preMovimientos || [])
+        .filter((pm) => pm.estado === 'PRE-MOVIMIENTO')
+        .reduce(
+          (acc, pm) =>
+            acc +
+            (pm.cantidadBolsas ||
+              (pm.kgExtraidos && pesoBolsa ? Math.round(pm.kgExtraidos / pesoBolsa) : 0) ||
+              0),
+          0
+        );
+      const kgEnPreMovimiento = (lote.preMovimientos || [])
+        .filter((pm) => pm.estado === 'PRE-MOVIMIENTO')
+        .reduce(
+          (acc, pm) =>
+            acc +
+            (pm.kgExtraidos ||
+              (pm.cantidadBolsas ? pm.cantidadBolsas * pesoBolsa : 0) ||
+              0),
+          0
+        );
+
+      // DIRECTIVA DE NEGOCIO SOLICITADA:
+      // "Info Console · Producción & Stock- para produccion, bolsa producidas: en este dashboard mostrar todos los kilos que se hayan realizado, no agregar aquellas bolsas que se hayan generado en movimientos. 
+      // para lotes elaborados copiar el  mismo procedimiento"
+      //
+      // 1. KILOS REALIZADOS (PRODUCCIÓN):
+      //    Mostrar todos los kilos que se hayan realizado (estadoRegistro === 'REALIZADO').
+      //    Si está en PRE-CARGA o en curso, computa 0 kg hasta pasar formalmente a Realizado.
+      //
+      // 2. BOLSAS PRODUCIDAS:
+      //    NO agregar aquellas bolsas que se hayan generado en movimientos (esLoteDeMovimiento -> 0 bolsas).
+      //    Solo contabilizar las bolsas de lotes elaborados originales en estado REALIZADO.
+      //
+      // 3. LOTES ELABORADOS:
+      //    Copiar el mismo procedimiento: solo contabilizar lotes en estado REALIZADO,
+      //    y NO agregar aquellos que se hayan generado en movimientos (!r.esLoteDeMovimiento && r.esRealizado).
+      const egresosProduccionBolsas = bolsasDespachadas + bolsasPasadasConsumo;
+      const egresosProduccionKg = kgDespachados + kgPasadosConsumo;
+
+      const stockBolsasSinMovimiento = Math.max(0, (lote.stockBolsas || 0) - bolsasEnPreMovimiento);
+      const stockKgSinMovimiento = Math.max(0, (lote.stockKg || 0) - kgEnPreMovimiento);
 
       let bolsasProducidas = 0;
       let kgProducidos = 0;
 
-      if (entradas.length > 0) {
-        const bEnt = entradas.reduce((acc, m) => acc + (m.cantidadBolsas || 0), 0);
-        const kgEnt = entradas.reduce((acc, m) => acc + (m.cantidadKg || 0), 0);
-        bolsasProducidas = Math.max(bEnt, (lote.stockBolsas || 0) + totalEgresosBolsas);
-        kgProducidos = Math.max(kgEnt, (lote.stockKg || 0) + totalEgresosKg);
+      if (!esRealizado) {
+        // Lotes en estado 'PRE-CARGA' o en curso no suman producción hasta ser pasados a Realizado.
+        bolsasProducidas = 0;
+        kgProducidos = 0;
       } else {
-        bolsasProducidas = (lote.stockBolsas || 0) + totalEgresosBolsas;
-        kgProducidos = (lote.stockKg || 0) + totalEgresosKg;
-      }
+        // A. KILOS REALIZADOS: Mostrar todos los kilos que se hayan realizado
+        if (entradas.length > 0) {
+          const kgEnt = entradas.reduce((acc, m) => acc + (m.cantidadKg || 0), 0);
+          kgProducidos = Math.max(kgEnt, (lote.stockKg || 0) + egresosProduccionKg);
+        } else {
+          kgProducidos = (lote.stockKg || 0) + egresosProduccionKg;
+        }
 
-      // Si aún da 0 y hay stock
-      if (kgProducidos === 0 && (lote.stockKg || 0) > 0) {
-        kgProducidos = lote.stockKg || 0;
-        bolsasProducidas = lote.stockBolsas || 0;
+        if (kgProducidos === 0 && (lote.stockKg || 0) > 0) {
+          kgProducidos = lote.stockKg || 0;
+        }
+
+        // B. BOLSAS PRODUCIDAS: No agregar aquellas bolsas que se hayan generado en movimientos
+        if (esLoteDeMovimiento) {
+          // Las bolsas generadas por movimientos no se agregan a bolsas producidas
+          bolsasProducidas = 0;
+        } else {
+          if (entradas.length > 0) {
+            const bEnt = entradas.reduce((acc, m) => acc + (m.cantidadBolsas || 0), 0);
+            bolsasProducidas = Math.max(bEnt, stockBolsasSinMovimiento + egresosProduccionBolsas);
+          } else {
+            bolsasProducidas = stockBolsasSinMovimiento + egresosProduccionBolsas;
+          }
+
+          if (bolsasProducidas === 0 && stockBolsasSinMovimiento > 0) {
+            bolsasProducidas = stockBolsasSinMovimiento;
+          }
+        }
       }
 
       // 6. Tratamientos y detección si es Tratado
@@ -629,9 +726,16 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
         bolsasPasadasConsumo,
         bolsasMovimientos,
         kgMovimientos,
+        bolsasEnPreMovimiento,
+        kgEnPreMovimiento,
         estadoLote: lote.estado || 'Disponible',
         ubicacion,
         loteOriginal: lote,
+        esOrigenMovimiento,
+        esLoteDeMovimiento,
+        esRealizado,
+        loteOrigen: loteOrigenNombre,
+        tipoMovimiento: lote.tipoMovimiento,
       };
     });
   }, [lotes, salidas, movimientosSilo]);
@@ -1016,7 +1120,23 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
   );
   const porcentajeBolsasDespachadas =
     totalBolsasProducidas > 0 ? (totalBolsasDespachadas / totalBolsasProducidas) * 100 : 0;
-  const totalLotesProducidos = selectedRecords.length;
+  // Lotes Elaborados: Excluye los de movimientos cualitativos y los que están en PRE-CARGA (no pasados a Realizado)
+  const totalLotesProducidos = useMemo(
+    () => selectedRecords.filter((r) => !r.esLoteDeMovimiento && r.esRealizado).length,
+    [selectedRecords]
+  );
+  const totalLotesMovimiento = useMemo(
+    () => selectedRecords.filter((r) => r.esLoteDeMovimiento).length,
+    [selectedRecords]
+  );
+  const totalLotesPreCarga = useMemo(
+    () => selectedRecords.filter((r) => !r.esRealizado && !r.esLoteDeMovimiento).length,
+    [selectedRecords]
+  );
+  const totalBolsasEnPreMovimiento = useMemo(
+    () => selectedRecords.reduce((sum, r) => sum + (r.bolsasEnPreMovimiento || 0), 0),
+    [selectedRecords]
+  );
   const totalLotesConStock = useMemo(
     () => selectedRecords.filter((r) => r.bolsasStock > 0).length,
     [selectedRecords]
@@ -1219,12 +1339,12 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
       { 'MÉTRICA / INDICADOR': '', 'VALOR / CANTIDAD': '', 'UNIDAD': '', 'DETALLE / OBSERVACIÓN': '' },
 
       { 'MÉTRICA / INDICADOR': '=== 2. BALANCE DE BOLSAS Y LOTES (VISOR 1) ===', 'VALOR / CANTIDAD': '', 'UNIDAD': '', 'DETALLE / OBSERVACIÓN': '' },
-      { 'MÉTRICA / INDICADOR': 'Total Bolsas Producidas', 'VALOR / CANTIDAD': totalBolsasProducidas, 'UNIDAD': 'bolsas', 'DETALLE / OBSERVACIÓN': 'Confección total acumulada' },
+      { 'MÉTRICA / INDICADOR': 'Total Bolsas Producidas', 'VALOR / CANTIDAD': totalBolsasProducidas, 'UNIDAD': 'bolsas', 'DETALLE / OBSERVACIÓN': 'Confección total acumulada (kg/bolsa = 800 kg · solo partidas en Realizado)' },
       { 'MÉTRICA / INDICADOR': 'Total Bolsas en Stock', 'VALOR / CANTIDAD': totalBolsasStock, 'UNIDAD': 'bolsas', 'DETALLE / OBSERVACIÓN': `${porcentajeBolsasEnStock.toFixed(1)}% de las bolsas disponibles` },
       { 'MÉTRICA / INDICADOR': 'Total Bolsas Despachadas (Solo Despacho)', 'VALOR / CANTIDAD': totalBolsasDespachadas, 'UNIDAD': 'bolsas', 'DETALLE / OBSERVACIÓN': `${porcentajeBolsasDespachadas.toFixed(1)}% entregadas con remito oficial` },
       { 'MÉTRICA / INDICADOR': 'Total Bolsas Movimientos Internos', 'VALOR / CANTIDAD': totalBolsasMovimientos, 'UNIDAD': 'bolsas', 'DETALLE / OBSERVACIÓN': 'Envases transferidos a otros lotes' },
-      { 'MÉTRICA / INDICADOR': 'Total Lotes Producidos', 'VALOR / CANTIDAD': totalLotesProducidos, 'UNIDAD': 'lotes', 'DETALLE / OBSERVACIÓN': 'Partidas registradas' },
-      { 'MÉTRICA / INDICADOR': 'Total Lotes con Stock Activo', 'VALOR / CANTIDAD': totalLotesConStock, 'UNIDAD': 'lotes', 'DETALLE / OBSERVACIÓN': `${totalLotesConStock} de ${totalLotesProducidos} lotes con stock > 0` },
+      { 'MÉTRICA / INDICADOR': 'Total Lotes Elaborados', 'VALOR / CANTIDAD': totalLotesProducidos, 'UNIDAD': 'lotes', 'DETALLE / OBSERVACIÓN': `Partidas elaboradas originales (${totalLotesMovimiento} por movimiento cualitativo)` },
+      { 'MÉTRICA / INDICADOR': 'Total Lotes con Stock Activo', 'VALOR / CANTIDAD': totalLotesConStock, 'UNIDAD': 'lotes', 'DETALLE / OBSERVACIÓN': `${totalLotesConStock} lotes con stock > 0 en nave` },
       { 'MÉTRICA / INDICADOR': '', 'VALOR / CANTIDAD': '', 'UNIDAD': '', 'DETALLE / OBSERVACIÓN': '' },
 
       { 'MÉTRICA / INDICADOR': '=== 3. ANÁLISIS DE TRATAMIENTO (VISOR 2 / VISOR 3) ===', 'VALOR / CANTIDAD': '', 'UNIDAD': '', 'DETALLE / OBSERVACIÓN': '' },
@@ -1257,6 +1377,7 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
     const dataToExport = tableRows.map((r) => ({
       'Seleccionado Stock': selectedLoteIds.has(r.id) ? 'SÍ' : 'NO',
       'N° Lote': r.loteNro,
+      'Origen Movimiento': r.esOrigenMovimiento ? `Sí (desde ${r.loteOrigen || 'otro lote'})` : 'No',
       'Cliente': r.cliente,
       'Especie': r.especie,
       'Variedad': r.variedad,
@@ -1285,6 +1406,7 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
     wsDetalle['!cols'] = [
       { wch: 18 }, // Seleccionado Stock
       { wch: 14 }, // N° Lote
+      { wch: 22 }, // Origen Movimiento
       { wch: 22 }, // Cliente
       { wch: 14 }, // Especie
       { wch: 18 }, // Variedad
@@ -1352,11 +1474,11 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
 ${totalKgMovimientos > 0 ? `• Movimientos Internos: ${formatNumberArg(totalKgMovimientos, 0)} kg (${(totalKgMovimientos / 1000).toFixed(2)} Tn)\n` : ''}• Pasado a Consumo: ${formatNumberArg(totalKgPasadosConsumo, 0)} kg (${(totalKgPasadosConsumo / 1000).toFixed(2)} Tn en ${totalLotesPasadosConsumo} lotes)
 
 📦 TOTAL BOLSAS & LOTES (VISOR 1):
-• Producidas: ${formatNumberArg(totalBolsasProducidas, 0)} bolsas
+• Producidas: ${formatNumberArg(totalBolsasProducidas, 0)} bolsas (kg/bolsa = 800 kg · solo partidas en Realizado)
 • En Stock: ${formatNumberArg(totalBolsasStock, 0)} bolsas (${porcentajeBolsasEnStock.toFixed(1)}%)
 • Despachadas: ${formatNumberArg(totalBolsasDespachadas, 0)} bolsas (${porcentajeBolsasDespachadas.toFixed(1)}% SOLO por despacho)
 ${totalBolsasMovimientos > 0 ? `• Movimientos Internos: ${formatNumberArg(totalBolsasMovimientos, 0)} bolsas\n` : ''}• Pasadas a Consumo: ${formatNumberArg(totalBolsasPasadasConsumo, 0)} bolsas
-• Lotes: ${totalLotesProducidos} producidos / ${totalLotesConStock} con stock activo / ${totalLotesPasadosConsumo} con consumo
+• Lotes: ${totalLotesProducidos} elaborados${totalLotesMovimiento > 0 ? ` (+${totalLotesMovimiento} por movimiento)` : ''} / ${totalLotesConStock} con stock activo / ${totalLotesPasadosConsumo} con consumo
 
 🧪 ANÁLISIS TRATAMIENTO (VISOR 2):
 • Kg Tratados: ${formatNumberArg(kgTratadosProducidos, 0)} kg (${porcentajeTratado.toFixed(1)}%)
@@ -1641,7 +1763,7 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                     </span>
                   </div>
 
-                  {/* Número Gigante de Gran Legibilidad */}
+                  {/* Número Gigante de Gran Legibilidad con Indicador de kg/bolsa */}
                   <div className="py-2">
                     <div className="flex items-baseline gap-2.5 flex-wrap">
                       <span className="text-5xl sm:text-6xl lg:text-7xl font-mono font-black text-white tracking-tight leading-none drop-shadow-md">
@@ -1649,9 +1771,17 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                       </span>
                       <span className="text-sm sm:text-base font-bold text-amber-200 font-sans">bolsas</span>
                     </div>
-                    <span className="text-xs text-slate-300 block mt-2 font-medium">
-                      Confeccionadas en nave de embolse
-                    </span>
+
+                    {/* Indicador de peso por bolsa solicitado: kg/bolsa = 800 kg */}
+                    <div className="flex items-center gap-2 flex-wrap mt-2.5">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-400/20 text-amber-200 border border-amber-400/40 text-xs font-mono font-bold shadow-xs">
+                        <Scale className="w-3.5 h-3.5 text-amber-300" />
+                        <span>kg/bolsa = 800 kg</span>
+                      </span>
+                      <span className="text-[11.5px] text-slate-300 font-medium">
+                        Confeccionadas en nave (solo partidas en Realizado · sin bolsas generadas en movimientos)
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -1662,6 +1792,16 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                     <span className="text-base font-mono font-bold text-white">
                       {totalLotesProducidos} <span className="text-xs font-normal text-slate-300">partidas</span>
                     </span>
+                    {totalLotesPreCarga > 0 && (
+                      <span className="text-[10px] text-amber-300 block font-normal" title="Lotes en estado Pre-carga pendientes de ser pasados a Realizado">
+                        ({totalLotesPreCarga} en pre-carga)
+                      </span>
+                    )}
+                    {totalLotesMovimiento > 0 && (
+                      <span className="text-[10px] text-purple-300 block font-normal" title="Lotes originados por movimiento cualitativo (no computan como partidas nuevas)">
+                        (+{totalLotesMovimiento} por movimiento)
+                      </span>
+                    )}
                   </div>
                   <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
                     <span className="block text-[10px] uppercase font-bold text-slate-400">Masa Bruta</span>
@@ -1715,7 +1855,7 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                   <div className="bg-emerald-900/30 p-2.5 rounded-xl border border-emerald-500/20">
                     <span className="block text-[10px] uppercase font-bold text-emerald-300">Lotes con Stock</span>
                     <span className="text-base font-mono font-bold text-white">
-                      {totalLotesConStock} <span className="text-xs font-normal text-slate-300">/ {totalLotesProducidos}</span>
+                      {totalLotesConStock} <span className="text-xs font-normal text-slate-300">partidas en nave</span>
                     </span>
                   </div>
                   <div className="bg-emerald-900/30 p-2.5 rounded-xl border border-emerald-500/20">
@@ -1834,7 +1974,7 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                   Total confeccionado en línea: <strong className="text-white font-mono">{formatNumberArg(totalBolsasProducidas, 0)} bolsas</strong>
                 </span>
                 <span>
-                  Partidas con stock activo: <strong className="text-emerald-200 font-mono">{totalLotesConStock} de {totalLotesProducidos} lotes</strong>
+                  Partidas con stock activo: <strong className="text-emerald-200 font-mono">{totalLotesConStock} partidas en nave</strong> <span className="text-slate-400">({totalLotesProducidos} elaboradas)</span>
                 </span>
               </div>
             </div>
@@ -1901,12 +2041,19 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                     </span>
                     <span className="text-base sm:text-lg font-bold text-amber-200 font-sans">Tn</span>
                   </div>
-                  <span className="text-xs font-mono text-slate-300 block font-medium">
-                    ({formatNumberArg(totalKgProducidos, 0)} kg totales procesados)
-                  </span>
+                  <div className="space-y-1">
+                    <span className="text-xs font-mono text-slate-300 block font-medium">
+                      ({formatNumberArg(totalKgProducidos, 0)} kg equivalencia total procesada · todos los kilos en Realizado)
+                    </span>
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[11px] font-mono text-amber-200">
+                      <span>Bolsas: <strong>{formatNumberArg(totalBolsasProducidas, 0)}</strong></span>
+                      <span className="text-slate-400">·</span>
+                      <span className="text-emerald-300 font-bold">kg/bolsa = 800 kg</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="pt-2.5 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400 font-sans">
-                  <span>Partidas: <strong className="text-white font-mono">{totalLotesProducidos}</strong></span>
+                  <span>Partidas: <strong className="text-white font-mono">{totalLotesProducidos} elaboradas</strong></span>
                   <span>Promedio: <strong className="text-amber-200 font-mono">{totalLotesProducidos > 0 ? (totalTnProducidas / totalLotesProducidos).toFixed(2) : '0.00'} Tn/lote</strong></span>
                 </div>
               </div>
@@ -1935,7 +2082,7 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                 </div>
                 <div className="pt-2.5 border-t border-emerald-500/20 flex items-center justify-between text-[11px] text-emerald-300/80 font-sans">
                   <span>Bolsas: <strong className="text-white font-mono">{formatNumberArg(totalBolsasStock, 0)} b.</strong></span>
-                  <span>Lotes activos: <strong className="text-emerald-200 font-mono">{totalLotesConStock} de {totalLotesProducidos}</strong></span>
+                  <span>Lotes activos: <strong className="text-emerald-200 font-mono">{totalLotesConStock} en stock</strong></span>
                 </div>
               </div>
 
@@ -2086,7 +2233,7 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                <span>Peso Promedio: <strong className="text-amber-200 font-mono">{totalBolsasProducidas > 0 ? (totalKgProducidos / totalBolsasProducidas).toFixed(1) : '0.0'} kg/bolsa</strong></span>
+                <span>Indicador Nominal: <strong className="text-amber-200 font-mono">kg/bolsa = 800 kg</strong></span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-purple-400"></span>
@@ -2966,7 +3113,10 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                   <th className="py-3 px-3 text-center">Envase</th>
                   {activeMode === 'produccion' ? (
                     <>
-                      <th className="py-3 px-3 text-right">Bolsas Prod.</th>
+                      <th className="py-3 px-3 text-right">
+                        <div>Bolsas Prod.</div>
+                        <div className="text-[10px] text-amber-700 font-mono font-normal">kg/bolsa = 800 kg</div>
+                      </th>
                       <th className="py-3 px-4 text-right">Kg Producidos</th>
                       <th className="py-3 px-3 text-right">Tn Prod.</th>
                       <th className="py-3 px-3 text-right">A Consumo (kg)</th>
@@ -3037,8 +3187,16 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
 
                       {/* N° Lote */}
                       <td className="py-2.5 px-4 font-mono font-bold text-[#00603C]">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span>{r.loteNro}</span>
+                          {r.esOrigenMovimiento && (
+                            <span
+                              className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-sans font-bold tracking-tight inline-flex items-center"
+                              title={`Lote originado por movimiento cualitativo a partir de ${r.loteOrigen || 'otro lote'}. No suma producción nueva.`}
+                            >
+                              Mov. {r.loteOrigen ? `(de ${r.loteOrigen})` : ''}
+                            </span>
+                          )}
                           {selectedLoteIds.has(r.id) && (
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" title="Seleccionado en stock" />
                           )}
@@ -3099,13 +3257,47 @@ Generado el: ${new Date().toLocaleDateString('es-AR')}`;
                       {activeMode === 'produccion' ? (
                         <>
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-gray-800">
-                            {formatNumberArg(r.bolsasProducidas, 0)} b.
+                            {r.esLoteDeMovimiento ? (
+                              <div className="flex flex-col items-end">
+                                <span className="text-gray-400 font-normal">0 b.</span>
+                                <span className="text-[9.5px] text-purple-700 font-sans font-semibold" title={`Origen: ${r.loteOrigen || 'Movimiento previo'}. Cambio cualitativo sin aumentar producción total.`}>
+                                  (Movimiento)
+                                </span>
+                              </div>
+                            ) : !r.esRealizado ? (
+                              <div className="flex flex-col items-end">
+                                <span className="text-amber-600 font-normal">0 b.</span>
+                                <span className="text-[9.5px] text-amber-700 font-sans font-semibold" title="Lote en estado Pre-carga / pendiente. No suma producción hasta ser pasado a Realizado.">
+                                  (Pre-carga)
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-end">
+                                <span>{formatNumberArg(r.bolsasProducidas, 0)} b.</span>
+                                <span className="text-[9px] text-slate-500 font-mono font-normal">
+                                  kg/bolsa = {r.kgPorBolsa || 800} kg
+                                </span>
+                                {(r.bolsasMovimientos || 0) > 0 && (
+                                  <span className="text-[9px] text-purple-700 font-sans font-medium" title={`${r.bolsasMovimientos} bolsas derivadas por movimiento no contabilizadas en producción`}>
+                                    ({r.bolsasMovimientos} b. en mov.)
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2.5 px-4 text-right font-mono font-bold text-[#00603C]">
-                            {formatNumberArg(r.kgProducidos, 0)} kg
+                            {!r.esRealizado ? (
+                              <span className="text-amber-600 font-normal" title="Lote en Pre-carga no computa producción">0 kg</span>
+                            ) : (
+                              `${formatNumberArg(r.kgProducidos, 0)} kg`
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono text-gray-600">
-                            {(r.kgProducidos / 1000).toFixed(2)}
+                            {!r.esRealizado ? (
+                              <span className="text-amber-600 font-normal">0.00</span>
+                            ) : (
+                              (r.kgProducidos / 1000).toFixed(2)
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono">
                             {r.kgPasadosConsumo > 0 ? (

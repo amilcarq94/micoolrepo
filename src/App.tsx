@@ -2686,30 +2686,6 @@ export default function App() {
             )}
           </button>
 
-          {/* Tab 6.b: Producción (Dashboard de Producción & Stock) */}
-          <button
-            id="nav-tab-produccion"
-            onClick={() => navigateTo('produccion')}
-            className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transition-all duration-200 cursor-pointer ${
-              sidebarCollapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'
-            } ${
-              activeView === 'produccion'
-                ? 'bg-[#F6EFDC] text-[#00603C] shadow-sm font-bold ring-1.5 ring-[#C9922E]/60'
-                : 'text-white hover:bg-white/10'
-            }`}
-            title="Dashboard de Producción: Kilos y Bolsas Producidos vs Stock y Análisis de Tratamiento"
-          >
-            <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5 truncate'}`}>
-              <BarChart3 className="w-5 h-5 shrink-0 text-[#C9922E]" />
-              {!sidebarCollapsed && <span className="truncate">Producción</span>}
-            </div>
-            {!sidebarCollapsed && (
-              <span className="text-[8.5px] px-1.5 py-0.5 bg-[#C9922E]/20 text-[#F6EFDC] border border-[#C9922E]/30 rounded font-mono font-bold">
-                Dash
-              </span>
-            )}
-          </button>
-
           {/* Tab 7: Generar Lote */}
           <button
             id="nav-tab-generar-lote"
@@ -3026,27 +3002,6 @@ export default function App() {
                     {criticalLotesCount}
                   </span>
                 )}
-              </button>
-
-              <button
-                id="nav-tab-mobile-produccion"
-                onClick={() => {
-                  navigateTo('produccion');
-                  setMobileNavOpen(false);
-                }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
-                  activeView === 'produccion'
-                    ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-xs'
-                    : 'text-white hover:bg-white/10'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <BarChart3 className="w-4 h-4 text-[#C9922E]" />
-                  <span>Producción</span>
-                </div>
-                <span className="text-[9px] px-1.5 py-0.5 bg-[#C9922E]/20 text-[#F6EFDC] rounded font-mono font-bold">
-                  Kilos & Stock
-                </span>
               </button>
 
               <button

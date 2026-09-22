@@ -501,6 +501,9 @@ export const LotesView: React.FC<LotesViewProps> = ({
           producto: productoQuimico || 'Maxim Quattro + Inoculante',
           estado: 'Disponible',
           fechaTratamiento,
+          esMovimiento: true,
+          loteOrigen: loteOriginal.loteNro,
+          tipoMovimiento: 'Curado Parcial',
           historial: [ingresoMovT],
           auditoria: [
             {
