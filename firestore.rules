@@ -130,5 +130,15 @@ service cloud.firestore {
     match /configuracion_planta/{docId} {
       allow read, write: if true;
     }
+
+    // 10. Colección de Turnos de Parking (turnosParking)
+    match /turnosParking/{turnoId} {
+      allow read, write: if true;
+    }
+
+    // 11. Colección de Configuración Global (config/parking)
+    match /config/{docId} {
+      allow read, write: if true;
+    }
   }
 }

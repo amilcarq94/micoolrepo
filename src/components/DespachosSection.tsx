@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Lote, OrdenCarga, LoteOrigenItem, SalidaRegistrada, Chofer, PlantaConfig } from '../types';
+import { Lote, OrdenCarga, LoteOrigenItem, SalidaRegistrada, Chofer, PlantaConfig, TurnoParking, ItemPrecargaLote, PrecargaDespacho } from '../types';
 import { SalidasList, SalidaUnifiedRow } from './SalidasList';
 import { getCampaniaIdFromDate } from '../utils/campanias';
 import { LogoSiloLoose } from './Logo';
@@ -42,7 +42,16 @@ import {
   Camera,
   ZoomIn,
   MapPin,
-  History
+  History,
+  Clock,
+  Copy,
+  ArrowRight,
+  ArrowDownUp,
+  CheckCircle2,
+  Mail,
+  ExternalLink,
+  Layers,
+  Filter
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -79,8 +88,11 @@ interface DespachosSectionProps {
   onDeleteDespacho?: (row: SalidaUnifiedRow) => Promise<boolean | void> | boolean | void;
   onDeleteMultipleDespachos?: (rows: SalidaUnifiedRow[]) => Promise<boolean | void> | boolean | void;
   onRefresh?: () => Promise<void> | void;
-  initialSubView?: 'generar' | 'mis-ordenes' | 'listado';
+  initialSubView?: 'generar' | 'mis-ordenes' | 'listado' | 'precargas';
   onlyMisOrdenes?: boolean;
+  turnosParking?: TurnoParking[];
+  onDeleteTurno?: (turnoId: string) => Promise<void> | void;
+  onUpdateTurno?: (turno: TurnoParking) => Promise<void> | void;
 }
 
 const LISTA_CLIENTES = ["San Diego Semilla", "Eco Rural", "Pampa", "Stine", "Elementa Foods"];
@@ -126,17 +138,20 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   onRefresh,
   initialSubView = 'generar',
   onlyMisOrdenes = false,
+  turnosParking = [],
+  onDeleteTurno,
+  onUpdateTurno,
 }) => {
   // 1. Navegación de Sub-vistas y Cortina vertical
   const [subView, setSubView] = useState<'generar' | 'mis-ordenes' | 'listado'>(
-    onlyMisOrdenes ? 'mis-ordenes' : initialSubView
+    onlyMisOrdenes ? 'mis-ordenes' : ((initialSubView as any) === 'precargas' ? 'generar' : (initialSubView as any) || 'generar')
   );
   const [listadoTab, setListadoTab] = useState<'ordenes' | 'salidas-historial'>('ordenes');
   const [isNavCortinaOpen, setIsNavCortinaOpen] = useState(false);
 
   useEffect(() => {
     if (initialSubView) {
-      setSubView(initialSubView);
+      setSubView((initialSubView as any) === 'precargas' ? 'generar' : (initialSubView as any));
     }
   }, [initialSubView]);
 
@@ -259,11 +274,12 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   // Panel Generación de Orden de Carga: minimizado por defecto, maximizar para cargar datos
   const [isGenerarOrdenOpen, setIsGenerarOrdenOpen] = useState<boolean>(false);
 
-  // Estados de datos de carga manual (Despacho: Remito, Cliente, Chofer)
+  // Estados de datos de carga manual (Despacho: Remito, Cliente, Chofer, Fecha de Carga)
   const [genRemitoCliente, setGenRemitoCliente] = useState('');
   const [genCargaCliente, setGenCargaCliente] = useState('');
   const [genDestino, setGenDestino] = useState('');
   const [genChofer, setGenChofer] = useState('');
+  const [genFechaCarga, setGenFechaCarga] = useState(new Date().toISOString().split('T')[0]);
 
   // Estados para modal de edición de datos de despacho
   const [ordenEditandoDespacho, setOrdenEditandoDespacho] = useState<OrdenCarga | null>(null);
@@ -271,6 +287,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   const [editCliente, setEditCliente] = useState('');
   const [editDestino, setEditDestino] = useState('');
   const [editChofer, setEditChofer] = useState('');
+  const [editFechaCarga, setEditFechaCarga] = useState('');
   const [editSuccessMsg, setEditSuccessMsg] = useState('');
 
   // 3. Estados para "Mis órdenes" (Despachante Asignado - Libre Acceso)
@@ -287,12 +304,12 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignedMap, setHasSignedMap] = useState<Record<string, boolean>>({});
 
-  // 4. Estados para "Listado general de Despachos" (Filtros)
+  // 4. Estados para "Listado general de Despachos" (Filtros: por defecto mostrar sin despachar)
   const [filterCliente, setFilterCliente] = useState('');
   const [filterAutor, setFilterAutor] = useState('');
   const [filterDespachante, setFilterDespachante] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
-  const [filterEstadoDespacho, setFilterEstadoDespacho] = useState<'todos' | 'despachado' | 'sindespachar'>('todos');
+  const [filterEstadoDespacho, setFilterEstadoDespacho] = useState<'todos' | 'despachado' | 'sindespachar'>('sindespachar');
   const [filterFecha, setFilterFecha] = useState('');
   const [filterRemitoCliente, setFilterRemitoCliente] = useState('');
 
@@ -307,6 +324,11 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
           if (parsed.filterAutor !== undefined) setFilterAutor(parsed.filterAutor);
           if (parsed.filterDespachante !== undefined) setFilterDespachante(parsed.filterDespachante);
           if (parsed.filterEstado !== undefined) setFilterEstado(parsed.filterEstado);
+          if (parsed.filterEstadoDespacho !== undefined) {
+            setFilterEstadoDespacho(parsed.filterEstadoDespacho);
+          } else {
+            setFilterEstadoDespacho('sindespachar');
+          }
           if (parsed.filterFecha !== undefined) setFilterFecha(parsed.filterFecha);
           if (parsed.filterRemitoCliente !== undefined) setFilterRemitoCliente(parsed.filterRemitoCliente);
           
@@ -344,6 +366,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
         filterAutor,
         filterDespachante,
         filterEstado,
+        filterEstadoDespacho,
         filterFecha,
         filterRemitoCliente,
         genCliente,
@@ -373,6 +396,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     filterAutor,
     filterDespachante,
     filterEstado,
+    filterEstadoDespacho,
     filterFecha,
     filterRemitoCliente,
     genCliente,
@@ -389,7 +413,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     setFilterAutor('');
     setFilterDespachante('');
     setFilterEstado('');
-    setFilterEstadoDespacho('todos');
+    setFilterEstadoDespacho('sindespachar');
     setFilterFecha('');
     setFilterRemitoCliente('');
   };
@@ -415,13 +439,14 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     setGenCargaCliente('');
     setGenDestino('');
     setGenChofer('');
+    setGenFechaCarga(new Date().toISOString().split('T')[0]);
 
-    // 3. Restablecer todos los filtros de la tabla de despachos
+    // 3. Restablecer todos los filtros de la tabla de despachos (por defecto: sin despachar)
     setFilterCliente('');
     setFilterAutor('');
     setFilterDespachante('');
     setFilterEstado('');
-    setFilterEstadoDespacho('todos');
+    setFilterEstadoDespacho('sindespachar');
     setFilterFecha('');
     setFilterRemitoCliente('');
 
@@ -431,6 +456,338 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       localStorage.removeItem(PIN_STORAGE_KEY_DESPACHOS);
     } catch {
       // ignore
+    }
+  };
+
+  // 5. Estados y Control para Visor de Pre-Cargas Aceptadas en "1. Crear Orden"
+  const PRECARGAS_GENERADAS_STORAGE_KEY = 'agro_precargas_generadas_ids_v1';
+  const [precargasGeneradasIds, setPrecargasGeneradasIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('agro_precargas_generadas_ids_v1');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const [selectedPrecargaTurnoId, setSelectedPrecargaTurnoId] = useState<string | null>(null);
+  const [visorDiaFilter, setVisorDiaFilter] = useState<string>('TODOS');
+  const [visorClienteFilter, setVisorClienteFilter] = useState<string>('TODOS');
+  const [visorOrdenTurnos, setVisorOrdenTurnos] = useState<'ASC' | 'DESC'>('ASC');
+  const [isVisorOpen, setIsVisorOpen] = useState(true);
+
+  const [precargaSearchTerm, setPrecargaSearchTerm] = useState('');
+  const [precargaCopiadaMsg, setPrecargaCopiadaMsg] = useState('');
+  const [precargaParaCancelar, setPrecargaParaCancelar] = useState<TurnoParking | null>(null);
+  const [cancelEmailManual, setCancelEmailManual] = useState('');
+  const [cancelMotivoDespacho, setCancelMotivoDespacho] = useState('');
+  const [isCancelingDespacho, setIsCancelingDespacho] = useState(false);
+
+  // Helper para convertir horario tipo "07:00 hs" a minutos desde medianoche para ordenar cronológicamente
+  const parseHorarioMinutos = (horarioStr?: string): number => {
+    if (!horarioStr) return 9999;
+    const match = horarioStr.match(/(\d{1,2}):(\d{2})/);
+    if (match) {
+      return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+    }
+    return 9999;
+  };
+
+  // Pre-cargas aceptadas pendientes de orden de carga
+  const precargasAceptadasPendientes = useMemo(() => {
+    return turnosParking.filter(turno => {
+      // 1. Debe tener datos de precarga
+      if (!turno.precarga) return false;
+
+      // 2. No debe estar cancelado
+      if (turno.estado === 'CANCELADO') return false;
+
+      // 3. Debe estar ACEPTADO (ya sea el turno en estado ACEPTADO o la orden asociada en estado Aceptada)
+      const matchedOrden = ordenes.find(o => o.id === turno.ordenCargaId);
+      const esAceptado = turno.estado === 'ACEPTADO' || matchedOrden?.estado === 'Aceptada';
+      if (!esAceptado) return false;
+
+      // 4. Quitar del visor una vez que se haya generado la orden
+      if (turno.precargaGenerada || turno.estado === 'COMPLETADO') return false;
+      if (precargasGeneradasIds.has(turno.id)) return false;
+
+      // Si la orden asociada ya fue despachada o descontada oficialmente
+      if (matchedOrden && (matchedOrden.estado === 'Despachada' || matchedOrden.stockDescontado)) return false;
+
+      return true;
+    });
+  }, [turnosParking, ordenes, precargasGeneradasIds]);
+
+  // Lista de días disponibles para el filtro
+  const diasDisponiblesVisor = useMemo(() => {
+    const setDias = new Set<string>();
+    precargasAceptadasPendientes.forEach(t => {
+      if (t.fecha) setDias.add(t.fecha);
+    });
+    return Array.from(setDias).sort();
+  }, [precargasAceptadasPendientes]);
+
+  // Lista de clientes con precargas aceptadas disponibles
+  const clientesDisponiblesVisor = useMemo(() => {
+    const setCli = new Set<string>();
+    precargasAceptadasPendientes.forEach(t => {
+      if (t.cliente) setCli.add(t.cliente);
+    });
+    return Array.from(setCli).sort();
+  }, [precargasAceptadasPendientes]);
+
+  // Lista final filtrada y ordenada por turnos
+  const precargasAceptadasVisor = useMemo(() => {
+    let list = [...precargasAceptadasPendientes];
+
+    // Filtro de Día
+    if (visorDiaFilter !== 'TODOS') {
+      list = list.filter(t => t.fecha === visorDiaFilter);
+    }
+
+    // Filtro de Cliente
+    if (visorClienteFilter !== 'TODOS') {
+      const cNorm = visorClienteFilter.toLowerCase();
+      list = list.filter(t => (t.cliente || '').toLowerCase().includes(cNorm));
+    }
+
+    // Búsqueda libre
+    if (precargaSearchTerm.trim()) {
+      const term = precargaSearchTerm.toLowerCase().trim();
+      list = list.filter(t => {
+        const cli = (t.cliente || '').toLowerCase();
+        const desp = (t.despachante || '').toLowerCase();
+        const nro = (t.precarga?.numeroLote || '').toLowerCase();
+        const esp = (t.precarga?.especie || '').toLowerCase();
+        const varSem = (t.precarga?.variedad || '').toLowerCase();
+        const chof = (t.precarga?.choferSugerido || '').toLowerCase();
+        const pat = (t.precarga?.patenteSugerida || '').toLowerCase();
+        const hasMulti = (t.precarga?.lotesMultiples || []).some(m =>
+          (m.numeroLote || '').toLowerCase().includes(term) ||
+          (m.especie || '').toLowerCase().includes(term) ||
+          (m.variedad || '').toLowerCase().includes(term)
+        );
+        return cli.includes(term) || desp.includes(term) || nro.includes(term) || esp.includes(term) || varSem.includes(term) || chof.includes(term) || pat.includes(term) || hasMulti;
+      });
+    }
+
+    // ORDENAR PRECARGAS POR TURNOS (Fecha y Franja/Horario cronológico)
+    list.sort((a, b) => {
+      const dateDiff = a.fecha.localeCompare(b.fecha);
+      if (dateDiff !== 0) {
+        return visorOrdenTurnos === 'ASC' ? dateDiff : -dateDiff;
+      }
+      const minA = parseHorarioMinutos(a.horario);
+      const minB = parseHorarioMinutos(b.horario);
+      return visorOrdenTurnos === 'ASC' ? minA - minB : minB - minA;
+    });
+
+    return list;
+  }, [precargasAceptadasPendientes, visorDiaFilter, visorClienteFilter, precargaSearchTerm, visorOrdenTurnos]);
+
+  // Copiar datos de la precarga al formulario de Orden de Carga
+  const handleCopiarPrecargaAOrden = (turno: TurnoParking) => {
+    if (!turno.precarga) return;
+    const p = turno.precarga;
+
+    // Vincular ID de precarga seleccionada para quitarla una vez generada la orden
+    setSelectedPrecargaTurnoId(turno.id);
+
+    // Fecha de Carga
+    if (turno.fecha) {
+      setGenFechaCarga(turno.fecha);
+    }
+
+    // Cliente
+    if (turno.cliente) {
+      handleClienteChange(turno.cliente);
+    }
+
+    // Especie
+    if (p.especie) {
+      setGenEspecie(p.especie);
+    }
+
+    // Variedad
+    if (p.variedad) {
+      setGenVariedad(p.variedad);
+    }
+
+    // Categoría
+    if (p.categoriaLote) {
+      const cat = p.categoriaLote as any;
+      if (['Preba', 'Original', 'Primu', 'Fundadora'].includes(cat)) {
+        setGenCategoria(cat);
+      }
+    }
+
+    // Tipo
+    if (p.tipoLote) {
+      const tipo = p.tipoLote as any;
+      if (['Intermedio', 'Final'].includes(tipo)) {
+        setGenTipo(tipo);
+      }
+    }
+
+    // Tratamiento
+    if (p.tratamiento) {
+      const trat = p.tratamiento.toLowerCase().includes('sin') ? 'Sin Tratar' : 'Tratado';
+      setGenTratamiento(trat);
+    }
+
+    // Chofer & Despachante
+    if (turno.despachante) {
+      setGenDespachante(turno.despachante);
+    }
+    if (p.choferSugerido) {
+      setGenChofer(p.choferSugerido);
+    }
+
+    // Lotes de Origen & Bolsas a Cargar
+    if (p.lotesMultiples && p.lotesMultiples.length > 0) {
+      const newSlots: LoteCargaSlotItem[] = p.lotesMultiples.map((lm, idx) => {
+        const found = lotes.find(l => {
+          const normNro = (l.loteNro || '').toLowerCase().trim();
+          const targetNro = (lm.numeroLote || '').toLowerCase().trim();
+          return normNro === targetNro || l.id.toLowerCase() === targetNro;
+        });
+        return {
+          id: `slot-precarga-${Date.now()}-${idx + 1}`,
+          loteId: found ? found.id : lm.numeroLote,
+          bolsas: lm.cantidadBolsas || 35,
+          searchTerm: lm.numeroLote || ''
+        };
+      });
+      setLotesCarga(newSlots);
+    } else if (p.numeroLote) {
+      const found = lotes.find(l => {
+        const normNro = (l.loteNro || '').toLowerCase().trim();
+        const targetNro = (p.numeroLote || '').toLowerCase().trim();
+        return normNro === targetNro || l.id.toLowerCase() === targetNro;
+      });
+      setLotesCarga([{
+        id: `slot-precarga-${Date.now()}-1`,
+        loteId: found ? found.id : p.numeroLote,
+        bolsas: p.cantidadBolsas || 35,
+        searchTerm: p.numeroLote || ''
+      }]);
+    }
+
+    setSubView('generar');
+    setIsGenerarOrdenOpen(true);
+    setGenSuccess(`Pre-Carga de ${turno.cliente} (Turno ${turno.horario}) seleccionada. Se han copiado los datos al formulario.`);
+    
+    // Scroll suave hacia el formulario
+    setTimeout(() => {
+      const formEl = document.getElementById('formulario-generar-orden-despacho');
+      if (formEl) {
+        formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+  };
+
+  // Copiar resumen del lote de origen al portapapeles
+  const handleCopiarDatosPortapapeles = (turno: TurnoParking) => {
+    if (!turno.precarga) return;
+    const p = turno.precarga;
+    let text = `PRE-CARGA / LOTE DE ORIGEN - AGRO ABACUS S.A.\n`;
+    text += `• Cliente: ${turno.cliente}\n`;
+    text += `• Turno: ${formatDateStr(turno.fecha)} — ${turno.horario}\n`;
+    text += `• Despachante: ${turno.despachante || '-'}\n`;
+    text += `• Chofer Sugerido: ${p.choferSugerido || '-'} (Patente: ${p.patenteSugerida || '-'})\n`;
+    text += `• Envase: ${p.tipoEnvase}\n`;
+    text += `• Total Bolsas: ${p.cantidadBolsas} b. (${(p.kgEstimados || 0).toLocaleString('es-AR')} kg)\n\n`;
+    text += `LOTES DE ORIGEN:\n`;
+
+    if (p.lotesMultiples && p.lotesMultiples.length > 0) {
+      p.lotesMultiples.forEach((lm, i) => {
+        text += `[${i + 1}] Lote: ${lm.numeroLote} | ${lm.especie} (${lm.variedad || 's/v'}) | ${lm.tipoLote} | ${lm.tratamiento} | Cat: ${lm.categoriaLote} | ${lm.cantidadBolsas} bolsas (${(lm.kgEstimados || 0).toLocaleString('es-AR')} kg)\n`;
+      });
+    } else {
+      text += `• Lote: ${p.numeroLote || '-'} | ${p.especie} (${p.variedad || 's/v'}) | ${p.tipoLote} | ${p.tratamiento} | Cat: ${p.categoriaLote} | ${p.cantidadBolsas} bolsas\n`;
+    }
+
+    if (p.observaciones) {
+      text += `\nObservaciones: ${p.observaciones}\n`;
+    }
+
+    navigator.clipboard.writeText(text);
+    setPrecargaCopiadaMsg(`¡Datos de lote de origen copiados al portapapeles!`);
+    setTimeout(() => setPrecargaCopiadaMsg(''), 3500);
+  };
+
+  // Aceptar precarga desde el dashboard
+  const handleAceptarPrecarga = async (turno: TurnoParking) => {
+    if (onUpdateTurno) {
+      await onUpdateTurno({ ...turno, estado: 'ACEPTADO', updatedAt: new Date().toISOString() });
+      if (turno.ordenCargaId && onUpdateOrdenStatus) {
+        await onUpdateOrdenStatus(turno.ordenCargaId, 'Aceptada');
+      }
+      setPrecargaCopiadaMsg(`Precarga de ${turno.cliente} marcada como Aceptada.`);
+      setTimeout(() => setPrecargaCopiadaMsg(''), 3500);
+    }
+  };
+
+  // Abrir modal de cancelación de precarga
+  const handleAbrirCancelarPrecarga = (turno: TurnoParking) => {
+    setPrecargaParaCancelar(turno);
+    setCancelEmailManual('');
+    setCancelMotivoDespacho('');
+  };
+
+  // Confirmar eliminación de precarga y notificar al despachante por correo manual
+  const handleConfirmarCancelarPrecarga = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!precargaParaCancelar) return;
+    if (!cancelEmailManual.trim()) {
+      alert('Por favor ingrese la dirección de correo electrónico del despachante a mano.');
+      return;
+    }
+
+    setIsCancelingDespacho(true);
+    const turno = precargaParaCancelar;
+    const emailDest = cancelEmailManual.trim();
+    const motivoTexto = cancelMotivoDespacho.trim() || 'Cancelación de precarga solicitada desde el módulo de Órdenes de Carga';
+
+    try {
+      if (onDeleteTurno) {
+        await onDeleteTurno(turno.id);
+      } else if (onUpdateTurno) {
+        await onUpdateTurno({ ...turno, estado: 'CANCELADO' });
+      }
+
+      // Si tenía orden de carga asociada, eliminarla
+      if (turno.ordenCargaId && onDeleteOrden) {
+        await onDeleteOrden(turno.ordenCargaId);
+      }
+
+      // Notificar por mailto
+      const asunto = encodeURIComponent(`Cancelación de Precarga y Turno - ${turno.cliente} (${formatDateStr(turno.fecha)} ${turno.horario})`);
+      const cuerpo = encodeURIComponent(
+        `Estimado/a ${turno.despachante || 'Despachante'},\n\n` +
+        `Le notificamos que se ha procedido a CANCELAR Y ELIMINAR la precarga en planta:\n\n` +
+        `• Turno ID: ${turno.id}\n` +
+        `• Cliente: ${turno.cliente}\n` +
+        `• Fecha y Horario: ${formatDateStr(turno.fecha)} — ${turno.horario}\n` +
+        `• Lote(s): ${turno.precarga?.numeroLote || 'N/A'}\n` +
+        `• Bolsas: ${turno.precarga?.cantidadBolsas || 0} bolsas\n` +
+        `• Motivo: ${motivoTexto}\n\n` +
+        `Atentamente,\nAgro Abacus S.A.`
+      );
+
+      const mailtoUrl = `mailto:${encodeURIComponent(emailDest)}?subject=${asunto}&body=${cuerpo}`;
+      try {
+        window.location.href = mailtoUrl;
+      } catch (err) {
+        console.warn('Mailto link error:', err);
+      }
+
+      setPrecargaCopiadaMsg(`Precarga eliminada y aviso enviado a ${emailDest}.`);
+      setPrecargaParaCancelar(null);
+      setTimeout(() => setPrecargaCopiadaMsg(''), 4000);
+    } catch (err) {
+      console.error('Error al cancelar precarga:', err);
+    } finally {
+      setIsCancelingDespacho(false);
     }
   };
 
@@ -736,11 +1093,17 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     const variedadConsolidada = uniqueVariedades.join(' / ') || primerLote.variedad;
 
     const fechaOrden = new Date().toISOString().split('T')[0];
+    const fechaCargaFinal = genFechaCarga.trim() || fechaOrden;
+    const matchedPrecargaTurno = selectedPrecargaTurnoId
+      ? turnosParking.find(t => t.id === selectedPrecargaTurnoId)
+      : undefined;
+
     // Crear la Orden
     const nuevaOrden: OrdenCarga = {
       id: `OC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       fecha: fechaOrden,
-      campaniaId: getCampaniaIdFromDate(fechaOrden),
+      fechaCarga: fechaCargaFinal,
+      campaniaId: getCampaniaIdFromDate(fechaCargaFinal),
       cliente: genCargaCliente.trim() || clienteConsolidado,
       loteId: lotesOrigen.map(lo => lo.loteNro).join(', '),
       especie: especieConsolidada,
@@ -756,12 +1119,39 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       ubicacionLote: ubicacionConsolidada,
       remitoCliente: genRemitoCliente.trim() || undefined,
       destino: genDestino.trim() || undefined,
-      chofer: genChofer.trim() || undefined
+      chofer: genChofer.trim() || undefined,
+      turnoParkingId: selectedPrecargaTurnoId || undefined,
+      turnoHorario: matchedPrecargaTurno?.horario || undefined
     };
 
     onSaveOrden(nuevaOrden);
     setGenSuccess('orden creada correctamente');
     setUltimaOrdenCreada(nuevaOrden);
+
+    // "una vez que se haya generada la orden quitar del visor la orden de precarga"
+    if (selectedPrecargaTurnoId) {
+      setPrecargasGeneradasIds(prev => {
+        const next = new Set(prev);
+        next.add(selectedPrecargaTurnoId);
+        try {
+          localStorage.setItem(PRECARGAS_GENERADAS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+        } catch (e) {
+          console.warn(e);
+        }
+        return next;
+      });
+
+      if (matchedPrecargaTurno && onUpdateTurno) {
+        onUpdateTurno({
+          ...matchedPrecargaTurno,
+          estado: 'COMPLETADO',
+          precargaGenerada: true,
+          ordenCargaId: nuevaOrden.id,
+          updatedAt: new Date().toISOString()
+        });
+      }
+      setSelectedPrecargaTurnoId(null);
+    }
 
     // Reestablecer los datos del dashboard para crear nueva orden
     handleResetAllFilters();
@@ -785,6 +1175,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     setEditCliente(orden.cliente || '');
     setEditDestino(orden.destino || '');
     setEditChofer(orden.chofer || '');
+    setEditFechaCarga(orden.fechaCarga || orden.fecha || '');
     setEditSuccessMsg('');
   };
 
@@ -798,6 +1189,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       cliente: editCliente.trim() || ordenEditandoDespacho.cliente,
       destino: editDestino.trim() || undefined,
       chofer: editChofer.trim() || undefined,
+      fechaCarga: editFechaCarga.trim() || ordenEditandoDespacho.fechaCarga || ordenEditandoDespacho.fecha,
     };
 
     onSaveOrden(ordenActualizada);
@@ -1563,8 +1955,495 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
               </div>
             )}
 
+            {/* VISOR DE PRE-CARGAS ACEPTADAS (PARKING & PLAYA) */}
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200">
+              
+              {/* Encabezado del Visor */}
+              <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-950 via-[#00603C] to-[#1c3a26] text-white flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-md">
+                    <Clock className="w-5 h-5 text-slate-950 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-mono font-bold tracking-widest text-amber-300 uppercase">
+                        PARKING & PLAYA DE CARGA
+                      </span>
+                      <span className="text-[9px] bg-emerald-700/80 text-emerald-100 px-2 py-0.5 rounded-full font-bold uppercase border border-emerald-500/40">
+                        {precargasAceptadasPendientes.length} Aceptadas Pendientes
+                      </span>
+                      {selectedPrecargaTurnoId && (
+                        <span className="text-[9px] bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full font-bold uppercase animate-pulse">
+                          1 Pre-Carga Seleccionada
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="font-serif text-lg sm:text-xl font-bold text-white flex items-center gap-2 mt-0.5">
+                      <span>Visor de Pre-Cargas Aceptadas</span>
+                    </h3>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsVisorOpen(prev => !prev)}
+                    className="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-white/20"
+                    title={isVisorOpen ? "Minimizar visor" : "Expandir visor"}
+                  >
+                    {isVisorOpen ? (
+                      <>
+                        <ChevronUp className="w-4 h-4 text-amber-300" />
+                        <span>Minimizar</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-4 h-4 text-amber-300" />
+                        <span>Expandir ({precargasAceptadasVisor.length})</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {isVisorOpen && (
+                <div className="p-4 sm:p-5 space-y-4 bg-slate-50/50">
+                  
+                  {/* Mensaje descriptivo con instrucciones */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-600 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-[#00603C] shrink-0" />
+                      <span>
+                        Seleccione una <strong>pre-carga aceptada</strong> para copiar instantáneamente sus datos (cliente, lote de origen, tipo, variedad, despachante y bolsas) hacia el formulario. Una vez generada la orden de carga, la pre-carga se retirará automáticamente de este visor.
+                      </span>
+                    </div>
+                    {selectedPrecargaTurnoId && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPrecargaTurnoId(null)}
+                        className="text-xs font-bold text-rose-700 hover:text-rose-900 underline shrink-0 cursor-pointer self-start sm:self-auto"
+                      >
+                        Quitar selección activa
+                      </button>
+                    )}
+                  </div>
+
+                  {/* BARRA DE FILTROS: DÍA, ORDEN POR TURNO, BÚSQUEDA Y CLIENTE */}
+                  <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs space-y-3">
+                    
+                    {/* Fila 1: Filtro de Día con botones rápidos y selector de fecha */}
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <label className="text-[11px] font-black uppercase tracking-wider text-[#00603C] flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-[#C9922E]" />
+                          <span>Filtro de Día (Seleccionar precargas según turno):</span>
+                        </label>
+                        {visorDiaFilter !== 'TODOS' && (
+                          <button
+                            type="button"
+                            onClick={() => setVisorDiaFilter('TODOS')}
+                            className="text-[10px] font-bold text-gray-500 hover:text-gray-800 underline cursor-pointer"
+                          >
+                            Ver todos los días
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Botón Todos los días */}
+                        <button
+                          type="button"
+                          onClick={() => setVisorDiaFilter('TODOS')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                            visorDiaFilter === 'TODOS'
+                              ? 'bg-[#00603C] text-white border-[#00603C] shadow-2xs'
+                              : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200'
+                          }`}
+                        >
+                          Todos los días ({precargasAceptadasPendientes.length})
+                        </button>
+
+                        {/* Botón Hoy */}
+                        {(() => {
+                          const todayStr = new Date().toISOString().split('T')[0];
+                          const countToday = precargasAceptadasPendientes.filter(t => t.fecha === todayStr).length;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => setVisorDiaFilter(todayStr)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center gap-1 ${
+                                visorDiaFilter === todayStr
+                                  ? 'bg-[#00603C] text-white border-[#00603C] shadow-2xs'
+                                  : 'bg-emerald-50 hover:bg-emerald-100 text-[#00603C] border-emerald-200'
+                              }`}
+                            >
+                              <span>Hoy ({formatDateStr(todayStr)})</span>
+                              {countToday > 0 && (
+                                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${visorDiaFilter === todayStr ? 'bg-amber-300 text-slate-950 font-bold' : 'bg-emerald-200 text-emerald-900'}`}>
+                                  {countToday}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })()}
+
+                        {/* Días con turnos registrados */}
+                        {diasDisponiblesVisor
+                          .filter(d => d !== new Date().toISOString().split('T')[0])
+                          .map(d => {
+                            const count = precargasAceptadasPendientes.filter(t => t.fecha === d).length;
+                            const isSel = visorDiaFilter === d;
+                            return (
+                              <button
+                                key={d}
+                                type="button"
+                                onClick={() => setVisorDiaFilter(d)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center gap-1 ${
+                                  isSel
+                                    ? 'bg-[#00603C] text-white border-[#00603C] shadow-2xs'
+                                    : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                                }`}
+                              >
+                                <span>{formatDateStr(d)}</span>
+                                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${isSel ? 'bg-amber-300 text-slate-950 font-bold' : 'bg-gray-200 text-gray-700'}`}>
+                                  {count}
+                                </span>
+                              </button>
+                            );
+                          })}
+
+                        {/* Input datepicker */}
+                        <div className="flex items-center gap-1 bg-gray-50 border border-gray-300 px-2 py-1 rounded-xl">
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">Otro día:</span>
+                          <input
+                            type="date"
+                            value={visorDiaFilter === 'TODOS' ? '' : visorDiaFilter}
+                            onChange={(e) => setVisorDiaFilter(e.target.value || 'TODOS')}
+                            className="bg-transparent text-xs font-bold text-gray-800 focus:outline-none cursor-pointer"
+                          />
+                          {visorDiaFilter !== 'TODOS' && (
+                            <button
+                              type="button"
+                              onClick={() => setVisorDiaFilter('TODOS')}
+                              className="text-gray-400 hover:text-gray-600 font-bold text-xs px-1"
+                              title="Limpiar fecha"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Fila 2: Ordenar por turno, búsqueda de texto y cliente */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-2 border-t border-gray-100">
+                      
+                      {/* Buscador libre */}
+                      <div className="sm:col-span-5 relative">
+                        <input
+                          type="text"
+                          value={precargaSearchTerm}
+                          onChange={(e) => setPrecargaSearchTerm(e.target.value)}
+                          placeholder="Buscar por lote, especie, variedad, cliente, despachante..."
+                          className="w-full pl-8 pr-7 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#00603C] focus:bg-white"
+                        />
+                        <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+                        {precargaSearchTerm && (
+                          <button
+                            type="button"
+                            onClick={() => setPrecargaSearchTerm('')}
+                            className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600 text-xs font-bold"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Filtro por Cliente */}
+                      <div className="sm:col-span-3">
+                        <select
+                          value={visorClienteFilter}
+                          onChange={(e) => setVisorClienteFilter(e.target.value)}
+                          className="w-full px-2.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
+                        >
+                          <option value="TODOS">Todos los Clientes</option>
+                          {clientesDisponiblesVisor.map(cli => (
+                            <option key={cli} value={cli}>{cli}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Botón Ordenar por Turno */}
+                      <div className="sm:col-span-4">
+                        <button
+                          type="button"
+                          onClick={() => setVisorOrdenTurnos(prev => prev === 'ASC' ? 'DESC' : 'ASC')}
+                          className="w-full px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-[#00603C] border border-emerald-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                          title="Alternar orden cronológico de turnos"
+                        >
+                          <ArrowDownUp className="w-3.5 h-3.5 text-[#C9922E]" />
+                          <span>
+                            {visorOrdenTurnos === 'ASC' ? 'Turno: Temprano a Tarde (ASC)' : 'Turno: Tarde a Temprano (DESC)'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Toast de copiado o notificación */}
+                  {precargaCopiadaMsg && (
+                    <div className="p-3 bg-emerald-100 border border-emerald-300 rounded-xl text-emerald-950 text-xs font-bold flex items-center gap-2 shadow-2xs animate-in slide-in-from-top-1">
+                      <Check className="w-4 h-4 text-emerald-700 stroke-[3]" />
+                      <span>{precargaCopiadaMsg}</span>
+                    </div>
+                  )}
+
+                  {/* LISTA DE TARJETAS DE PRE-CARGA ORDENADAS POR TURNO */}
+                  {precargasAceptadasVisor.length === 0 ? (
+                    <div className="bg-white p-8 sm:p-10 rounded-2xl border border-gray-200 text-center space-y-2.5">
+                      <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                        <Layers className="w-6 h-6 stroke-[1.5]" />
+                      </div>
+                      <h4 className="font-serif text-base font-bold text-slate-800">
+                        No hay pre-cargas aceptadas disponibles
+                      </h4>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                        {visorDiaFilter !== 'TODOS'
+                          ? `No se encontraron precargas aceptadas para el día ${formatDateStr(visorDiaFilter)}. Intente seleccionando "Todos los días".`
+                          : 'No hay precargas pendientes con los filtros aplicados. Las precargas aceptadas en Parking aparecerán aquí para generar sus órdenes de carga.'}
+                      </p>
+                      {visorDiaFilter !== 'TODOS' && (
+                        <button
+                          type="button"
+                          onClick={() => setVisorDiaFilter('TODOS')}
+                          className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#00603C] rounded-xl text-xs font-bold border border-emerald-200 transition cursor-pointer mt-2"
+                        >
+                          Ver todos los días
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                      {precargasAceptadasVisor.map(turno => {
+                        const precarga = turno.precarga!;
+                        const isSelected = selectedPrecargaTurnoId === turno.id;
+                        const tieneMulti = precarga.lotesMultiples && precarga.lotesMultiples.length > 1;
+
+                        return (
+                          <div
+                            key={turno.id}
+                            className={`rounded-2xl border transition-all duration-200 overflow-hidden flex flex-col justify-between ${
+                              isSelected
+                                ? 'bg-emerald-50/40 border-[#00603C] ring-2 ring-[#00603C] shadow-md'
+                                : 'bg-white border-gray-200 hover:border-emerald-300 hover:shadow-xs'
+                            }`}
+                          >
+                            {/* Banner si está seleccionada */}
+                            {isSelected && (
+                              <div className="bg-[#00603C] text-white px-4 py-1.5 text-xs font-bold flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                  <Check className="w-3.5 h-3.5 text-amber-300 stroke-[3]" />
+                                  Pre-Carga Seleccionada — Datos cargados en el formulario
+                                </span>
+                                <span className="text-[10px] font-mono uppercase bg-emerald-800 px-2 py-0.5 rounded text-amber-300">
+                                  Listo para generar
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Cabecera de la tarjeta: Turno, Día, Cliente y Estado */}
+                            <div className="p-4 bg-gradient-to-r from-slate-50 to-gray-50/80 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2.5">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {/* Badge de Turno destacado */}
+                                  <span className="font-mono text-xs font-black px-2.5 py-1 rounded-lg bg-[#00603C] text-white shadow-2xs flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-amber-300" />
+                                    <span>Turno {turno.horario}</span>
+                                  </span>
+
+                                  {/* Fecha */}
+                                  <span className="text-xs font-mono font-bold text-gray-600 bg-white px-2 py-0.5 rounded border border-gray-200">
+                                    📅 {formatDateStr(turno.fecha)}
+                                  </span>
+
+                                  {/* Badge Aceptada */}
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                                    Aceptada
+                                  </span>
+                                </div>
+
+                                <div className="mt-1.5">
+                                  <span className="text-sm font-bold text-gray-900 block">
+                                    {turno.cliente}
+                                  </span>
+                                  <span className="text-[11px] text-gray-500">
+                                    Despachante: <strong className="text-gray-700">{turno.despachante || '—'}</strong>
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="text-right">
+                                <span className="text-xs font-mono font-bold text-amber-900 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200 inline-block">
+                                  {precarga.cantidadBolsas} b. · {formatNumberArg(precarga.kgEstimados || 0, 0)} kg
+                                </span>
+                                <span className="text-[10px] text-gray-400 font-mono block mt-0.5">
+                                  {precarga.tipoEnvase}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Detalle de lotes de origen */}
+                            <div className="p-4 space-y-3 flex-1 text-xs">
+                              <div className="bg-emerald-50/50 border border-emerald-200/70 rounded-xl p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#00603C] flex items-center gap-1">
+                                    <Layers className="w-3 h-3" />
+                                    {tieneMulti
+                                      ? `Lotes de Origen (${precarga.lotesMultiples!.length} Lotes)`
+                                      : 'Lote de Origen'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopiarDatosPortapapeles(turno)}
+                                    className="text-[10px] font-bold text-[#00603C] hover:underline flex items-center gap-1 cursor-pointer"
+                                    title="Copiar resumen al portapapeles"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                    <span>Copiar Resumen</span>
+                                  </button>
+                                </div>
+
+                                {tieneMulti ? (
+                                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                                    {precarga.lotesMultiples!.map((lm, idx) => (
+                                      <div
+                                        key={lm.id || idx}
+                                        className="p-2 bg-white rounded-lg border border-emerald-100 flex items-center justify-between gap-2 text-[11px]"
+                                      >
+                                        <div className="min-w-0">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-mono font-bold text-gray-900">
+                                              Lote {lm.numeroLote}
+                                            </span>
+                                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-100 text-slate-700">
+                                              {lm.tipoLote}
+                                            </span>
+                                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-900">
+                                              Cat: {lm.categoriaLote}
+                                            </span>
+                                          </div>
+                                          <div className="text-gray-500 text-[10px] truncate">
+                                            {lm.especie} ({lm.variedad || 's/v'}) · {lm.tratamiento}
+                                          </div>
+                                        </div>
+                                        <div className="text-right font-mono shrink-0">
+                                          <span className="font-bold text-[#00603C] block">
+                                            {lm.cantidadBolsas} b.
+                                          </span>
+                                          <span className="text-[10px] text-gray-400">
+                                            {formatNumberArg(lm.kgEstimados || 0, 0)} kg
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="p-2.5 bg-white rounded-lg border border-emerald-100 flex items-center justify-between gap-2">
+                                    <div>
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-mono font-bold text-sm text-gray-900">
+                                          Lote: {precarga.numeroLote || '—'}
+                                        </span>
+                                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                                          {precarga.tipoLote}
+                                        </span>
+                                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-900">
+                                          Cat: {precarga.categoriaLote}
+                                        </span>
+                                      </div>
+                                      <div className="text-gray-600 mt-0.5 text-[11px]">
+                                        <strong>{precarga.especie}</strong> ({precarga.variedad || 's/v'}) · {precarga.tratamiento}
+                                      </div>
+                                    </div>
+                                    <div className="text-right font-mono shrink-0">
+                                      <span className="font-bold text-sm text-[#00603C] block">
+                                        {precarga.cantidadBolsas} bolsas
+                                      </span>
+                                      <span className="text-[10px] text-gray-500">
+                                        {formatNumberArg(precarga.kgEstimados || 0, 0)} kg
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Chofer / Patente / Observaciones */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-gray-600">
+                                <div className="p-2 bg-gray-50 rounded-lg border border-gray-100">
+                                  <span className="text-[9px] font-bold uppercase text-gray-400 block font-mono">Chofer Sugerido</span>
+                                  <span className="font-bold text-gray-900">{precarga.choferSugerido || 'A designar en playa'}</span>
+                                  {precarga.patenteSugerida && (
+                                    <span className="font-mono text-gray-500 block text-[10px]">Patente: {precarga.patenteSugerida}</span>
+                                  )}
+                                </div>
+                                <div className="p-2 bg-gray-50 rounded-lg border border-gray-100">
+                                  <span className="text-[9px] font-bold uppercase text-gray-400 block font-mono">Observaciones</span>
+                                  <span className="text-gray-700 italic truncate block" title={precarga.observaciones}>
+                                    {precarga.observaciones || 'Sin notas especiales.'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Barra de Acciones de la Tarjeta */}
+                            <div className="p-3.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleAbrirCancelarPrecarga(turno)}
+                                className="px-2.5 py-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                                title="Cancelar y eliminar esta precarga"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Desestimar</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleCopiarPrecargaAOrden(turno)}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition shadow-xs flex items-center gap-1.5 cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-[#00603C] text-white ring-2 ring-emerald-300'
+                                    : 'bg-[#00603C] hover:bg-[#254731] text-white'
+                                }`}
+                                title="Seleccionar esta precarga y copiar sus datos al formulario de Orden de Carga"
+                              >
+                                {isSelected ? (
+                                  <>
+                                    <Check className="w-4 h-4 text-amber-300 stroke-[3]" />
+                                    <span>Datos Copiados a Orden</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5 text-amber-300" />
+                                    <span>Seleccionar y Copiar Datos</span>
+                                    <ArrowRight className="w-3.5 h-3.5 text-amber-300" />
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                </div>
+              )}
+            </div>
+
             {/* Panel Principal: Generación de Orden de Carga (Minimizado por defecto) */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200">
+            <div id="formulario-generar-orden-despacho" className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200">
               
               {/* Encabezado con Botón Desplegable */}
               <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-900/5 via-white to-amber-50/25 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
@@ -1662,6 +2541,38 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                   )}
 
                   <form onSubmit={handleGenerarOrden} className="space-y-6">
+                    {/* Banner de Pre-Carga Vinculada */}
+                    {selectedPrecargaTurnoId && (() => {
+                      const selTurno = turnosParking.find(t => t.id === selectedPrecargaTurnoId);
+                      return (
+                        <div className="p-4 bg-emerald-50 border-2 border-emerald-400 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in shadow-2xs">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-[#00603C] text-white flex items-center justify-center shrink-0">
+                              <CheckCircle2 className="w-5 h-5 text-amber-300" />
+                            </div>
+                            <div>
+                              <div className="font-bold text-emerald-950 flex items-center gap-2 flex-wrap">
+                                <span>Pre-Carga Vinculada: {selTurno?.cliente || 'Cliente'}</span>
+                                <span className="font-mono bg-[#00603C] text-white px-2 py-0.5 rounded text-[10px]">
+                                  Turno {selTurno?.horario} ({formatDateStr(selTurno?.fecha)})
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-emerald-800 block mt-0.5">
+                                Los datos han sido volcados a este formulario. Al confirmar <strong>"Generar Orden de Carga"</strong>, esta pre-carga se retirará automáticamente del visor.
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPrecargaTurnoId(null)}
+                            className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 rounded-xl font-bold border border-rose-200 text-xs shrink-0 cursor-pointer self-start sm:self-auto"
+                            title="Quitar vinculación con esta pre-carga"
+                          >
+                            Quitar vinculación
+                          </button>
+                        </div>
+                      );
+                    })()}
                     
                     {/* FILTROS PRINCIPALES Y VINCULADOS: CLIENTE PRINCIPAL ARRIBA Y ATRIBUTOS AGRUPADOS POR DEBAJO */}
                     <div className="bg-[#FAFBF9] p-5 rounded-2xl border border-gray-200 shadow-2xs space-y-4">
@@ -2252,7 +3163,18 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                      <div>
+                        <label className="block text-[9px] font-bold text-gray-600 uppercase mb-0.5">
+                          Fecha de Carga
+                        </label>
+                        <input
+                          type="date"
+                          value={genFechaCarga}
+                          onChange={(e) => setGenFechaCarga(e.target.value)}
+                          className="w-full h-8 px-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00603C] text-xs font-semibold text-gray-800"
+                        />
+                      </div>
                       <div>
                         <label className="block text-[9px] font-bold text-gray-600 uppercase mb-0.5">
                           Remito Cliente
@@ -2533,9 +3455,17 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                 <div className="space-y-3">
                                   <div className="flex justify-between items-start border-b border-gray-100 pb-2.5">
                                     <div>
-                                      <span className="text-[10px] uppercase font-mono font-bold text-[#C9922E]">
-                                        ORDEN N° {o.id}
-                                      </span>
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-[10px] uppercase font-mono font-bold text-[#C9922E]">
+                                          ORDEN N° {o.id}
+                                        </span>
+                                        {o.turnoParkingId && (
+                                          <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded">
+                                            <Clock className="w-2.5 h-2.5 text-amber-700" />
+                                            Turno Parking {o.turnoHorario || ''}
+                                          </span>
+                                        )}
+                                      </div>
                                       <h4 className="font-serif text-sm font-bold text-gray-900 mt-0.5">{o.cliente}</h4>
                                     </div>
                                     <span
@@ -2743,7 +3673,13 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                           Editar Despacho
                                         </button>
                                       </div>
-                                      <div className="grid grid-cols-3 gap-2 text-[10px]">
+                                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+                                        <div>
+                                          <span className="text-[8px] text-[#00603C] font-bold uppercase block">Fecha de Carga</span>
+                                          <span className="font-semibold text-[#00603C] truncate block">
+                                            {o.fechaCarga ? formatDateStr(o.fechaCarga) : formatDateStr(o.fecha)}
+                                          </span>
+                                        </div>
                                         <div>
                                           <span className="text-[8px] text-gray-400 font-bold uppercase block">Nro Remito (Cliente)</span>
                                           <span className="font-mono font-bold text-gray-800 truncate block">
@@ -3261,6 +4197,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                         <th className="py-3 px-4">N° Orden</th>
                         <th className="py-3 px-4 text-center">N° Remito Cliente</th>
                         <th className="py-3 px-4">Fecha</th>
+                        <th className="py-3 px-4 text-center">Fecha de Carga</th>
                         <th className="py-3 px-4">Cliente Comitente</th>
                         <th className="py-3 px-4">ID Lote</th>
                         <th className="py-3 px-4">Especie</th>
@@ -3386,7 +4323,15 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                             </td>
 
                             {/* 3 - N° Orden */}
-                            <td className="py-3.5 px-4 font-mono font-bold text-[#A0522D] whitespace-nowrap">{o.id}</td>
+                            <td className="py-3.5 px-4 font-mono font-bold text-[#A0522D] whitespace-nowrap">
+                              <div>{o.id}</div>
+                              {o.turnoParkingId && (
+                                <div className="mt-0.5 inline-flex items-center gap-1 text-[9px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded">
+                                  <Clock className="w-2.5 h-2.5 text-amber-700" />
+                                  Parking {o.turnoHorario || ''}
+                                </div>
+                              )}
+                            </td>
 
                             {/* 4 - N° de Remito de Cliente */}
                             <td className="py-3.5 px-4 text-center font-mono font-bold text-[#00603C] whitespace-nowrap">
@@ -3401,6 +4346,18 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
 
                             {/* 5 - Fecha */}
                             <td className="py-3.5 px-4 font-semibold text-gray-600 whitespace-nowrap">{formatDateStr(o.fecha)}</td>
+
+                            {/* 5.1 - Celda Fecha de Carga */}
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              {o.fechaCarga ? (
+                                <span className="inline-flex items-center gap-1 bg-emerald-50 text-[#00603C] px-2 py-0.5 rounded border border-emerald-200 text-xs font-mono font-bold">
+                                  <Calendar className="w-3 h-3 text-[#00603C]" />
+                                  {formatDateStr(o.fechaCarga)}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 italic text-[11px]">—</span>
+                              )}
+                            </td>
 
                             {/* 6 - Cliente */}
                             <td className="py-3.5 px-4 font-bold text-gray-800">{o.cliente}</td>
@@ -3595,6 +4552,123 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
 
       </div>
 
+      {/* MODAL: CANCELAR PRECARGA CON NOTIFICACIÓN POR CORREO AL DESPACHANTE (DIRECCIÓN A MANO) EN DESPACHOS */}
+      {precargaParaCancelar && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isCancelingDespacho) setPrecargaParaCancelar(null);
+          }}
+        >
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col text-left">
+            <div className="bg-gradient-to-r from-rose-950 via-rose-900 to-red-950 text-white p-5 border-b border-rose-800/40 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-md">
+                  <Trash2 className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-lg text-white">
+                    Cancelar y Eliminar Precarga
+                  </h3>
+                  <p className="text-xs text-rose-200 font-sans">
+                    Elimina la precarga y notifica al despachante por correo electrónico
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isCancelingDespacho}
+                onClick={() => setPrecargaParaCancelar(null)}
+                className="p-1.5 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmarCancelarPrecarga} className="p-5 sm:p-6 space-y-4 text-xs">
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 leading-relaxed">
+                <strong>Atención:</strong> Esta acción eliminará permanentemente la precarga del sistema, liberará el turno en planta y generará la notificación por correo al despachante.
+              </div>
+
+              {/* Ficha Resumen del Turno */}
+              <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-2xl space-y-1.5 font-mono text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Cliente:</span>
+                  <span className="font-bold text-gray-900">{precargaParaCancelar.cliente}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Turno:</span>
+                  <span className="font-bold text-[#00603C]">{formatDateStr(precargaParaCancelar.fecha)} — {precargaParaCancelar.horario}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Despachante:</span>
+                  <span className="font-semibold text-gray-800">{precargaParaCancelar.despachante}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Lote(s):</span>
+                  <span className="font-bold text-gray-900">{precargaParaCancelar.precarga?.numeroLote || '—'} ({precargaParaCancelar.precarga?.cantidadBolsas} b.)</span>
+                </div>
+              </div>
+
+              {/* Input Dirección de Correo Electrónico Ingresada a Mano */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-800 mb-1.5">
+                  Correo Electrónico del Despachante <span className="text-rose-600">* (Ingrese la dirección a mano)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    required
+                    value={cancelEmailManual}
+                    onChange={(e) => setCancelEmailManual(e.target.value)}
+                    placeholder="ej: despachante@ejemplo.com o matias.green@stine.com"
+                    className="w-full px-4 py-2.5 pl-10 bg-white border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 text-gray-900"
+                  />
+                  <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Ingrese la dirección de correo electrónico a mano para notificar la baja de la precarga.
+                </p>
+              </div>
+
+              {/* Motivo de Cancelación */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-800 mb-1.5">
+                  Motivo de Cancelación (Opcional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={cancelMotivoDespacho}
+                  onChange={(e) => setCancelMotivoDespacho(e.target.value)}
+                  placeholder="Ej: Cambio de fecha, anulación de pedido de carga, rotura de camión..."
+                  className="w-full p-3 bg-white border border-gray-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 text-gray-800"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  disabled={isCancelingDespacho}
+                  onClick={() => setPrecargaParaCancelar(null)}
+                  className="px-4 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl font-bold transition text-xs cursor-pointer"
+                >
+                  Volver / No Cancelar
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isCancelingDespacho}
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-md transition flex items-center gap-2 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>{isCancelingDespacho ? 'Eliminando y Notificando...' : 'Eliminar Precarga y Notificar por Mail'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* COMPROBANTE DE DESPACHO PRINTABLE MODAL */}
       {comprobanteSeleccionado && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto print:p-0 print:bg-white print:static">
@@ -3639,8 +4713,14 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                   ORDEN N° {comprobanteSeleccionado.id}
                 </div>
                 <div className="text-[10px] text-gray-600 mt-1 font-semibold">
-                  Fecha: {formatDateStr(comprobanteSeleccionado.fecha)}
+                  Fecha Emisión: {formatDateStr(comprobanteSeleccionado.fecha)}
                 </div>
+                {comprobanteSeleccionado.fechaCarga && (
+                  <div className="text-[10px] text-[#00603C] mt-0.5 font-bold flex items-center justify-end gap-1">
+                    <Calendar className="w-3 h-3 text-[#00603C]" />
+                    <span>Fecha de Carga: {formatDateStr(comprobanteSeleccionado.fechaCarga)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -4025,6 +5105,19 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
             )}
 
             <form onSubmit={handleGuardarEditDespacho} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-[#00603C]" />
+                  <span>Fecha de Carga</span>
+                </label>
+                <input
+                  type="date"
+                  value={editFechaCarga}
+                  onChange={(e) => setEditFechaCarga(e.target.value)}
+                  className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] font-semibold text-xs text-gray-800"
+                />
+              </div>
+
               <div>
                 <label className="block text-[10px] font-bold text-gray-700 uppercase tracking-wider mb-1">
                   Nro de Remito (Cliente)

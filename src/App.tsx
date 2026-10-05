@@ -14,10 +14,11 @@ import { RegistrarSalida } from './components/RegistrarSalida';
 import { SalidasList, SalidaUnifiedRow } from './components/SalidasList';
 import { DashboardProduccion } from './components/DashboardProduccion';
 import { DashboardOperaciones } from './components/DashboardOperaciones';
-import { Lote, SalidaRegistrada, MovimientoStock, EstadoLoteType, AuditLogEntry, OrdenCarga, OrdenProceso, EstadoOrdenProceso, MovimientoSilo, TipoMovimientoSilo, SiloId, CAPACIDAD_MAX_SILO, Chofer, BolsonCampo, EstadoSiloManual, SilosEstadoMap, SILOS_ESTADO_DEFAULT, PlantaConfig, PLANTA_CONFIG_DEFAULT } from './types';
+import { Lote, SalidaRegistrada, MovimientoStock, EstadoLoteType, AuditLogEntry, OrdenCarga, OrdenProceso, EstadoOrdenProceso, MovimientoSilo, TipoMovimientoSilo, SiloId, CAPACIDAD_MAX_SILO, Chofer, BolsonCampo, EstadoSiloManual, SilosEstadoMap, SILOS_ESTADO_DEFAULT, PlantaConfig, PLANTA_CONFIG_DEFAULT, TurnoParking, ParkingConfig, TipoLoteType, CategoriaType } from './types';
+import { formatNumberArg } from './utils/formatters';
 import { getLoteAuditoria } from './utils/audit';
 import { LOTES_INICIALES, SALIDAS_INICIALES, CLIENTES_PRECARGADOS, ESPECIES_PRECARGADAS, ORDENES_CARGA_INICIALES, ORDENES_PROCESO_INICIALES, MOVIMIENTOS_SILO_INICIALES, CHOFERES_INICIALES, BOLSONES_INICIALES } from './data/mockData';
-import { Layers, ArrowDownRight, History, Upload, LogOut, LogIn, CheckCircle, QrCode, ClipboardCheck, Factory, ClipboardList, Warehouse, AlertTriangle, Truck, Database, PackagePlus, BarChart3, Smartphone, Menu, X, ChevronLeft, ChevronRight, Building2, Calculator, Flame, Activity } from 'lucide-react';
+import { Layers, ArrowDownRight, History, Upload, LogOut, LogIn, CheckCircle, QrCode, ClipboardCheck, Factory, ClipboardList, Warehouse, AlertTriangle, Truck, Database, PackagePlus, BarChart3, Smartphone, Menu, X, ChevronLeft, ChevronRight, Building2, Calculator, Flame, Activity, Clock } from 'lucide-react';
 import { GenerarLoteView } from './components/GenerarLoteView';
 import { CalculoBolsasDashboard } from './components/CalculoBolsasDashboard';
 import { MapaCalorDashboard } from './components/MapaCalorDashboard';
@@ -28,6 +29,8 @@ import { ChoferesView } from './components/ChoferesView';
 import { DataBasesView } from './components/DataBasesView';
 import { ModoPlantaMobileView } from './components/ModoPlantaMobileView';
 import { IngresoSilosView } from './components/IngresoSilosView';
+import { ReporteProduccionView } from './components/ReporteProduccionView';
+import { getSavedParkingConfig, saveLocalParkingConfig, getLocalTurnos, saveLocalTurnos } from './utils/parkingService';
 import { CampaniaSelector } from './components/CampaniaSelector';
 import { getActiveCampaniaIdStored, setActiveCampaniaIdStored, getCampaniaIdFromDate } from './utils/campanias';
 import { findExistingChofer, mergeChoferData } from './utils/choferes';
@@ -317,13 +320,18 @@ export default function App() {
   }, [siloStocks]);
 
   // 3. Control de Vistas
-  // 'modo-planta' | 'silos' | 'mapa-calor' | 'dashboard-operaciones' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'
-  const [activeView, setActiveView] = useState<'modo-planta' | 'silos' | 'mapa-calor' | 'dashboard-operaciones' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes'>('modo-planta');
+  // 'modo-planta' | 'silos' | 'mapa-calor' | 'dashboard-operaciones' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'reporte-produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes' | 'parking'
+  const [activeView, setActiveView] = useState<'modo-planta' | 'silos' | 'mapa-calor' | 'dashboard-operaciones' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'reporte-produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes' | 'parking'>('modo-planta');
+  const [turnosParking, setTurnosParking] = useState<TurnoParking[]>(() => getLocalTurnos());
+  const [parkingConfig, setParkingConfig] = useState<ParkingConfig>(() => getSavedParkingConfig());
   const [loteSeleccionado, setLoteSeleccionado] = useState<Lote | null>(null);
-  const [loteDetailSourceView, setLoteDetailSourceView] = useState<'lotes' | 'produccion' | 'mapa-calor'>('lotes');
+  const [loteDetailSourceView, setLoteDetailSourceView] = useState<'lotes' | 'produccion' | 'mapa-calor' | 'reporte-produccion'>('lotes');
   const [loteAEditar, setLoteAEditar] = useState<Lote | null>(null);
   const [preselectedLoteId, setPreselectedLoteId] = useState<string | undefined>(undefined);
   const [publicLote, setPublicLote] = useState<Lote | null>(null);
+  const [publicBolsa, setPublicBolsa] = useState<string | null>(null);
+  const [publicTotalBolsas, setPublicTotalBolsas] = useState<string | null>(null);
+  const [scannedBolsaData, setScannedBolsaData] = useState<{ lote: Lote; bolsaNumber?: string; totalBags?: string } | null>(null);
   const [precargaConfigFromCalculo, setPrecargaConfigFromCalculo] = useState<CalculoTransferConfig | null>(null);
   const [despachosInitialSubView, setDespachosInitialSubView] = useState<'generar' | 'mis-ordenes' | 'listado'>('generar');
 
@@ -554,6 +562,28 @@ export default function App() {
       console.error("Error subscribing to 'configuracion_planta':", error);
     });
 
+    // 11. Suscribirse en tiempo real a 'turnosParking'
+    const unsubTurnosParking = onSnapshot(collection(db, 'turnosParking'), (snapshot) => {
+      if (!snapshot.empty) {
+        const loaded = snapshot.docs.map(d => d.data() as TurnoParking);
+        setTurnosParking(loaded);
+        saveLocalTurnos(loaded);
+      }
+    }, (error) => {
+      console.warn("Error subscribing to 'turnosParking', using local fallback:", error);
+    });
+
+    // 12. Suscribirse en tiempo real a 'config/parking'
+    const unsubParkingConfig = onSnapshot(doc(db, 'config', 'parking'), (snapshot) => {
+      if (snapshot.exists()) {
+        const loaded = snapshot.data() as ParkingConfig;
+        setParkingConfig(loaded);
+        saveLocalParkingConfig(loaded);
+      }
+    }, (error) => {
+      console.warn("Error subscribing to 'config/parking', using local fallback:", error);
+    });
+
     // Listeners para el estado de internet del navegador
     const handleOnline = () => {
       setIsOnline(true);
@@ -599,6 +629,8 @@ export default function App() {
       unsubBolsones();
       unsubSilosEstado();
       unsubPlantaConfig();
+      unsubTurnosParking();
+      unsubParkingConfig();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
@@ -648,16 +680,23 @@ export default function App() {
     if (lotes.length > 0) {
       const urlParams = new URLSearchParams(window.location.search);
       const loteId = urlParams.get('lote');
+      const bolsaParam = urlParams.get('bolsa');
+      const totalParam = urlParams.get('total');
       if (loteId) {
-        const found = lotes.find(l => l.id.toLowerCase() === loteId.toLowerCase());
+        const found = lotes.find(l => l.id.toLowerCase() === loteId.toLowerCase() || (l.loteNro && l.loteNro.toLowerCase() === loteId.toLowerCase()));
         if (found) {
           if (isLoggedIn) {
             setLoteSeleccionado(found);
             setActiveView('lotes');
+            if (bolsaParam) {
+              showNotification(`Lote ${found.id} detectado · Bolsa N° ${bolsaParam}${totalParam ? ` de ${totalParam}` : ''}`);
+            }
             // Limpiar parámetro de URL para navegación fluida
             window.history.replaceState({}, '', window.location.pathname);
           } else {
             setPublicLote(found);
+            setPublicBolsa(bolsaParam);
+            setPublicTotalBolsas(totalParam);
           }
         }
       }
@@ -729,6 +768,90 @@ export default function App() {
     } catch (e) {
       console.error('Error al guardar orden en Firestore:', e);
       showNotification('Error crítico al persistir la orden de carga.');
+    }
+  };
+
+  // =========================================================================
+  // HANDLERS PARA MÓDULO PARKING (TURNOS Y PRECARGAS ANEXADAS)
+  // =========================================================================
+  const handleSaveTurno = async (nuevoTurno: TurnoParking, nuevaOrdenCarga: OrdenCarga) => {
+    try {
+      // 1. Guardar turno en Firestore y sincronizar estado local
+      const turnoRef = doc(db, 'turnosParking', nuevoTurno.id);
+      await setDoc(turnoRef, sanitizeForFirestore(nuevoTurno), { merge: true });
+      setTurnosParking(prev => {
+        const exists = prev.some(t => t.id === nuevoTurno.id);
+        const next = exists ? prev.map(t => t.id === nuevoTurno.id ? nuevoTurno : t) : [nuevoTurno, ...prev];
+        saveLocalTurnos(next);
+        return next;
+      });
+
+      // 2. Anexar orden de carga automáticamente con los datos de precarga
+      await handleSaveOrden(nuevaOrdenCarga);
+      showNotification(`Turno reservado (${nuevoTurno.horario}) y Orden ${nuevaOrdenCarga.id} anexada a Despachos.`);
+    } catch (err) {
+      console.error('Error al registrar turno en Firestore:', err);
+      // Fallback local seguro
+      setTurnosParking(prev => {
+        const next = [nuevoTurno, ...prev.filter(t => t.id !== nuevoTurno.id)];
+        saveLocalTurnos(next);
+        return next;
+      });
+      await handleSaveOrden(nuevaOrdenCarga);
+    }
+  };
+
+  const handleUpdateTurno = async (turno: TurnoParking) => {
+    try {
+      const turnoRef = doc(db, 'turnosParking', turno.id);
+      await setDoc(turnoRef, sanitizeForFirestore(turno), { merge: true });
+      setTurnosParking(prev => {
+        const next = prev.map(t => t.id === turno.id ? turno : t);
+        saveLocalTurnos(next);
+        return next;
+      });
+      showNotification(`Turno ${turno.horario} actualizado.`);
+    } catch (err) {
+      console.error('Error al actualizar turno:', err);
+      setTurnosParking(prev => {
+        const next = prev.map(t => t.id === turno.id ? turno : t);
+        saveLocalTurnos(next);
+        return next;
+      });
+    }
+  };
+
+  const handleDeleteTurno = async (turnoId: string) => {
+    try {
+      const turnoRef = doc(db, 'turnosParking', turnoId);
+      await deleteDoc(turnoRef);
+      setTurnosParking(prev => {
+        const next = prev.filter(t => t.id !== turnoId);
+        saveLocalTurnos(next);
+        return next;
+      });
+      showNotification('Turno cancelado y horario liberado.');
+    } catch (err) {
+      console.error('Error al eliminar turno:', err);
+      setTurnosParking(prev => {
+        const next = prev.filter(t => t.id !== turnoId);
+        saveLocalTurnos(next);
+        return next;
+      });
+    }
+  };
+
+  const handleSaveParkingConfig = async (config: ParkingConfig) => {
+    try {
+      const cfgRef = doc(db, 'config', 'parking');
+      await setDoc(cfgRef, sanitizeForFirestore(config), { merge: true });
+      setParkingConfig(config);
+      saveLocalParkingConfig(config);
+      showNotification('Configuración de horarios guardada exitosamente.');
+    } catch (err) {
+      console.error('Error al guardar configuración de parking:', err);
+      setParkingConfig(config);
+      saveLocalParkingConfig(config);
     }
   };
 
@@ -867,7 +990,7 @@ export default function App() {
           const salidaDoc: SalidaRegistrada = {
             id: nuevaSalidaId,
             fecha: fechaHoy,
-            campaniaId: targetLote.campaniaId || orden?.campaniaId || currentCampaniaId,
+            campaniaId: targetLote.campaniaId || orden?.campaniaId || activeCampaniaId,
             choferNombre: orden?.chofer || orden?.despachante || 'Chofer no especificado',
             choferDni: choferMatch?.cuit || '-',
             patenteCamion: choferMatch?.patentes || '-',
@@ -966,7 +1089,7 @@ export default function App() {
       const salidaDoc: SalidaRegistrada = {
         id: nuevaSalidaId,
         fecha: fechaHoy,
-        campaniaId: lote.campaniaId || orden?.campaniaId || currentCampaniaId,
+        campaniaId: lote.campaniaId || orden?.campaniaId || activeCampaniaId,
         choferNombre: orden?.chofer || orden?.despachante || 'Chofer no especificado',
         choferDni: choferMatch?.cuit || '-',
         patenteCamion: choferMatch?.patentes || '-',
@@ -1642,46 +1765,57 @@ export default function App() {
     nuevosMovimientos: MovimientoStock[],
     nuevoStockBolsas: number,
     nuevoStockKg: number,
-    nuevoEstado: EstadoLoteType
+    nuevoEstado: EstadoLoteType,
+    motivoAuditoria?: string,
+    idMovimientoEliminado?: string
   ) => {
     try {
-      const ultimoMov = nuevosMovimientos[0];
       const loteAnterior = lotes.find(l => l.id === loteId);
       const previousStockKg = loteAnterior ? loteAnterior.stockKg : 0;
       
       const loteRef = doc(db, 'lotes', loteId);
-      const movRef = doc(collection(db, 'lotes', loteId, 'movimientos'), ultimoMov.id);
-      
-      await runTransaction(db, async (transaction) => {
-        const loteDoc = await transaction.get(loteRef);
-        if (!loteDoc.exists()) throw new Error(`El lote ${loteId} no existe.`);
-        
-        const data = loteDoc.data();
-        const currentAuditoria = data.auditoria || [];
-        
-        const nuevoEvento: AuditLogEntry = {
-          id: `AUD-MOV-${Date.now()}`,
-          fechaHora: new Date().toISOString(),
-          tipo: 'Stock',
-          usuario: currentUser.nombre,
-          descripcion: `Ajuste manual de stock (${ultimoMov.tipo}): ${ultimoMov.cantidadBolsas} b. (${ultimoMov.cantidadKg} kg).`,
-          detalles: ultimoMov.detalle
-        };
-        
-        transaction.set(movRef, ultimoMov);
-        const updateData: Record<string, any> = {
-          stockBolsas: nuevoStockBolsas,
-          stockKg: nuevoStockKg,
-          stockKgTotal: nuevoStockKg,
-          estado: nuevoEstado,
-          historial: nuevosMovimientos,
-          auditoria: [nuevoEvento, ...currentAuditoria]
-        };
-        if (data.estadoRegistro === 'PRE-CARGA' || ultimoMov.tipo === 'Alta') {
-          updateData.estadoRegistro = 'REALIZADO';
+      const batch = writeBatch(db);
+
+      // Si se indicó un movimiento eliminado, borrarlo de la subcolección
+      if (idMovimientoEliminado && !idMovimientoEliminado.startsWith('OC-') && !idMovimientoEliminado.startsWith('alta-')) {
+        const delRef = doc(collection(db, 'lotes', loteId, 'movimientos'), idMovimientoEliminado);
+        batch.delete(delRef);
+      }
+
+      // Guardar movimientos en la subcolección
+      if (nuevosMovimientos && nuevosMovimientos.length > 0) {
+        for (const mov of nuevosMovimientos) {
+          if (mov.id && !mov.id.startsWith('OC-') && !mov.id.startsWith('alta-')) {
+            const movRef = doc(collection(db, 'lotes', loteId, 'movimientos'), mov.id);
+            batch.set(movRef, sanitizeForFirestore(mov));
+          }
         }
-        transaction.update(loteRef, updateData);
-      });
+      }
+
+      const nuevoEvento: AuditLogEntry = {
+        id: `AUD-MOV-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Stock',
+        usuario: currentUser.nombre || 'Operador Planta',
+        descripcion: motivoAuditoria || `Ajuste en Bitácora de lote: ${nuevoStockBolsas} b. (${formatNumberArg(nuevoStockKg, 2)} kg).`,
+        detalles: `Stock recalculado en todas las hojas: ${nuevoStockBolsas} bolsas (${formatNumberArg(nuevoStockKg, 2)} kg). Estado: ${nuevoEstado}.`
+      };
+
+      const updateData: Record<string, any> = {
+        stockBolsas: nuevoStockBolsas,
+        stockKg: nuevoStockKg,
+        stockKgTotal: nuevoStockKg,
+        estado: nuevoEstado,
+        historial: nuevosMovimientos,
+        auditoria: [nuevoEvento, ...(loteAnterior?.auditoria || [])]
+      };
+
+      if (loteAnterior?.estadoRegistro === 'PRE-CARGA' && nuevosMovimientos.some(m => m.tipo === 'Alta' && !m.id.startsWith('alta-pre'))) {
+        updateData.estadoRegistro = 'REALIZADO';
+      }
+
+      batch.set(loteRef, updateData, { merge: true });
+      await batch.commit();
 
       // Actualizar estado local inmediatamente para refrescar la UI al instante
       setLotes((prev) =>
@@ -1689,10 +1823,7 @@ export default function App() {
           l.id === loteId
             ? {
                 ...l,
-                stockBolsas: nuevoStockBolsas,
-                stockKg: nuevoStockKg,
-                estado: nuevoEstado,
-                historial: nuevosMovimientos,
+                ...updateData,
               }
             : l
         )
@@ -1702,10 +1833,7 @@ export default function App() {
         prev && prev.id === loteId
           ? {
               ...prev,
-              stockBolsas: nuevoStockBolsas,
-              stockKg: nuevoStockKg,
-              estado: nuevoEstado,
-              historial: nuevosMovimientos,
+              ...updateData,
             }
           : prev
       );
@@ -1716,10 +1844,10 @@ export default function App() {
         checkAndTriggerEmailAlert({ ...updatedLoteObj, stockKg: nuevoStockKg }, previousStockKg, nuevoStockKg);
       }
 
-      showNotification('Stock recalculado y registrado en auditoría.');
+      showNotification('Modificación de bitácora asentada con éxito: impacto aplicado en todas las hojas.');
     } catch (e) {
       console.error('Error al actualizar stock del lote:', e);
-      showNotification('Error al actualizar el stock.');
+      showNotification('Error al actualizar el stock del lote.');
     }
   };
 
@@ -2309,25 +2437,54 @@ export default function App() {
       showNotification('Acceso restringido. Inicie sesión para acceder a este módulo.');
       return;
     }
+    if ((view as string) === 'parking') {
+      setActiveView('lotes');
+      return;
+    }
     setActiveView(view);
     setLoteSeleccionado(null);
     setLoteAEditar(null);
     setPreselectedLoteId(undefined);
   };
 
-  const handleScanSuccess = (loteId: string) => {
+  const handleScanSuccess = (loteId: string, bolsaNumber?: string, totalBags?: string) => {
     setShowQrScanner(false);
-    const found = lotes.find(l => l.id.toLowerCase() === loteId.toLowerCase());
+    const found = lotes.find(l => l.id.toLowerCase() === loteId.toLowerCase() || (l.loteNro && l.loteNro.toLowerCase() === loteId.toLowerCase()));
     if (found) {
-      setLoteSeleccionado(found);
-      if (isLoggedIn) {
-        setActiveView('lotes');
-      } else {
+      const bolsaInfo = { lote: found, bolsaNumber, totalBags };
+      setScannedBolsaData(bolsaInfo);
+
+      if (activeView === 'modo-planta') {
+        // En Planta Móvil permanece en la vista de planta móvil y abre la ficha técnica de la bolsa
         setActiveView('modo-planta');
+      } else {
+        setLoteSeleccionado(found);
+        if (isLoggedIn) {
+          setActiveView('lotes');
+        } else {
+          setActiveView('modo-planta');
+        }
       }
-      showNotification(`Lote ${found.id} detectado y cargado.`);
+
+      if (bolsaNumber) {
+        showNotification(`Lote ${found.loteNro || found.id} · Bolsa N° ${bolsaNumber}${totalBags ? ` de ${totalBags}` : ''}`);
+      } else {
+        showNotification(`Lote ${found.loteNro || found.id} detectado y cargado.`);
+      }
     } else {
       showNotification(`No se encontró el lote: ${loteId}`);
+    }
+  };
+
+  const handleOpenFullFichaFromScan = (lote: Lote, bolsaNumber?: string, totalBags?: string) => {
+    setShowQrScanner(false);
+    setLoteSeleccionado(lote);
+    setScannedBolsaData({ lote, bolsaNumber, totalBags });
+    setLoteDetailSourceView(activeView === 'modo-planta' ? 'mapa-calor' : 'lotes');
+    if (isLoggedIn) {
+      setActiveView('lotes');
+    } else {
+      setActiveView('modo-planta');
     }
   };
 
@@ -2340,6 +2497,8 @@ export default function App() {
             onClick={() => {
               window.history.replaceState({}, '', window.location.pathname);
               setPublicLote(null);
+              setPublicBolsa(null);
+              setPublicTotalBolsas(null);
             }}
             className="text-xs font-bold text-[#00603C] hover:underline hover:text-[#254731] transition"
           >
@@ -2362,8 +2521,20 @@ export default function App() {
                   Ficha Técnica Digital
                 </h2>
               </div>
-              <div className="text-xs font-mono font-bold bg-[#E3EFE7] px-3.5 py-1.5 rounded-lg text-[#00603C] self-start sm:self-center">
-                LOTE: {publicLote.id}
+              <div className="flex items-center gap-2 flex-wrap self-start sm:self-center">
+                {publicBolsa && (
+                  <div className="text-xs font-mono font-bold bg-[#00603C] text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs">
+                    <span>BOLSA N° {publicBolsa}</span>
+                    {publicTotalBolsas && (
+                      <span className="text-emerald-200 text-[11px] font-semibold">
+                        DE {publicTotalBolsas}
+                      </span>
+                    )}
+                  </div>
+                )}
+                <div className="text-xs font-mono font-bold bg-[#E3EFE7] px-3.5 py-1.5 rounded-lg text-[#00603C]">
+                  LOTE: {publicLote.id}
+                </div>
               </div>
             </div>
 
@@ -2718,6 +2889,23 @@ export default function App() {
             <PackagePlus className="w-5 h-5 shrink-0" />
             {!sidebarCollapsed && <span className="truncate">Generar Lote</span>}
           </button>
+
+          {/* Tab: Reporte de Producción */}
+          <button
+            id="nav-tab-reporte-produccion"
+            onClick={() => navigateTo('reporte-produccion')}
+            className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+              sidebarCollapsed ? 'justify-center p-3' : 'gap-2.5 px-3 py-2.5'
+            } ${
+              activeView === 'reporte-produccion'
+                ? 'bg-[#F6EFDC] text-[#00603C] shadow-sm font-bold ring-1.5 ring-[#C9922E]/60'
+                : 'text-white hover:bg-white/10'
+            }`}
+            title="Reporte de Producción: Kilos producidos y tratados por variedad"
+          >
+            <Factory className={`w-5 h-5 shrink-0 ${activeView === 'reporte-produccion' ? 'text-[#00603C]' : 'text-[#C9922E]'}`} />
+            {!sidebarCollapsed && <span className="truncate">Reporte Producción</span>}
+          </button>
           
           {/* Tab 8: Despachos */}
           <button
@@ -3035,6 +3223,28 @@ export default function App() {
                 <span>Generar Lote</span>
               </button>
 
+              {/* Tab: Reporte de Producción Mobile */}
+              <button
+                id="nav-tab-mobile-reporte-produccion"
+                onClick={() => {
+                  navigateTo('reporte-produccion');
+                  setMobileNavOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
+                  activeView === 'reporte-produccion'
+                    ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-xs'
+                    : 'text-white hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Factory className={`w-4 h-4 ${activeView === 'reporte-produccion' ? 'text-[#00603C]' : 'text-[#C9922E]'}`} />
+                  <span>Reporte Producción</span>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 bg-[#00603C] text-emerald-200 rounded font-mono font-bold">
+                  Variedades
+                </span>
+              </button>
+
               {/* Despachos */}
               <button
                 onClick={() => {
@@ -3167,18 +3377,21 @@ export default function App() {
       <main className={`flex-grow pt-14 md:pt-6 pb-16 px-3 sm:px-4 md:px-6 w-full relative z-10 print:pt-2 print:pb-2 print:px-0 transition-all duration-300 ${
         sidebarCollapsed ? 'md:pl-24' : 'md:pl-68'
       }`}>
-        <div className={(activeView === 'despachos' || activeView === 'lotes' || activeView === 'produccion' || activeView === 'dashboard-operaciones') ? 'w-full max-w-[1850px] mx-auto' : 'max-w-7xl mx-auto'}>
+        <div className={(activeView === 'despachos' || activeView === 'lotes' || activeView === 'produccion' || activeView === 'reporte-produccion' || activeView === 'dashboard-operaciones') ? 'w-full max-w-[1850px] mx-auto' : 'max-w-7xl mx-auto'}>
         
         {/* RUTA DE COMPONENTES SEGÚN VISTA ACTIVA */}
         {loteSeleccionado ? (
           <LoteDetail
             lote={loteSeleccionado}
             readOnly={!isLoggedIn}
+            scannedBolsaNumber={scannedBolsaData?.bolsaNumber}
+            scannedTotalBags={scannedBolsaData?.totalBags}
             movimientosSilo={movimientosSilo}
             ordenesCarga={ordenesCarga}
             salidas={salidas}
             onBack={() => {
               setLoteSeleccionado(null);
+              setScannedBolsaData(null);
               navigateTo(loteDetailSourceView);
             }}
             onSaveLote={handleSaveLote}
@@ -3191,6 +3404,8 @@ export default function App() {
             onUpdateLoteLocation={isLoggedIn ? handleUpdateLoteLocation : undefined}
             onUpdateLoteInase={isLoggedIn ? handleUpdateLoteInase : undefined}
             onUpdateLotePesoDeMil={handleUpdateLotePesoDeMil}
+            onDeleteOrdenCarga={handleDeleteOrden}
+            onSaveOrdenCarga={handleSaveOrden}
           />
         ) : (
           <>
@@ -3348,6 +3563,19 @@ export default function App() {
             onSaveSalida={handleSaveSalida}
             onCancel={() => navigateTo('lotes')}
           />
+        ) : activeView === 'reporte-produccion' ? (
+          <ReporteProduccionView
+            lotes={filteredLotesByCampania}
+            salidas={filteredSalidasByCampania}
+            ordenesCarga={filteredOrdenesByCampania}
+            plantaConfig={plantaConfig}
+            clientes={clientes}
+            onSelectLote={(l) => {
+              setLoteSeleccionado(l);
+              setLoteDetailSourceView('reporte-produccion');
+            }}
+            onNavigateToLotes={() => navigateTo('lotes')}
+          />
         ) : activeView === 'choferes' ? (
           <DataBasesView
             choferes={choferes}
@@ -3361,6 +3589,7 @@ export default function App() {
             onSavePlantaConfig={handleSavePlantaConfig}
             onSaveChofer={handleSaveChofer}
             onImportChoferes={handleImportChoferes}
+            showNotification={showNotification}
           />
         ) : activeView === 'despachos' || activeView === 'salidas-registradas' ? (
           <DespachosSection
@@ -3370,6 +3599,9 @@ export default function App() {
             choferes={choferes}
             plantaConfig={plantaConfig}
             initialSubView={activeView === 'salidas-registradas' ? 'listado' : despachosInitialSubView}
+            turnosParking={turnosParking}
+            onUpdateTurno={handleUpdateTurno}
+            onDeleteTurno={handleDeleteTurno}
             onSaveOrden={handleSaveOrden}
             onUpdateOrdenStatus={handleUpdateOrdenStatus}
             onDespacharStock={handleDespacharStock}
@@ -3391,6 +3623,8 @@ export default function App() {
             currentUser={currentUser}
             ordenesCarga={filteredOrdenesByCampania}
             silosEstadoManual={silosEstadoManual}
+            scannedBolsaData={scannedBolsaData}
+            onClearScannedBolsaData={() => setScannedBolsaData(null)}
             onUpdateSiloEstadoManual={handleUpdateSiloEstadoManual}
             onRegistrarIngresoSilo={handleRegistrarIngresoSilo}
             onUpdateLoteEstado={(lote, nuevoEstado) => {
@@ -3439,11 +3673,19 @@ export default function App() {
         AGRO ABACUS S.A. · ESTANCIA LA BARRANCOSA
       </footer>
 
-      {/* 6. MODAL ESCÁNER DE QR */}
+      {/* 6. MODAL ESCÁNER DE QR Y VISOR DE FICHA TÉCNICA DE BOLSA */}
       {showQrScanner && (
         <QrCodeScanner
+          lotes={filteredLotesByCampania}
+          mode={activeView === 'modo-planta' ? 'planta-movil' : 'standard'}
           onScanSuccess={handleScanSuccess}
           onClose={() => setShowQrScanner(false)}
+          onOpenFullFicha={(lote, bolsaNumber) => handleOpenFullFichaFromScan(lote, bolsaNumber, scannedBolsaData?.totalBags)}
+          onLocalizarEnMapa={(lote) => {
+            setShowQrScanner(false);
+            setScannedBolsaData({ lote });
+            setActiveView('modo-planta');
+          }}
         />
       )}
 

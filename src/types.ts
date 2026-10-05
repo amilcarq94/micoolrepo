@@ -327,6 +327,8 @@ export interface Lote {
   estadoMovimiento?: 'PRE-MOVIMIENTO' | 'REALIZADO';
   esMovimiento?: boolean;
   productoAplicado?: string; // Principio Activo o producto aplicado en el movimiento
+  tipoEnvase?: string; // ej: 'Bolsa x 20 kg', 'Bolsa x 25 kg', 'Bolsa x 40 kg', 'Big Bag x 800 kg'
+  envase?: string;
 }
 
 export interface PreMovimientoLote {
@@ -527,6 +529,7 @@ export interface LoteOrigenItem {
 export interface OrdenCarga {
   id: string; // OC-2026-XXXX
   fecha: string; // YYYY-MM-DD
+  fechaCarga?: string; // YYYY-MM-DD Fecha de carga
   campaniaId?: string; // ID de campaña ej: '2026-2027'
   cliente: 'San Diego Semilla' | 'Eco Rural' | 'Pampa' | 'Stine' | 'Elementa Foods' | string;
   loteId: string;
@@ -550,6 +553,74 @@ export interface OrdenCarga {
   chofer?: string; // Chofer
   stockDescontado?: boolean; // Indica si se dio de baja la salida de bolsas en el lote
   fechaBajaStock?: string; // Fecha en que se dio de baja
+  // Datos vinculados al módulo de Parking / Turnos
+  turnoParkingId?: string; // ID del turno reservado en Parking
+  turnoFecha?: string; // Fecha asignada al turno
+  turnoHorario?: string; // Horario del turno (ej: "07:00 hs")
+  tipoEnvase?: string; // Big Bag 800 kg, Bolsa 40 kg, etc.
+  numeroLoteManual?: string; // Número de lote especificado en precarga
+  precargaCompletada?: boolean; // Indica si la orden nació como precarga de Parking
+  choferSugerido?: string;
+  patenteSugerida?: string;
+  observacionesParking?: string;
+}
+
+export interface ItemPrecargaLote {
+  id: string; // id único temporal
+  especie: string;
+  variedad: string;
+  tipoLote: string; // 'Final' | 'Intermedio'
+  tratamiento: string; // 'Sin tratar' | 'Tratado'
+  categoriaLote: string; // 'Preba' | 'Original' | 'Primu'
+  numeroLote: string;
+  cantidadBolsas: number;
+  kgEstimados?: number;
+}
+
+export interface PrecargaDespacho {
+  especie: string;
+  variedad: string;
+  tratamiento: string;
+  cantidadBolsas: number;
+  tipoEnvase: string;
+  categoriaLote: string;
+  tipoLote: string;
+  numeroLote: string;
+  loteIdReferencia?: string;
+  kgEstimados?: number;
+  choferSugerido?: string;
+  patenteSugerida?: string;
+  observaciones?: string;
+  lotesMultiples?: ItemPrecargaLote[];
+}
+
+export type FranjaTurno = 'MANANA' | 'TARDE';
+export type EstadoTurno = 'DISPONIBLE' | 'RESERVADO' | 'BLOQUEADO' | 'COMPLETADO' | 'CANCELADO' | 'ACEPTADO';
+
+export interface TurnoParking {
+  id: string; // ej: TP-2026-0928-0700-XXXX
+  fecha: string; // YYYY-MM-DD
+  franja: FranjaTurno;
+  horario: string; // ej: "07:00 hs"
+  cliente?: string; // San Diego Semillas, Stine, Eco Rural, Pampa
+  despachante?: string; // Jose Pruzzo, Gustavo Medei, Nahuel Galizzi, Lisandro Fernandez, Matias Green
+  estado: EstadoTurno;
+  motivoBloqueo?: string; // Si fue bloqueado por administrador
+  bloqueadoPor?: string; // 'Amilcar Quiroz' | 'Malcon Baez'
+  ordenCargaId?: string; // ID de la orden de carga anexada (ej: OC-2026-XXXX)
+  precarga?: PrecargaDespacho;
+  precargaGenerada?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  mailNotificado?: boolean;
+}
+
+export interface ParkingConfig {
+  horariosManana: string[]; // ["07:00 hs", "08:30 hs", "10:30 hs"]
+  horariosTarde: string[]; // ["13:30 hs", "15:30 hs", "17:30 hs"]
+  turnosBloqueadosGlobal: Record<string, string>; // key: `${fecha}_${horario}` => motivo
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 export type TipoOrdenProceso = 'PRODUCCION' | 'MOVIMIENTO';

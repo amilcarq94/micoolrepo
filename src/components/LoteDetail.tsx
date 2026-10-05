@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Lote, MovimientoStock, EstadoLoteType, AuditLogEntry, MovimientoSilo, OrdenCarga, SalidaRegistrada } from '../types';
+import { Lote, MovimientoStock, EstadoLoteType, AuditLogEntry, MovimientoSilo, OrdenCarga, SalidaRegistrada, PlantaConfig } from '../types';
 import { getLoteAuditoria } from '../utils/audit';
 import { formatNumberArg, formatKg, formatBolsas, formatDateStr } from '../utils/formatters';
 import { LogoSiloLoose } from './Logo';
@@ -19,38 +19,56 @@ import { BatchPrintIdBolsasModal } from './BatchPrintIdBolsasModal';
 import { QrTrazabilidadLote } from './QrTrazabilidadLote';
 import { exportWithHtml2Pdf } from '../utils/exportPdf';
 import { printWithActiveClass } from '../utils/printHelper';
-import { BitacoraMovimientosTable } from './BitacoraMovimientosTable';
+import { PanelDeLote } from './PanelDeLote';
 
 interface LoteDetailProps {
   lote: Lote;
+  allLotes?: Lote[];
+  plantaConfig?: PlantaConfig;
+  currentUser?: { nombre: string; rol: string };
   movimientosSilo?: MovimientoSilo[];
   ordenesCarga?: OrdenCarga[];
   salidas?: SalidaRegistrada[];
   readOnly?: boolean;
+  scannedBolsaNumber?: string;
+  scannedTotalBags?: string;
   onBack: () => void;
   onSaveLote?: (lote: Lote) => Promise<void> | void;
-  onUpdateLoteStock: (loteId: string, nuevosMovimientos: MovimientoStock[], nuevoStockBolsas: number, nuevoStockKg: number, nuevoEstado: EstadoLoteType) => void;
+  onBatchUpdateLotes?: (updatedLotes: Lote[]) => Promise<void> | void;
+  onUpdateLoteStock: (loteId: string, nuevosMovimientos: MovimientoStock[], nuevoStockBolsas: number, nuevoStockKg: number, nuevoEstado: EstadoLoteType, motivoAuditoria?: string, idMovimientoEliminado?: string) => void;
   onRegistrarSalida?: (loteId: string) => void;
   onUpdateLoteLocation?: (loteId: string, ala: string, sector: string, ubicacionAcopio?: string) => Promise<void>;
   onUpdateLoteInase?: (loteId: string, inaseInicio: string, inaseFinal: string) => Promise<void> | void;
   onUpdateLotePesoDeMil?: (loteId: string, nuevoPeso: number | undefined) => Promise<void> | void;
   onNavigateToSilos?: (siloId?: string) => void;
+  onDeleteOrdenCarga?: (ordenId: string) => Promise<void> | void;
+  onSaveOrdenCarga?: (orden: OrdenCarga) => Promise<void> | void;
+  onSelectLote?: (lote: Lote) => void;
 }
 
 export const LoteDetail: React.FC<LoteDetailProps> = ({
   lote,
+  allLotes = [],
+  plantaConfig,
+  currentUser,
   movimientosSilo,
   ordenesCarga = [],
   salidas = [],
   readOnly = false,
+  scannedBolsaNumber,
+  scannedTotalBags,
   onBack,
   onSaveLote,
+  onBatchUpdateLotes,
   onUpdateLoteStock,
   onRegistrarSalida,
   onUpdateLoteLocation,
   onUpdateLoteInase,
   onUpdateLotePesoDeMil,
   onNavigateToSilos,
+  onDeleteOrdenCarga,
+  onSaveOrdenCarga,
+  onSelectLote,
 }) => {
   const [showAddMovModal, setShowAddMovModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
@@ -1201,6 +1219,34 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
     <div className="space-y-6" id="lote-detail-container">
       {/* 1. Vista interactiva en pantalla (oculta automáticamente durante @media print) */}
       <div id="lote-detail-interactive-view" className="space-y-6 print:hidden">
+        {/* Banner de Bolsa Escaneada por QR */}
+        {scannedBolsaNumber && (
+          <div className="bg-gradient-to-r from-emerald-950 via-[#00603C] to-[#1c3a26] text-white p-4 rounded-2xl shadow-md border-2 border-amber-400/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-mono font-black text-base shrink-0 shadow-sm">
+                #{scannedBolsaNumber}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-mono font-black uppercase tracking-widest text-amber-300 bg-amber-400/20 px-2 py-0.5 rounded-md border border-amber-400/30">
+                    Bolsa Identificada por QR
+                  </span>
+                  <span className="text-xs font-mono font-black text-white">
+                    BOLSA N° {scannedBolsaNumber} {scannedTotalBags ? `DE ${scannedTotalBags}` : ''}
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-100 mt-0.5 font-medium">
+                  Ficha Técnica enfocada en la bolsa #{scannedBolsaNumber} del Lote {lote.loteNro} · Peso unitario: {lote.kgPorBolsa || 800} kg
+                </p>
+              </div>
+            </div>
+            <div className="text-right shrink-0 bg-white/10 px-3 py-1.5 rounded-xl border border-white/15 self-start sm:self-center">
+              <span className="text-[10px] uppercase font-bold text-amber-200 block font-mono">Presentación</span>
+              <span className="font-mono font-bold text-white text-xs">{lote.kgPorBolsa || 800} kg / bolsa</span>
+            </div>
+          </div>
+        )}
+
         {/* Botón de Retorno y Títulos */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-5">
           <div className="flex items-center gap-3">
@@ -1702,467 +1748,21 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
             </div>
           </div>
 
-          {/* Historial de Movimientos y Auditoría de Eventos */}
-          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-3">
-              <h4 className="font-serif text-base font-bold text-[#1A1A1A] uppercase tracking-wide">
-                Auditoría y Trazabilidad de Lote
-              </h4>
-              
-              {/* Selector de Pestañas */}
-              <div className="flex gap-1 bg-gray-100 p-1 rounded-lg text-xs font-semibold self-start sm:self-center">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('stock')}
-                  className={`px-3 py-1.5 rounded-md transition duration-200 ${
-                    activeTab === 'stock'
-                      ? 'bg-[#00603C] text-white shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Existencias y Stock
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('audit')}
-                  className={`px-3 py-1.5 rounded-md transition duration-200 flex items-center gap-1.5 ${
-                    activeTab === 'audit'
-                      ? 'bg-[#00603C] text-white shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Bitácora Completa
-                  <span className={`inline-flex items-center justify-center px-1.5 py-0.25 text-[9px] font-bold rounded-full ${
-                    activeTab === 'audit' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'
-                  }`}>
-                    {getLoteAuditoria(lote).length}
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            {activeTab === 'stock' ? (
-              <div className="space-y-6">
-                {/* Sub-navegador de Existencias y Stock: Salidas vs Todos los Movimientos */}
-                <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-xs flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                  <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-lg self-start">
-                    <button
-                      type="button"
-                      onClick={() => setSubTabStock('salidas')}
-                      className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-                        subTabStock === 'salidas'
-                          ? 'bg-[#00603C] text-white shadow-xs'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      <ArrowDownRight className="w-3.5 h-3.5" />
-                      <span>Salidas de Stock</span>
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
-                        subTabStock === 'salidas' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-                      }`}>
-                        {salidasList.length}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSubTabStock('todos')}
-                      className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-                        subTabStock === 'todos'
-                          ? 'bg-[#00603C] text-white shadow-xs'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      <Layers className="w-3.5 h-3.5" />
-                      <span>Todos los Movimientos</span>
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
-                        subTabStock === 'todos' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-                      }`}>
-                        {(lote.historial || []).length}
-                      </span>
-                    </button>
-                  </div>
-
-                  {!readOnly && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTipoMov('Ajuste de Auditoría');
-                          setAltaBolsasAudit(getAltaBolsasActual());
-                          setKgBolsa(lote.kgPorBolsa || 40);
-                          setConfirmPhraseAlta('');
-                          setError('');
-                          setShowAddMovModal(true);
-                        }}
-                        className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-bold rounded-lg shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
-                        title="Editar datos de alta del lote y guardar en base de datos (requiere confirmación 'editar alta')"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-blue-700" />
-                        <span>Editar Alta</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTipoMov('Pasado a Consumo');
-                          setBolsas(Math.min(10, lote.stockBolsas || 1));
-                          setAltaBolsasAudit(getAltaBolsasActual());
-                          setConfirmPhraseAlta('');
-                          setError('');
-                          setShowAddMovModal(true);
-                        }}
-                        className="px-3.5 py-1.5 bg-[#00603C] hover:bg-[#254731] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition cursor-pointer"
-                        title="Ajuste general de inventario: Pasado a Consumo o Ajuste por Auditoría de Alta"
-                      >
-                        <Settings className="w-3.5 h-3.5" />
-                        <span>Ajuste General</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* VISTA: SALIDAS DE STOCK (POR MOVIMIENTO, DESPACHO O CONSUMO) */}
-                {subTabStock === 'salidas' && (
-                  <div className="space-y-4">
-                    {/* Tarjetas de Resumen de Salidas */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
-                            Salidas Registradas
-                          </span>
-                          <p className="text-xl font-bold font-serif text-amber-950 mt-0.5">
-                            {salidasList.length} <span className="text-xs font-sans font-normal text-amber-800">operaciones</span>
-                          </p>
-                        </div>
-                        <div className="p-2 bg-amber-100 rounded-lg text-amber-800">
-                          <ArrowDownRight className="w-5 h-5" />
-                        </div>
-                      </div>
-
-                      <div className="bg-rose-50/70 border border-rose-200/80 rounded-xl p-3 flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800">
-                            Bolsas Egresadas
-                          </span>
-                          <p className="text-xl font-bold font-mono text-rose-950 mt-0.5">
-                            -{salidasList.reduce((acc, s) => acc + s.cantidadBolsas, 0)} <span className="text-xs font-sans font-normal text-rose-800">bolsas</span>
-                          </p>
-                        </div>
-                        <div className="p-2 bg-rose-100 rounded-lg text-rose-800">
-                          <Package className="w-5 h-5" />
-                        </div>
-                      </div>
-
-                      <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#00603C]">
-                            Kg Totales Egresados
-                          </span>
-                          <p className="text-xl font-bold font-mono text-emerald-950 mt-0.5">
-                            -{formatNumberArg(salidasList.reduce((acc, s) => acc + s.cantidadKg, 0), 0)} <span className="text-xs font-sans font-normal text-emerald-800">kg</span>
-                          </p>
-                        </div>
-                        <div className="p-2 bg-emerald-100 rounded-lg text-[#00603C]">
-                          <Truck className="w-5 h-5" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Barra de Filtros y Búsqueda de Salidas */}
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-gray-100 shadow-2xs">
-                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                        <span className="text-[10px] font-bold uppercase text-gray-500 mr-1">Filtrar por:</span>
-                        <button
-                          type="button"
-                          onClick={() => setFiltroTipoSalida('todos')}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                            filtroTipoSalida === 'todos'
-                              ? 'bg-gray-800 text-white'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
-                        >
-                          Todas ({salidasList.length})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setFiltroTipoSalida('despacho')}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                            filtroTipoSalida === 'despacho'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                          }`}
-                        >
-                          🚚 Despachos ({salidasList.filter(s => s.tipoSalidaCategoria === 'despacho').length})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setFiltroTipoSalida('movimiento')}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                            filtroTipoSalida === 'movimiento'
-                              ? 'bg-emerald-700 text-white'
-                              : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                          }`}
-                        >
-                          🔄 Movimientos ({salidasList.filter(s => s.tipoSalidaCategoria === 'movimiento').length})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setFiltroTipoSalida('cconsumo')}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                            filtroTipoSalida === 'cconsumo'
-                              ? 'bg-[#A0522D] text-white'
-                              : 'bg-amber-50 text-amber-900 hover:bg-amber-100'
-                          }`}
-                        >
-                          📦 cconsumo ({salidasList.filter(s => s.tipoSalidaCategoria === 'consumo' || s.tipoSalidaCategoria === 'manual').length})
-                        </button>
-                      </div>
-
-                      <div className="relative w-full sm:w-64">
-                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input
-                          type="text"
-                          value={busquedaSalidas}
-                          onChange={(e) => setBusquedaSalidas(e.target.value)}
-                          placeholder="Buscar por remito, destino, tipo..."
-                          className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:bg-white focus:outline-none focus:border-[#00603C]"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Tabla de Salidas */}
-                    {salidasFiltradas.length === 0 ? (
-                      <div className="bg-white p-8 rounded-xl border border-gray-100 text-center text-gray-500 space-y-2">
-                        <ArrowDownRight className="w-8 h-8 mx-auto text-gray-300" />
-                        <p className="font-semibold text-xs text-gray-700">No se encontraron salidas para este lote con el filtro seleccionado.</p>
-                        <p className="text-[11px] text-gray-400 max-w-md mx-auto">
-                          Las salidas se registran automáticamente por Despachos realizados (Órdenes de Carga), transferencias por Movimiento entre lotes o por Pasado a Consumo en Ajuste General.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="bg-white rounded-xl border border-gray-100 shadow-xs overflow-hidden">
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
-                                <th className="py-2.5 px-3 whitespace-nowrap">Fecha de salida</th>
-                                <th className="py-2.5 px-3 whitespace-nowrap">Tipo de salida</th>
-                                <th className="py-2.5 px-3 text-right whitespace-nowrap">Cantidad de bolsas salidas</th>
-                                <th className="py-2.5 px-3 text-right whitespace-nowrap">Kilogramos</th>
-                                <th className="py-2.5 px-3 whitespace-nowrap">Nro Remito de Cliente</th>
-                                <th className="py-2.5 px-3 whitespace-nowrap">Destino</th>
-                                <th className="py-2.5 px-3 whitespace-nowrap">Detalle / Chofer</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {salidasFiltradas.map((sal) => {
-                                const isDespacho = sal.tipoSalidaCategoria === 'despacho';
-                                const isMovimiento = sal.tipoSalidaCategoria === 'movimiento';
-
-                                return (
-                                  <tr key={sal.id} className="hover:bg-amber-50/40 transition">
-                                    {/* Fecha de salida */}
-                                    <td className="py-2.5 px-3 font-semibold text-gray-700 whitespace-nowrap">
-                                      <span>{formatDateStr(sal.fecha)}</span>
-                                      {sal.hora && (
-                                        <span className="block text-[10px] text-gray-400 font-mono font-normal">
-                                          {sal.hora} hs
-                                        </span>
-                                      )}
-                                    </td>
-
-                                    {/* Tipo de salida (despacho, consumo, movimiento) */}
-                                    <td className="py-2.5 px-3 whitespace-nowrap">
-                                      <div className="flex items-center gap-1.5">
-                                        {isDespacho ? (
-                                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200 shadow-2xs">
-                                            <Truck className="w-3.5 h-3.5 text-blue-600" />
-                                            Despacho
-                                          </span>
-                                        ) : isMovimiento ? (
-                                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
-                                            <ArrowRight className="w-3.5 h-3.5 text-[#00603C]" />
-                                            Movimiento
-                                          </span>
-                                        ) : (
-                                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
-                                            <ArrowDownRight className="w-3.5 h-3.5 text-[#A0522D]" />
-                                            Consumo
-                                          </span>
-                                        )}
-                                      </div>
-                                    </td>
-
-                                    {/* Cantidad de bolsas salidas */}
-                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-700 whitespace-nowrap">
-                                      -{sal.cantidadBolsas} b.
-                                    </td>
-
-                                    {/* Kilogramos */}
-                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-gray-800 whitespace-nowrap">
-                                      -{formatNumberArg(sal.cantidadKg, 0)} kg
-                                    </td>
-
-                                    {/* Nro Remito de Cliente */}
-                                    <td className="py-2.5 px-3 font-mono text-gray-900 whitespace-nowrap">
-                                      {sal.remitoCliente || '-'}
-                                    </td>
-
-                                    {/* Destino */}
-                                    <td className="py-2.5 px-3 font-medium text-gray-700 whitespace-nowrap">
-                                      {sal.destino || '-'}
-                                    </td>
-
-                                    {/* Detalle / Chofer */}
-                                    <td className="py-2.5 px-3 text-gray-500 max-w-xs">
-                                      <p className="truncate text-xs text-gray-700 font-medium" title={sal.detalle}>
-                                        {sal.detalle}
-                                      </p>
-                                      {sal.chofer && (
-                                        <p className="text-[10px] text-gray-400 truncate mt-0.5">
-                                          Chofer: {sal.chofer}
-                                        </p>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* VISTA: TODOS LOS MOVIMIENTOS (Entradas, Salidas, Ajustes) con Bitácora */}
-                {subTabStock === 'todos' && (
-                  <BitacoraMovimientosTable
-                    lote={lote}
-                    ordenesCarga={ordenesCarga}
-                    onUpdateLoteStock={onUpdateLoteStock}
-                    onSaveLote={onSaveLote}
-                    readOnly={readOnly}
-                  />
-                )}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* TABLA OFICIAL DE BITÁCORA COMPLETA */}
-                <BitacoraMovimientosTable
-                  lote={lote}
-                  ordenesCarga={ordenesCarga}
-                  onUpdateLoteStock={onUpdateLoteStock}
-                  onSaveLote={onSaveLote}
-                  readOnly={readOnly}
-                />
-
-                {/* AUDITORÍA DE SISTEMA Y EVENTOS DE USUARIO */}
-                <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-200 mt-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h5 className="font-serif text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4 text-[#00603C]" />
-                        Auditoría de Seguridad y Eventos de Usuario
-                      </h5>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        Registro cronológico de creación, ediciones y modificaciones de usuario en el sistema.
-                      </p>
-                    </div>
-                    <span className="text-[10px] font-mono font-bold bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-600">
-                      {getLoteAuditoria(lote).length} registros
-                    </span>
-                  </div>
-
-                  <div className="flow-root max-h-[320px] overflow-y-auto pr-2">
-                    <ul className="-mb-8">
-                      {getLoteAuditoria(lote).map((event, eventIdx, arr) => {
-                        let iconBg = 'bg-gray-100';
-                        let iconColor = 'text-gray-600';
-                        
-                        if (event.tipo === 'Creación') {
-                          iconBg = 'bg-[#E3EFE7]';
-                          iconColor = 'text-[#00603C]';
-                        } else if (event.tipo === 'Edición') {
-                          iconBg = 'bg-[#F6EFDC]';
-                          iconColor = 'text-[#C9922E]';
-                        } else if (event.tipo === 'Stock') {
-                          iconBg = 'bg-[#F5E5DC]';
-                          iconColor = 'text-[#A0522D]';
-                        }
-
-                        // Formatear fecha y hora
-                        let displayTime = '';
-                        let displayDate = '';
-                        try {
-                          const dt = new Date(event.fechaHora);
-                          if (!isNaN(dt.getTime())) {
-                            displayDate = dt.toLocaleDateString('es-AR');
-                            displayTime = dt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' hs';
-                          } else {
-                            displayDate = event.fechaHora;
-                          }
-                        } catch (e) {
-                          displayDate = event.fechaHora;
-                        }
-
-                        return (
-                          <li key={event.id}>
-                            <div className="relative pb-8">
-                              {eventIdx !== arr.length - 1 ? (
-                                <span className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true" />
-                              ) : null}
-                              <div className="relative flex space-x-3">
-                                <div>
-                                  <span className={`h-8 w-8 rounded-full flex items-center justify-center ring-4 ring-white ${iconBg} ${iconColor}`}>
-                                    {event.tipo === 'Creación' && <ShieldCheck className="w-4 h-4" />}
-                                    {event.tipo === 'Edición' && <Edit2 className="w-4 h-4" />}
-                                    {event.tipo === 'Stock' && <Clock className="w-4 h-4" />}
-                                  </span>
-                                </div>
-                                <div className="flex-1 min-w-0 pt-1.5">
-                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
-                                    <div className="text-xs font-semibold text-gray-900">
-                                      {event.descripcion}
-                                    </div>
-                                    <div className="text-[10px] text-gray-500 font-mono flex items-center gap-1.5">
-                                      <span>{displayDate}</span>
-                                      <span className="text-gray-300">|</span>
-                                      <span>{displayTime}</span>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2 mt-0.5">
-                                    <span className={`inline-flex items-center px-1.5 py-0.25 text-[9px] font-bold rounded-md border uppercase tracking-wider ${
-                                      event.tipo === 'Creación'
-                                        ? 'bg-[#E3EFE7] text-[#00603C] border-[#00603C]/10'
-                                        : event.tipo === 'Edición'
-                                        ? 'bg-[#F6EFDC] text-[#C9922E] border-[#C9922E]/10'
-                                        : 'bg-[#F5E5DC] text-[#A0522D] border-[#A0522D]/10'
-                                    }`}>
-                                      {event.tipo}
-                                    </span>
-                                    <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
-                                      <User className="w-3 h-3 text-gray-400" />
-                                      {event.usuario}
-                                    </span>
-                                  </div>
-                                  {event.detalles && (
-                                    <p className="mt-2 text-[11px] text-gray-600 bg-white p-2.5 rounded-lg border border-gray-200 font-sans leading-relaxed whitespace-pre-wrap">
-                                      {event.detalles}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Panel de Lote: Reemplaza Auditoría y Trazabilidad de Lote con formato de tabla unificado, edición/eliminación y división por desdoblamiento */}
+          <PanelDeLote
+            lote={lote}
+            allLotes={allLotes}
+            ordenesCarga={ordenesCarga}
+            plantaConfig={plantaConfig}
+            currentUser={currentUser}
+            onUpdateLoteStock={onUpdateLoteStock}
+            onSaveLote={onSaveLote}
+            onBatchUpdateLotes={onBatchUpdateLotes}
+            onDeleteOrdenCarga={onDeleteOrdenCarga}
+            onSaveOrdenCarga={onSaveOrdenCarga}
+            onSelectLote={onSelectLote}
+            readOnly={readOnly}
+          />
 
         </div>
 

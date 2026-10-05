@@ -5,11 +5,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { LogoSiloLoose, LogoSiloSquare } from './Logo';
-import { KeyRound, User, AlertTriangle, Smartphone, ArrowRight, ShieldCheck, ChevronDown, Lock, Check } from 'lucide-react';
+import { KeyRound, User, AlertTriangle, Smartphone, ArrowRight, ShieldCheck, ChevronDown, Lock, Check, Clock } from 'lucide-react';
 
 interface LoginProps {
   onLoginSuccess: (nombre: string, rol: string) => void;
   onAccederPlantaMovil?: () => void;
+  onAccederParking?: () => void;
 }
 
 const USUARIOS_AUTORIZADOS = [
@@ -23,7 +24,7 @@ const STORAGE_KEYS = {
   PASS_PREFIX: 'agro_abacus_pass_'
 };
 
-export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onAccederPlantaMovil }) => {
+export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onAccederPlantaMovil, onAccederParking }) => {
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<string>('Amilcar Quiroz');
   const [password, setPassword] = useState<string>('');
   const [recordarme, setRecordarme] = useState<boolean>(true);

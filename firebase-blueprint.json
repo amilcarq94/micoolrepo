@@ -93,6 +93,36 @@
         "updatedAt": { "type": "string" },
         "updatedBy": { "type": "string" }
       }
+    },
+    "TurnoParking": {
+      "title": "TurnoParking",
+      "description": "Registro de turnos solicitados en Parking con precarga anexada",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fecha": { "type": "string" },
+        "franja": { "type": "string" },
+        "horario": { "type": "string" },
+        "cliente": { "type": "string" },
+        "despachante": { "type": "string" },
+        "estado": { "type": "string" },
+        "ordenCargaId": { "type": "string" },
+        "precarga": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "fecha", "horario", "cliente", "despachante", "estado"]
+    },
+    "ParkingConfig": {
+      "title": "ParkingConfig",
+      "description": "Configuración de horarios de Parking y turnos bloqueados",
+      "type": "object",
+      "properties": {
+        "horariosManana": { "type": "array" },
+        "horariosTarde": { "type": "array" },
+        "turnosBloqueadosGlobal": { "type": "object" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -115,6 +145,14 @@
     "/configuracion_planta/{docId}": {
       "schema": "PlantaCatalogos",
       "description": "Catálogos maestros y filtros de planta"
+    },
+    "/turnosParking/{turnoId}": {
+      "schema": "TurnoParking",
+      "description": "Colección de turnos y precargas de Parking"
+    },
+    "/config/{docId}": {
+      "schema": "ParkingConfig",
+      "description": "Configuraciones globales del sistema (ej: config/parking)"
     }
   }
 }

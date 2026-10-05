@@ -55,6 +55,8 @@ interface ModoPlantaMobileViewProps {
   ordenesCarga: OrdenCarga[];
   silosEstadoManual?: SilosEstadoMap;
   onUpdateSiloEstadoManual?: (siloId: SiloId, estado: any) => void;
+  scannedBolsaData?: { lote: Lote; bolsaNumber?: string; totalBags?: string } | null;
+  onClearScannedBolsaData?: () => void;
   onOpenQrScanner: () => void;
   onSelectLote: (lote: Lote) => void;
   onSaveOrdenCarga: (orden: OrdenCarga) => void;
@@ -83,6 +85,8 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
   ordenesCarga,
   silosEstadoManual: silosEstadoManualProp,
   onUpdateSiloEstadoManual: _onUpdateSiloEstadoManual,
+  scannedBolsaData,
+  onClearScannedBolsaData,
   onOpenQrScanner,
   onSelectLote,
   onSaveOrdenCarga,
@@ -111,6 +115,17 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
   const [filtroTratamiento, setFiltroTratamiento] = useState('TODOS');
   const [highlightedCell, setHighlightedCell] = useState<{ ala: string; sector: string } | null>(null);
   const [fichaModalLote, setFichaModalLote] = useState<Lote | null>(null);
+  const [fichaModalBolsa, setFichaModalBolsa] = useState<string | undefined>(undefined);
+  const [fichaModalTotalBolsas, setFichaModalTotalBolsas] = useState<string | undefined>(undefined);
+
+  // Detectar lote y bolsa escaneados desde el visor QR de Planta Móvil
+  useEffect(() => {
+    if (scannedBolsaData?.lote) {
+      setFichaModalLote(scannedBolsaData.lote);
+      setFichaModalBolsa(scannedBolsaData.bolsaNumber);
+      setFichaModalTotalBolsas(scannedBolsaData.totalBags);
+    }
+  }, [scannedBolsaData]);
 
   // Escuchar estado de conexión online/offline
   useEffect(() => {
@@ -1508,7 +1523,14 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
       {fichaModalLote && (
         <LoteFichaQuickModal
           lote={fichaModalLote}
-          onClose={() => setFichaModalLote(null)}
+          bolsaNumber={fichaModalBolsa}
+          totalBags={fichaModalTotalBolsas}
+          onClose={() => {
+            setFichaModalLote(null);
+            setFichaModalBolsa(undefined);
+            setFichaModalTotalBolsas(undefined);
+            onClearScannedBolsaData?.();
+          }}
           onLocalizarEnMapa={handleLocalizarEnMapa}
           onOpenQrModal={(lote) => setQrModalLote(lote)}
           onSelectFullFicha={(lote) => onSelectLote(lote)}

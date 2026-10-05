@@ -77,8 +77,8 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
 
     const items: TagItem[] = [];
     lotes.forEach((lote) => {
-      // Cálculo de cantidad según stockBolsas (o 1 como fallback)
-      const rawCount = Number(lote.stockBolsas) || Number((lote as any).cantidadBolsas) || 1;
+      // Cálculo de cantidad según stockBolsas (o cantidadBolsas/35 como fallback seguro)
+      const rawCount = Number(lote.stockBolsas) || Number((lote as any).cantidadBolsas) || (lote.stockKg && lote.kgPorBolsa ? Math.round(lote.stockKg / lote.kgPorBolsa) : 0) || 35;
       const count = Math.max(1, Math.min(rawCount, 5000)); // Cap de seguridad
 
       for (let i = 1; i <= count; i++) {
@@ -687,9 +687,9 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
                                     ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-2xs'
                                     : 'bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-300'
                                 }`}
-                                title={`Bolsa #${tag.bagIndex} de ${tag.totalBagsInLote}`}
+                                title={`Bolsa #${String(tag.bagIndex).padStart(2, '0')} de ${tag.totalBagsInLote}`}
                               >
-                                <span>#{tag.bagIndex}</span>
+                                <span>#{String(tag.bagIndex).padStart(2, '0')}</span>
                               </button>
                             );
                           })}
@@ -961,7 +961,7 @@ export const BatchPrintIdBolsasModal: React.FC<BatchPrintIdBolsasModalProps> = (
                       </div>
                       <div className="flex items-center gap-2 font-mono">
                         <span>
-                          ETIQ. {firstTag?.bagIndex || 1} - {lastTag?.bagIndex || pageTags.length} DE{' '}
+                          ETIQ. {String(firstTag?.bagIndex || 1).padStart(2, '0')} - {String(lastTag?.bagIndex || pageTags.length).padStart(2, '0')} DE{' '}
                           {activeTags.length} SELECCIONADAS
                         </span>
                         <span>·</span>

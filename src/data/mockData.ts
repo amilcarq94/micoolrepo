@@ -266,6 +266,7 @@ export const ORDENES_CARGA_INICIALES: OrdenCarga[] = [
   {
     id: "OC-2026-1001",
     fecha: "2026-07-10",
+    fechaCarga: "2026-07-10",
     campaniaId: getCampaniaIdFromDate("2026-07-10"),
     cliente: "Eco Rural",
     loteId: "Eco_Rural_20FIN",
@@ -283,6 +284,7 @@ export const ORDENES_CARGA_INICIALES: OrdenCarga[] = [
   {
     id: "OC-2026-1002",
     fecha: "2026-07-12",
+    fechaCarga: "2026-07-12",
     campaniaId: getCampaniaIdFromDate("2026-07-12"),
     cliente: "San Diego Semilla",
     loteId: "San_Diego_58FIN",
@@ -298,6 +300,7 @@ export const ORDENES_CARGA_INICIALES: OrdenCarga[] = [
   {
     id: "OC-2026-1003",
     fecha: "2026-07-13",
+    fechaCarga: "2026-07-13",
     campaniaId: getCampaniaIdFromDate("2026-07-13"),
     cliente: "Elementa Foods",
     loteId: "Elementa_Foods_01FIN",

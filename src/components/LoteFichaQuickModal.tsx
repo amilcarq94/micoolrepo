@@ -25,6 +25,8 @@ import {
 
 interface LoteFichaQuickModalProps {
   lote: Lote;
+  bolsaNumber?: string;
+  totalBags?: string | number;
   onClose: () => void;
   onLocalizarEnMapa?: (lote: Lote) => void;
   onOpenQrModal?: (lote: Lote) => void;
@@ -33,6 +35,8 @@ interface LoteFichaQuickModalProps {
 
 export const LoteFichaQuickModal: React.FC<LoteFichaQuickModalProps> = ({
   lote,
+  bolsaNumber,
+  totalBags,
   onClose,
   onLocalizarEnMapa,
   onOpenQrModal,
@@ -80,13 +84,19 @@ export const LoteFichaQuickModal: React.FC<LoteFichaQuickModalProps> = ({
             <X className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="text-[10px] font-mono font-black uppercase tracking-widest text-amber-300 bg-amber-400/20 px-2 py-0.5 rounded-md border border-amber-400/30">
-              Ficha Técnica
+              Ficha Técnica {bolsaNumber ? 'de Bolsa' : ''}
             </span>
             <span className="text-[10px] font-bold text-emerald-200 bg-emerald-800/80 px-2 py-0.5 rounded-md">
               Planta Móvil · Acopio
             </span>
+            {bolsaNumber && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-400 text-slate-950 font-mono font-black text-xs shadow-xs border border-amber-300 animate-in fade-in">
+                <Tag className="w-3.5 h-3.5 text-slate-950" />
+                BOLSA N° {bolsaNumber} {totalBags ? `DE ${totalBags}` : ''}
+              </span>
+            )}
           </div>
 
           <div className="flex items-baseline justify-between gap-3 mt-1">
@@ -109,6 +119,28 @@ export const LoteFichaQuickModal: React.FC<LoteFichaQuickModalProps> = ({
           <p className="text-xs text-emerald-100/90 font-medium mt-1">
             {lote.cliente} · Estancia La Barrancosa
           </p>
+
+          {bolsaNumber && (
+            <div className="mt-3 p-3 bg-white/10 rounded-2xl border border-white/20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-mono font-black text-sm shrink-0 shadow-sm">
+                  #{bolsaNumber}
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-amber-300 block tracking-wider font-mono">
+                    Bolsa Identificada por QR
+                  </span>
+                  <span className="text-xs text-white font-semibold">
+                    Bolsa N° {bolsaNumber} {totalBags ? `de ${totalBags} del lote` : ''} · Peso aprox: {lote.kgPorBolsa || 800} kg
+                  </span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="text-[10px] uppercase text-emerald-200 block">Unitario</span>
+                <span className="font-mono font-bold text-amber-300 text-xs">{lote.kgPorBolsa || 800} kg</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Cuerpo con Scroll */}
@@ -240,6 +272,18 @@ export const LoteFichaQuickModal: React.FC<LoteFichaQuickModalProps> = ({
                 </span>
               </div>
             </div>
+
+            {bolsaNumber && (
+              <div className="bg-amber-400/15 border border-amber-400/30 rounded-xl p-2.5 flex items-center justify-between text-xs text-amber-200">
+                <span className="font-bold flex items-center gap-1.5 text-amber-200">
+                  <Tag className="w-3.5 h-3.5 text-amber-300" />
+                  Bolsa Auditada por QR:
+                </span>
+                <span className="font-mono font-black text-amber-300 text-sm">
+                  #{bolsaNumber} {totalBags ? `de ${totalBags}` : ''} ({lote.kgPorBolsa || 800} kg)
+                </span>
+              </div>
+            )}
 
             {typeof lote.humedad === 'number' && (
               <div className="flex items-center justify-between text-xs pt-1 border-t border-white/10 text-slate-300">

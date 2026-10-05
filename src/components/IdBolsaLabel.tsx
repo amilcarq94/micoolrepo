@@ -38,8 +38,6 @@ export const IdBolsaLabel: React.FC<IdBolsaLabelProps> = ({
   className = '',
   identificacionColor = 'black',
 }) => {
-  const qrUrl = getPublicLoteTraceUrl(lote.id || lote.loteNro || 'LOTE');
-
   // Formato de N° Lote limpio
   const loteNroStr = lote.loteNro
     ? lote.loteNro.toUpperCase().startsWith('LOTE')
@@ -62,21 +60,28 @@ export const IdBolsaLabel: React.FC<IdBolsaLabelProps> = ({
   // Envase (kg por bolsa)
   const envaseStr = lote.kgPorBolsa
     ? `${lote.kgPorBolsa} KG`
-    : lote.pesoPorBolsa
-    ? `${lote.pesoPorBolsa} KG`
+    : (lote as any).pesoPorBolsa
+    ? `${(lote as any).pesoPorBolsa} KG`
     : '800 KG';
 
   // Total de bolsas seguro
   const totalBolsasSeguro = totalBags || Number(lote.stockBolsas) || Number((lote as any).cantidadBolsas) || 0;
 
-  // Texto formateado del número de bolsa
+  // Formato correlativo del número de bolsa (del 01 en adelante hasta completar el total)
   const bolsaNumStr = bagNumber !== undefined
     ? String(bagNumber).padStart(2, '0')
-    : '___';
+    : '01';
 
   const bolsaTotalStr = totalBolsasSeguro > 0
     ? String(totalBolsasSeguro).padStart(2, '0')
     : '—';
+
+  // Código QR con el dato del número de bolsa correlativo (del 01 en adelante) y el total del lote
+  const qrUrl = getPublicLoteTraceUrl(
+    lote.id || lote.loteNro || 'LOTE',
+    bolsaNumStr,
+    totalBolsasSeguro > 0 ? bolsaTotalStr : undefined
+  );
 
   return (
     <div
@@ -372,8 +377,8 @@ export const IdBolsaLabel: React.FC<IdBolsaLabelProps> = ({
         >
           QR TRAZABILIDAD
         </div>
-        <div className="text-[6pt] font-mono font-black text-black leading-none mt-0.5 bg-gray-100 px-1 py-0.5 rounded border border-gray-300">
-          Bolsa {bagNumber || '—'}{totalBolsasSeguro ? `/${totalBolsasSeguro}` : ''}
+        <div className="text-[6pt] font-mono font-black text-black leading-none mt-0.5 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-300">
+          Bolsa {bolsaNumStr}{totalBolsasSeguro > 0 ? `/${bolsaTotalStr}` : ''}
         </div>
       </div>
     </div>

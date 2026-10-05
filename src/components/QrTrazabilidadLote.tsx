@@ -15,13 +15,35 @@ interface QrTrazabilidadLoteProps {
 
 /**
  * Retorna la URL oficial de trazabilidad pública para un lote.
- * Es la misma URL y formato que utiliza "Generar QR Ficha Técnica Pública".
+ * Soporta de manera opcional el número de bolsa (correlativo 01 en adelante)
+ * y el total de bolsas que integran el lote.
  */
-export const getPublicLoteTraceUrl = (loteId: string): string => {
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}${window.location.pathname}?lote=${encodeURIComponent(loteId)}`;
+export const getPublicLoteTraceUrl = (
+  loteId: string,
+  bolsaNumber?: number | string,
+  totalBags?: number | string
+): string => {
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://agroabacus.com';
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+
+  const params = new URLSearchParams();
+  params.set('lote', loteId);
+
+  if (bolsaNumber !== undefined && bolsaNumber !== null && bolsaNumber !== '') {
+    const safeBolsa = typeof bolsaNumber === 'number'
+      ? String(bolsaNumber).padStart(2, '0')
+      : String(bolsaNumber).trim().padStart(2, '0');
+    params.set('bolsa', safeBolsa);
+
+    if (totalBags !== undefined && totalBags !== null && totalBags !== '') {
+      const safeTotal = typeof totalBags === 'number'
+        ? String(totalBags).padStart(2, '0')
+        : String(totalBags).trim().padStart(2, '0');
+      params.set('total', safeTotal);
+    }
   }
-  return `https://agroabacus.com/?lote=${encodeURIComponent(loteId)}`;
+
+  return `${origin}${pathname}?${params.toString()}`;
 };
 
 /**

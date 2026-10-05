@@ -528,16 +528,27 @@ export const LotesView: React.FC<LotesViewProps> = ({
 
   const handleConfirmMovimiento = async (result: MovimientoLoteResult) => {
     try {
-      const { loteOrigenActualizado, nuevoLoteGenerado, tipoMovimientoLabel } = result;
+      const { loteOrigenActualizado, nuevoLoteGenerado, tipoMovimientoLabel, esTransformacionCompleta } = result;
 
-      if (onBatchUpdateLotes) {
-        await onBatchUpdateLotes([loteOrigenActualizado, nuevoLoteGenerado]);
-      } else if (onSaveLote) {
-        await onSaveLote(loteOrigenActualizado);
-        await onSaveLote(nuevoLoteGenerado);
+      if (esTransformacionCompleta || !nuevoLoteGenerado) {
+        // Transformación cualitativa en el mismo lote (sin generar nuevo lote)
+        if (onBatchUpdateLotes) {
+          await onBatchUpdateLotes([loteOrigenActualizado]);
+        } else if (onSaveLote) {
+          await onSaveLote(loteOrigenActualizado);
+        }
+        setRefreshToast(`Movimiento "${tipoMovimientoLabel}" registrado: Lote ${loteOrigenActualizado.loteNro} actualizado cualitativamente.`);
+      } else {
+        // Desdoblamiento de lote: remanente en lote origen + lote separado manteniendo mismo origen
+        if (onBatchUpdateLotes) {
+          await onBatchUpdateLotes([loteOrigenActualizado, nuevoLoteGenerado]);
+        } else if (onSaveLote) {
+          await onSaveLote(loteOrigenActualizado);
+          await onSaveLote(nuevoLoteGenerado);
+        }
+        setRefreshToast(`Lote desdoblado por movimiento "${tipoMovimientoLabel}": Nuevo Lote ${nuevoLoteGenerado.loteNro} separado manteniendo origen ${loteOrigenActualizado.loteNro}.`);
       }
 
-      setRefreshToast(`Movimiento "${tipoMovimientoLabel}" registrado: Nuevo Lote ${nuevoLoteGenerado.loteNro} generado con éxito.`);
       setTimeout(() => setRefreshToast(null), 4000);
     } catch (err) {
       console.error('Error al registrar movimiento de lote:', err);
@@ -3814,32 +3825,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
                           )
                         )}
 
-                        {/* Botón Movimiento de Lote */}
-                        <button
-                          type="button"
-                          id={`btn-movimiento-lote-${l.id}`}
-                          onClick={() => setLoteToMovimiento(l)}
-                          className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-300 rounded-lg text-xs font-black shadow-2xs transition cursor-pointer flex items-center gap-1 shrink-0"
-                          title="Movimiento de lote: Intermedio a Final, Intermedio a Final Tratado o Final a Final Tratado"
-                        >
-                          <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-700 stroke-[2.5]" />
-                          <span className="text-[10px]">Movimiento</span>
-                        </button>
-
-                        {/* Botón Editor de Movimiento (cuando el lote fue originado por movimiento o posee movimiento) */}
-                        {isMovimientoLote(l) && (
-                          <button
-                            type="button"
-                            id={`btn-editar-movimiento-${l.id}`}
-                            onClick={() => setLoteToEditMovimiento(l)}
-                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-300 rounded-lg text-xs font-black shadow-2xs transition cursor-pointer flex items-center gap-1 shrink-0"
-                            title="Editor de Movimiento: Modificar cantidad de bolsas pasadas, movimiento y tratamiento utilizado"
-                          >
-                            <Edit3 className="w-3.5 h-3.5 text-purple-700 stroke-[2.5]" />
-                            <span className="text-[10px]">Editar Mov.</span>
-                          </button>
-                        )}
-
                         {/* Botón Editor de Lote (Modificar manualmente cantidad de bolsas de alta, tipo, categoría, nombre) */}
                         <button
                           type="button"
@@ -3878,32 +3863,6 @@ export const LotesView: React.FC<LotesViewProps> = ({
                                 }}
                               />
                               <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in-50 zoom-in-95 text-left">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveActionDropdownId(null);
-                                    setLoteToMovimiento(l);
-                                  }}
-                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-indigo-900 bg-indigo-50/70 hover:bg-indigo-100 transition text-left cursor-pointer border-b border-indigo-100"
-                                >
-                                  <ArrowRightLeft className="w-4 h-4 text-indigo-600 stroke-[2.5]" />
-                                  <span className="font-bold">Movimiento</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  id={`btn-dropdown-editar-movimiento-${l.id}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveActionDropdownId(null);
-                                    setLoteToEditMovimiento(l);
-                                  }}
-                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-purple-900 bg-purple-50/80 hover:bg-purple-100 transition text-left cursor-pointer border-b border-purple-100"
-                                  title="Editar cantidad de bolsas pasadas, movimiento y tratamiento utilizado"
-                                >
-                                  <Edit3 className="w-4 h-4 text-purple-700 stroke-[2.5]" />
-                                  <span className="font-bold">Editor de Movimiento</span>
-                                </button>
                                 <button
                                   type="button"
                                   onClick={(e) => {

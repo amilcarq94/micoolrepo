@@ -32,6 +32,7 @@ import {
   ShieldCheck,
   AlertTriangle,
   Loader2,
+  Save,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -58,9 +59,13 @@ interface BitacoraMovimientosTableProps {
     nuevosMovimientos: MovimientoStock[],
     nuevoStockBolsas: number,
     nuevoStockKg: number,
-    nuevoEstado: EstadoLoteType
+    nuevoEstado: EstadoLoteType,
+    motivoAuditoria?: string,
+    idMovimientoEliminado?: string
   ) => void;
   onSaveLote?: (lote: Lote) => Promise<void> | void;
+  onDeleteOrdenCarga?: (ordenId: string) => Promise<void> | void;
+  onSaveOrdenCarga?: (orden: OrdenCarga) => Promise<void> | void;
   readOnly?: boolean;
 }
 
@@ -84,8 +89,17 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
   ordenesCarga,
   onUpdateLoteStock,
   onSaveLote,
+  onDeleteOrdenCarga,
+  onSaveOrdenCarga,
   readOnly = false,
 }) => {
+  // Estados para guardado y persistencia en Base de Datos
+  const [isSavingModal, setIsSavingModal] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [isSavingGeneral, setIsSavingGeneral] = useState<boolean>(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string>('');
+  const [lastSavedTimestamp, setLastSavedTimestamp] = useState<string>('');
+
   // Estado para modal de confirmación "Pasar a Realizado (Dar de Alta Bolsas)"
   const [showConfirmRealizadoModal, setShowConfirmRealizadoModal] = useState<boolean>(false);
   const [fechaRealizadoConfirm, setFechaRealizadoConfirm] = useState<string>(
@@ -110,8 +124,8 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
     new Date().toISOString().split('T')[0]
   );
   const [formTipoMov, setFormTipoMov] = useState<
-    'Alta' | 'Salida manual' | 'Despacho' | 'Salida por movimiento'
-  >('Salida manual');
+    'Alta' | 'Salida manual' | 'Despacho' | 'Salida por movimiento' | 'Pasado a Consumo' | 'Ajuste de Auditoría'
+  >('Pasado a Consumo');
   const [formBolsas, setFormBolsas] = useState<number>(10);
   const [formKg, setFormKg] = useState<number>(
     10 * (lote.kgPorBolsa || 40)
@@ -864,7 +878,7 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
   };
 
   // Guardar (crear o modificar) movimiento desde el formulario modal
-  const handleGuardarMovimiento = (e: React.FormEvent) => {
+  const handleGuardarMovimiento = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
@@ -878,139 +892,374 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
       return;
     }
 
-    const deltaBolsas = formDireccion === 'Entrada' ? formBolsas : -formBolsas;
-    const deltaKg = formDireccion === 'Entrada' ? formKg : -formKg;
+    setIsSavingModal(true);
 
-    // Obtener historial base
-    let baseHistory: MovimientoStock[] =
-      lote.historial && lote.historial.length > 0
-        ? [...lote.historial]
-        : [
-            {
-              id: `MOV-ALTA-${lote.id}`,
-              fecha: lote.fechaIngreso || new Date().toISOString().split('T')[0],
-              tipo: 'Alta',
-              cantidadBolsas: lote.stockBolsas,
-              kgPorBolsa: lote.kgPorBolsa || 40,
-              cantidadKg: lote.stockKg,
-              detalle: 'Alta de lote en planta',
-            },
-          ];
+    try {
+      const deltaBolsas = formDireccion === 'Entrada' ? formBolsas : -formBolsas;
+      const deltaKg = formDireccion === 'Entrada' ? formKg : -formKg;
 
-    let nuevoHistorial: MovimientoStock[] = [];
+      // Obtener historial base
+      let baseHistory: MovimientoStock[] =
+        lote.historial && lote.historial.length > 0
+          ? [...lote.historial]
+          : [
+              {
+                id: `MOV-ALTA-${lote.id}`,
+                fecha: lote.fechaIngreso || new Date().toISOString().split('T')[0],
+                tipo: 'Alta',
+                cantidadBolsas: lote.stockBolsas,
+                kgPorBolsa: lote.kgPorBolsa || 40,
+                cantidadKg: lote.stockKg,
+                detalle: 'Alta de lote en planta',
+              },
+            ];
 
-    if (editingRecord) {
-      // Modo Modificar
-      const matchIndex = baseHistory.findIndex(
-        (m) =>
-          m.id === editingRecord.id ||
-          (editingRecord.id && m.id && editingRecord.id.includes(m.id)) ||
-          (editingRecord.id && m.id && m.id.includes(editingRecord.id))
+      let nuevoHistorial: MovimientoStock[] = [];
+      let movGuardado: MovimientoStock;
+
+      if (editingRecord) {
+        // Modo Modificar
+        const matchIndex = baseHistory.findIndex(
+          (m) =>
+            m.id === editingRecord.id ||
+            (editingRecord.id && m.id && editingRecord.id.includes(m.id)) ||
+            (editingRecord.id && m.id && m.id.includes(editingRecord.id))
+        );
+
+        const movIdFinal = editingRecord.id && !editingRecord.id.startsWith('OC-') ? editingRecord.id : `MOV-${Date.now()}`;
+
+        const movModificado: MovimientoStock = {
+          id: movIdFinal,
+          fecha: formFecha,
+          tipo: formTipoMov,
+          cantidadBolsas: deltaBolsas,
+          kgPorBolsa: lote.kgPorBolsa || 40,
+          cantidadKg: deltaKg,
+          remitoCliente: formRemitoCliente.trim() || undefined,
+          destino: formDestino.trim() || undefined,
+          chofer: formChofer.trim() || undefined,
+          detalle: formDetalle.trim() || `${formTipoMov} modificada en bitácora`,
+          tipoSalida:
+            formDireccion === 'Salida' && formTipoMov !== 'Ajuste de Auditoría'
+              ? formTipoMov === 'Despacho'
+                ? 'despacho'
+                : formTipoMov === 'Salida por movimiento'
+                ? 'movimiento'
+                : 'consumo'
+              : undefined,
+          ordenId: editingRecord.ordenId || (editingRecord.id.startsWith('OC-') ? editingRecord.id.replace('OC-', '') : undefined),
+        };
+
+        movGuardado = movModificado;
+
+        if (matchIndex >= 0) {
+          nuevoHistorial = [...baseHistory];
+          nuevoHistorial[matchIndex] = movModificado;
+        } else {
+          nuevoHistorial = [movModificado, ...baseHistory];
+        }
+
+        // Si este registro estaba vinculado a una Orden de Carga, actualizar también la orden
+        if (movModificado.ordenId && ordenesCarga && onSaveOrdenCarga) {
+          const ordenMatch = ordenesCarga.find((o) => o.id === movModificado.ordenId);
+          if (ordenMatch) {
+            const ordenActualizada: OrdenCarga = {
+              ...ordenMatch,
+              fecha: formFecha,
+              cantidadBolsas: Math.abs(deltaBolsas),
+              kgTotales: Math.abs(deltaKg),
+              remitoCliente: formRemitoCliente.trim() || ordenMatch.remitoCliente,
+              destino: formDestino.trim() || ordenMatch.destino,
+              chofer: formChofer.trim() || ordenMatch.chofer,
+            };
+            try {
+              await onSaveOrdenCarga(ordenActualizada);
+            } catch (ordErr) {
+              console.warn('Error al sincronizar orden de carga:', ordErr);
+            }
+          }
+        }
+      } else {
+        // Modo Nuevo Movimiento
+        const nuevoMovimiento: MovimientoStock = {
+          id: `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          fecha: formFecha,
+          tipo: formTipoMov,
+          cantidadBolsas: deltaBolsas,
+          kgPorBolsa: lote.kgPorBolsa || 40,
+          cantidadKg: deltaKg,
+          remitoCliente: formRemitoCliente.trim() || undefined,
+          destino: formDestino.trim() || undefined,
+          chofer: formChofer.trim() || undefined,
+          detalle: formDetalle.trim() || `${formTipoMov} registrada en bitácora`,
+          tipoSalida:
+            formDireccion === 'Salida' && formTipoMov !== 'Ajuste de Auditoría'
+              ? formTipoMov === 'Despacho'
+                ? 'despacho'
+                : formTipoMov === 'Salida por movimiento'
+                ? 'movimiento'
+                : 'consumo'
+              : undefined,
+        };
+        movGuardado = nuevoMovimiento;
+        nuevoHistorial = [nuevoMovimiento, ...baseHistory];
+      }
+
+      const { nuevoStockBolsas, nuevoStockKg, nuevoEstado } = recalcularStockLote(nuevoHistorial);
+
+      const usuarioActual = (() => {
+        try {
+          const userStr = sessionStorage.getItem('agro_abacus_user');
+          if (userStr) {
+            const parsed = JSON.parse(userStr);
+            if (parsed.nombre) return parsed.nombre;
+          }
+        } catch {}
+        return 'Operador Planta';
+      })();
+
+      const auditDesc = editingRecord
+        ? `Modificación en Bitácora (${formTipoMov}): ${Math.abs(deltaBolsas)} b. (${formatNumberArg(Math.abs(deltaKg), 2)} kg).`
+        : `Nuevo movimiento en Bitácora (${formTipoMov}): ${Math.abs(deltaBolsas)} b. (${formatNumberArg(Math.abs(deltaKg), 2)} kg).`;
+
+      const auditEntry: AuditLogEntry = {
+        id: `AUD-MOV-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Stock',
+        usuario: usuarioActual,
+        descripcion: auditDesc,
+        detalles: `Stock disponible recalculado en todas las hojas: ${nuevoStockBolsas} b. (${formatNumberArg(nuevoStockKg, 2)} kg). Fecha: ${formFecha}.`
+      };
+
+      const loteActualizado: Lote = {
+        ...lote,
+        stockBolsas: nuevoStockBolsas,
+        stockKg: nuevoStockKg,
+        estado: nuevoEstado,
+        historial: nuevoHistorial,
+        auditoria: [auditEntry, ...(lote.auditoria || [])]
+      };
+
+      // Guardar en Firestore Batch
+      const batch = writeBatch(db);
+      const loteRef = doc(db, 'lotes', lote.id);
+      batch.set(loteRef, mapLoteToFirestore(loteActualizado));
+      if (movGuardado.id && !movGuardado.id.startsWith('OC-')) {
+        const movRef = doc(collection(db, 'lotes', lote.id, 'movimientos'), movGuardado.id);
+        batch.set(movRef, sanitizeForFirestore(movGuardado));
+      }
+      await batch.commit();
+
+      // Guardar en estado superior y notificar
+      if (onSaveLote) {
+        await onSaveLote(loteActualizado);
+      }
+      onUpdateLoteStock(lote.id, nuevoHistorial, nuevoStockBolsas, nuevoStockKg, nuevoEstado, auditDesc);
+
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setLastSavedTimestamp(timeStr);
+      setSaveSuccessMsg(
+        editingRecord
+          ? `¡Movimiento modificado y guardado con éxito! Impacto asentado en Lotes, Reporte de Producción y Despachos.`
+          : `¡Movimiento registrado y guardado con éxito! Stock actualizado en todas las hojas.`
       );
 
-      const movModificado: MovimientoStock = {
-        id: editingRecord.id || `MOV-${Date.now()}`,
-        fecha: formFecha,
-        tipo: formTipoMov,
-        cantidadBolsas: deltaBolsas,
-        kgPorBolsa: lote.kgPorBolsa || 40,
-        cantidadKg: deltaKg,
-        remitoCliente: formRemitoCliente.trim() || undefined,
-        destino: formDestino.trim() || undefined,
-        chofer: formChofer.trim() || undefined,
-        detalle: formDetalle.trim() || `${formTipoMov} modificada en bitácora`,
-        tipoSalida:
-          formDireccion === 'Salida' && formTipoMov !== 'Ajuste de Auditoría'
-            ? formTipoMov === 'Despacho'
-              ? 'despacho'
-              : formTipoMov === 'Salida por movimiento'
-              ? 'movimiento'
-              : 'consumo'
-            : undefined,
-      };
-
-      if (matchIndex >= 0) {
-        nuevoHistorial = [...baseHistory];
-        nuevoHistorial[matchIndex] = movModificado;
-      } else {
-        nuevoHistorial = [movModificado, ...baseHistory];
-      }
-    } else {
-      // Modo Nuevo Movimiento
-      const nuevoMovimiento: MovimientoStock = {
-        id: `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        fecha: formFecha,
-        tipo: formTipoMov,
-        cantidadBolsas: deltaBolsas,
-        kgPorBolsa: lote.kgPorBolsa || 40,
-        cantidadKg: deltaKg,
-        remitoCliente: formRemitoCliente.trim() || undefined,
-        destino: formDestino.trim() || undefined,
-        chofer: formChofer.trim() || undefined,
-        detalle: formDetalle.trim() || `${formTipoMov} registrada en bitácora`,
-        tipoSalida:
-          formDireccion === 'Salida' && formTipoMov !== 'Ajuste de Auditoría'
-            ? formTipoMov === 'Despacho'
-              ? 'despacho'
-              : formTipoMov === 'Salida por movimiento'
-              ? 'movimiento'
-              : 'consumo'
-            : undefined,
-      };
-      nuevoHistorial = [nuevoMovimiento, ...baseHistory];
+      // Limpiar y cerrar modal
+      setShowModal(false);
+      setEditingRecord(null);
+      setFormRemitoCliente('');
+      setFormDestino('');
+      setFormChofer('');
+      setFormDetalle('');
+      setFormError('');
+    } catch (err) {
+      console.error('Error al guardar movimiento de bitácora:', err);
+      setFormError('Error al guardar en la base de datos. Por favor reintente.');
+    } finally {
+      setIsSavingModal(false);
     }
-
-    const { nuevoStockBolsas, nuevoStockKg, nuevoEstado } = recalcularStockLote(nuevoHistorial);
-
-    onUpdateLoteStock(lote.id, nuevoHistorial, nuevoStockBolsas, nuevoStockKg, nuevoEstado);
-
-    // Limpiar y cerrar modal
-    setShowModal(false);
-    setEditingRecord(null);
-    setFormRemitoCliente('');
-    setFormDestino('');
-    setFormChofer('');
-    setFormDetalle('');
-    setFormError('');
   };
 
   // Confirmar eliminación definitiva con check y frase requerida: "eliminar movimiento"
-  const handleConfirmarEliminar = () => {
+  const handleConfirmarEliminar = async () => {
     if (!deletingRecord) return;
     if (!deleteConfirmChecked || deleteConfirmPhrase.trim().toLowerCase() !== 'eliminar movimiento') {
       return;
     }
 
-    const recordId = deletingRecord.id;
+    setIsDeleting(true);
 
-    let baseHistory: MovimientoStock[] =
-      lote.historial && lote.historial.length > 0
-        ? [...lote.historial]
-        : [
-            {
-              id: `MOV-ALTA-${lote.id}`,
-              fecha: lote.fechaIngreso || new Date().toISOString().split('T')[0],
-              tipo: 'Alta',
-              cantidadBolsas: lote.stockBolsas,
-              kgPorBolsa: lote.kgPorBolsa || 40,
-              cantidadKg: lote.stockKg,
-              detalle: 'Alta de lote en planta',
-            },
-          ];
+    try {
+      const recordId = deletingRecord.id;
 
-    const nuevoHistorial = baseHistory.filter(
-      (m) =>
-        m.id !== recordId &&
-        (!recordId.includes(m.id) || recordId.startsWith('OC-'))
-    );
+      // Si correspondía a una orden de carga vinculada, eliminar también la orden vinculada
+      if (deletingRecord.ordenId || recordId.startsWith('OC-')) {
+        const ordId = deletingRecord.ordenId || recordId.replace('OC-', '');
+        if (onDeleteOrdenCarga) {
+          try {
+            await onDeleteOrdenCarga(ordId);
+          } catch (delOrdErr) {
+            console.warn('Error al eliminar orden de carga vinculada:', delOrdErr);
+          }
+        }
+      }
 
-    const { nuevoStockBolsas, nuevoStockKg, nuevoEstado } = recalcularStockLote(nuevoHistorial);
+      let baseHistory: MovimientoStock[] =
+        lote.historial && lote.historial.length > 0
+          ? [...lote.historial]
+          : [
+              {
+                id: `MOV-ALTA-${lote.id}`,
+                fecha: lote.fechaIngreso || new Date().toISOString().split('T')[0],
+                tipo: 'Alta',
+                cantidadBolsas: lote.stockBolsas,
+                kgPorBolsa: lote.kgPorBolsa || 40,
+                cantidadKg: lote.stockKg,
+                detalle: 'Alta de lote en planta',
+              },
+            ];
 
-    onUpdateLoteStock(lote.id, nuevoHistorial, nuevoStockBolsas, nuevoStockKg, nuevoEstado);
+      const nuevoHistorial = baseHistory.filter((m) => {
+        if (m.id === recordId) return false;
+        if (recordId.startsWith('OC-')) {
+          const ocClean = recordId.replace('OC-', '');
+          if (m.ordenId === ocClean || (m.detalle && m.detalle.includes(ocClean))) return false;
+        }
+        if (recordId.startsWith('alta-') || recordId.startsWith('MOV-ALTA-')) {
+          const t = (m.tipo || '').toLowerCase();
+          if (t === 'alta' || m.id.startsWith('alta-') || m.id.startsWith('MOV-ALTA-')) return false;
+        }
+        if (m.id && recordId.includes(m.id)) return false;
+        return true;
+      });
 
-    setDeletingRecord(null);
-    setDeleteConfirmChecked(false);
-    setDeleteConfirmPhrase('');
+      const { nuevoStockBolsas, nuevoStockKg, nuevoEstado } = recalcularStockLote(nuevoHistorial);
+
+      const usuarioActual = (() => {
+        try {
+          const userStr = sessionStorage.getItem('agro_abacus_user');
+          if (userStr) {
+            const parsed = JSON.parse(userStr);
+            if (parsed.nombre) return parsed.nombre;
+          }
+        } catch {}
+        return 'Operador Planta';
+      })();
+
+      const auditDesc = `Eliminación en Bitácora: ${deletingRecord.tipoMovimiento} (${deletingRecord.cantidadBolsas} b. / ${formatNumberArg(deletingRecord.cantidadKg, 2)} kg).`;
+
+      const auditEntry: AuditLogEntry = {
+        id: `AUD-DEL-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Eliminación',
+        usuario: usuarioActual,
+        descripcion: auditDesc,
+        detalles: `Stock disponible recalculado en todas las hojas vinculadas: ${nuevoStockBolsas} b. (${formatNumberArg(nuevoStockKg, 2)} kg). Registro eliminado: ${recordId}.`
+      };
+
+      const loteActualizado: Lote = {
+        ...lote,
+        stockBolsas: nuevoStockBolsas,
+        stockKg: nuevoStockKg,
+        estado: nuevoEstado,
+        historial: nuevoHistorial,
+        auditoria: [auditEntry, ...(lote.auditoria || [])]
+      };
+
+      // Guardar en Firestore Batch y borrar movimiento de subcolección si aplica
+      const batch = writeBatch(db);
+      const loteRef = doc(db, 'lotes', lote.id);
+      batch.set(loteRef, mapLoteToFirestore(loteActualizado));
+      if (recordId && !recordId.startsWith('OC-') && !recordId.startsWith('alta-')) {
+        const movRef = doc(collection(db, 'lotes', lote.id, 'movimientos'), recordId);
+        batch.delete(movRef);
+      }
+      await batch.commit();
+
+      if (onSaveLote) {
+        await onSaveLote(loteActualizado);
+      }
+      onUpdateLoteStock(lote.id, nuevoHistorial, nuevoStockBolsas, nuevoStockKg, nuevoEstado, auditDesc, recordId);
+
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setLastSavedTimestamp(timeStr);
+      setSaveSuccessMsg('¡Movimiento eliminado! Modificaciones asentadas en el lote y en todas las hojas vinculadas.');
+
+      setDeletingRecord(null);
+      setDeleteConfirmChecked(false);
+      setDeleteConfirmPhrase('');
+    } catch (err) {
+      console.error('Error al eliminar movimiento de bitácora:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Guardar y Asentar Manualmente todas las modificaciones de la Bitácora en BD y todas las hojas vinculadas
+  const handleAsentarCambiosBitacora = async () => {
+    setIsSavingGeneral(true);
+    setSaveSuccessMsg('');
+    try {
+      const hist = [...(lote.historial || [])];
+      const { nuevoStockBolsas, nuevoStockKg, nuevoEstado } = recalcularStockLote(hist);
+
+      const usuarioActual = (() => {
+        try {
+          const userStr = sessionStorage.getItem('agro_abacus_user');
+          if (userStr) {
+            const parsed = JSON.parse(userStr);
+            if (parsed.nombre) return parsed.nombre;
+          }
+        } catch {}
+        return 'Operador Planta';
+      })();
+
+      const auditEntry: AuditLogEntry = {
+        id: `AUD-SYNC-${Date.now()}`,
+        fechaHora: new Date().toISOString(),
+        tipo: 'Edición',
+        usuario: usuarioActual,
+        descripcion: `Asentamiento general de Bitácora de Lote #${lote.loteNro} guardado en Base de Datos.`,
+        detalles: `Stock confirmado en todas las hojas vinculadas: ${nuevoStockBolsas} b. (${formatNumberArg(nuevoStockKg, 2)} kg). Total movimientos en bitácora: ${hist.length}.`
+      };
+
+      const loteActualizado: Lote = {
+        ...lote,
+        stockBolsas: nuevoStockBolsas,
+        stockKg: nuevoStockKg,
+        estado: nuevoEstado,
+        historial: hist,
+        auditoria: [auditEntry, ...(lote.auditoria || [])]
+      };
+
+      const batch = writeBatch(db);
+      const loteRef = doc(db, 'lotes', lote.id);
+      batch.set(loteRef, mapLoteToFirestore(loteActualizado));
+
+      if (hist.length > 0) {
+        for (const mov of hist) {
+          if (mov.id && !mov.id.startsWith('OC-')) {
+            const movRef = doc(collection(db, 'lotes', lote.id, 'movimientos'), mov.id);
+            batch.set(movRef, sanitizeForFirestore(mov));
+          }
+        }
+      }
+      await batch.commit();
+
+      if (onSaveLote) {
+        await onSaveLote(loteActualizado);
+      }
+      onUpdateLoteStock(lote.id, hist, nuevoStockBolsas, nuevoStockKg, nuevoEstado, auditEntry.descripcion);
+
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setLastSavedTimestamp(timeStr);
+      setSaveSuccessMsg(`¡Modificaciones asentadas con éxito! Los datos impactan en Lotes, Reporte de Producción, Despachos y Silos (${timeStr}).`);
+    } catch (err) {
+      console.error('Error al asentar modificaciones de bitácora:', err);
+      setSaveSuccessMsg('Error al guardar en base de datos. Por favor reintente.');
+    } finally {
+      setIsSavingGeneral(false);
+    }
   };
 
   // Exportar Bitácora a Excel
@@ -1098,10 +1347,43 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                 <Plus className="w-3.5 h-3.5" />
                 <span>+ Registrar Movimiento</span>
               </button>
+
+              <button
+                type="button"
+                onClick={handleAsentarCambiosBitacora}
+                disabled={isSavingGeneral}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-700 via-[#00603C] to-emerald-800 hover:from-emerald-800 hover:to-[#004D30] text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition cursor-pointer active:scale-95 border border-emerald-600 disabled:opacity-50"
+                title="Guardar y asentar todas las modificaciones de bitácora en la base de datos e impactar en Lotes, Reporte de Producción, Despachos y Silos"
+              >
+                {isSavingGeneral ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-200" />
+                ) : (
+                  <Save className="w-3.5 h-3.5 text-amber-300" />
+                )}
+                <span>Guardar y Asentar en Todas las Hojas</span>
+              </button>
             </div>
           )}
         </div>
       </div>
+
+      {/* BANNER DE NOTIFICACIÓN DE IMPACTO EN TODAS LAS HOJAS */}
+      {saveSuccessMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 text-[#00603C] rounded-xl text-xs flex items-center justify-between shadow-2xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-[#00603C] shrink-0" />
+            <span className="font-semibold">{saveSuccessMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSaveSuccessMsg('')}
+            className="text-gray-400 hover:text-gray-600 p-1 rounded cursor-pointer"
+            title="Cerrar notificación"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* MINI TARJETAS DE BALANCE DE ENTRADAS Y SALIDAS */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1771,10 +2053,15 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#00603C] hover:bg-[#004D30] text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                  disabled={isSavingModal}
+                  className="px-5 py-2 bg-[#00603C] hover:bg-[#004D30] disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
                 >
-                  <CheckCircle className="w-4 h-4" />
-                  {editingRecord ? 'Guardar Cambios' : 'Registrar Movimiento'}
+                  {isSavingModal ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-200" />
+                  ) : (
+                    <Save className="w-4 h-4 text-amber-300" />
+                  )}
+                  <span>{editingRecord ? 'Guardar y Asentar en Todas las Hojas' : 'Registrar y Guardar Movimiento'}</span>
                 </button>
               </div>
             </form>
@@ -1861,12 +2148,16 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                 </button>
                 <button
                   type="button"
-                  disabled={!deleteConfirmChecked || deleteConfirmPhrase.trim().toLowerCase() !== 'eliminar movimiento'}
+                  disabled={isDeleting || !deleteConfirmChecked || deleteConfirmPhrase.trim().toLowerCase() !== 'eliminar movimiento'}
                   onClick={handleConfirmarEliminar}
                   className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Eliminar Movimiento
+                  {isDeleting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                  <span>Eliminar y Asentar en Todas las Hojas</span>
                 </button>
               </div>
             </div>
