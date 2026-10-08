@@ -220,9 +220,9 @@ export const LoteForm: React.FC<LoteFormProps> = ({
         cantidadBolsas: deltaBolsas,
         kgPorBolsa: Number(kgPorBolsa) || 800,
         cantidadKg: deltaKg,
-        remitoCliente: movFormRemito.trim() || undefined,
-        destino: movFormDestino.trim() || undefined,
-        chofer: movFormChofer.trim() || undefined,
+        remitoCliente: movFormRemito.trim() || '',
+        destino: movFormDestino.trim() || '',
+        chofer: movFormChofer.trim() || '',
         detalle: movFormDetalle.trim() || `${movFormTipo} registrada`,
         tipoSalida: movFormDireccion === 'Salida' ? (
           movFormTipo === 'Despacho' ? 'despacho' :
@@ -239,9 +239,9 @@ export const LoteForm: React.FC<LoteFormProps> = ({
             tipo: movFormTipo,
             cantidadBolsas: deltaBolsas,
             cantidadKg: deltaKg,
-            remitoCliente: movFormRemito.trim() || undefined,
-            destino: movFormDestino.trim() || undefined,
-            chofer: movFormChofer.trim() || undefined,
+            remitoCliente: movFormRemito.trim() || '',
+            destino: movFormDestino.trim() || '',
+            chofer: movFormChofer.trim() || '',
             detalle: movFormDetalle.trim() || `${movFormTipo} modificada`,
             tipoSalida: movFormDireccion === 'Salida' ? (
               movFormTipo === 'Despacho' ? 'despacho' :

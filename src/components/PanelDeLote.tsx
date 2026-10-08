@@ -13,7 +13,7 @@ import {
   PlantaConfig,
 } from '../types';
 import { formatNumberArg } from '../utils/formatters';
-import { db, mapLoteToFirestore, sanitizeForFirestore } from '../lib/firebase';
+import { db, mapLoteToFirestore, sanitizeForFirestore, mapMovimientoStockToFirestore } from '../lib/firebase';
 import { collection, doc, writeBatch } from 'firebase/firestore';
 import { MovimientoLoteModal, MovimientoLoteResult } from './MovimientoLoteModal';
 import { EditarMovimientoModal, EditarMovimientoResult } from './EditarMovimientoModal';
@@ -63,6 +63,9 @@ export interface PanelLoteMovimientoRow {
   ingresoBolsas: number;
   ingresoKg: number;
   esPrecarga?: boolean;
+  esTratado?: boolean;
+  kgTratados?: number;
+  tratamientoNombre?: string;
   // Movimiento cualitativo (Intermedio a Final, Int a Final Tratado, Final a Final Tratado, etc.)
   esMovimiento: boolean;
   tipoMovimientoTexto?: string;
@@ -119,6 +122,27 @@ export const formatToDDMMAAAA = (dateStr: string): string => {
     // Fallback
   }
   return dateStr;
+};
+
+// Helper para determinar si un lote o alta está marcado como tratado
+export const isLoteTratadoHelper = (l: Lote): boolean => {
+  if (!l) return false;
+  const t = (l as any).tratamiento;
+  if (Array.isArray(t)) {
+    return t.some(item => {
+      const s = String(item).toLowerCase().trim();
+      return s !== 'sin tratar' && s !== 'ninguno' && s !== '' && !s.includes('sin');
+    });
+  }
+  if (typeof t === 'string') {
+    const s = String(t).toLowerCase().trim();
+    return s !== 'sin tratar' && s !== 'ninguno' && s !== '' && !s.includes('sin');
+  }
+  if (l.producto && l.producto.toLowerCase().trim() !== 'ninguno' && l.producto.trim() !== '') return true;
+  if (l.productoAplicado && l.productoAplicado.toLowerCase().trim() !== 'ninguno' && l.productoAplicado.trim() !== '') return true;
+  if (l.tipo && l.tipo.toLowerCase().includes('tratado')) return true;
+  if (l.tipoMovimiento && l.tipoMovimiento.toLowerCase().includes('tratado')) return true;
+  return false;
 };
 
 export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
@@ -260,25 +284,35 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
     if (!hasExplicitAlta) {
       const isPrecarga = lote.estadoRegistro === 'PRE-CARGA';
       const esLoteMov = Boolean(lote.esMovimiento || lote.tipoMovimiento || lote.loteOrigen);
+      const kgAlta = lote.stockKg || lote.stockBolsas * (lote.kgPorBolsa || 40);
+      const esTratadoAlta = isLoteTratadoHelper(lote);
+      const tratNombre = lote.producto || (Array.isArray(lote.tratamiento) ? lote.tratamiento.join(', ') : lote.tratamiento) || '';
+
       list.push({
         id: `alta-inicial-${lote.id}`,
         fecha: lote.fechaIngreso || new Date().toISOString().split('T')[0],
         esIngreso: true,
         ingresoBolsas: lote.stockBolsas,
-        ingresoKg: lote.stockKg || lote.stockBolsas * (lote.kgPorBolsa || 40),
+        ingresoKg: kgAlta,
         esPrecarga: isPrecarga,
+        esTratado: esTratadoAlta,
+        kgTratados: esTratadoAlta ? kgAlta : 0,
+        tratamientoNombre: esTratadoAlta ? tratNombre : undefined,
         esMovimiento: esLoteMov,
         tipoMovimientoTexto: esLoteMov ? (lote.tipoMovimiento || 'Movimiento Realizado') : undefined,
-        tratamientoMovimiento: lote.producto || (Array.isArray(lote.tratamiento) ? lote.tratamiento.join(', ') : lote.tratamiento),
+        tratamientoMovimiento: tratNombre,
         esSalida: false,
         salidaTipo: '',
         salidaBolsas: 0,
         salidaKg: 0,
         saldoBolsas: isPrecarga ? 0 : lote.stockBolsas,
-        saldoKg: isPrecarga ? 0 : lote.stockKg || lote.stockBolsas * (lote.kgPorBolsa || 40),
+        saldoKg: isPrecarga ? 0 : kgAlta,
+        remitoCliente: (lote as any).remitoCliente || '',
+        destino: lote.ubicacionAcopio || '',
+        chofer: '',
         detalle: esLoteMov
           ? `Lote originado por movimiento (${lote.tipoMovimiento || 'Desdoble'}) desde origen #${lote.loteOrigen || lote.loteNro}`
-          : (isPrecarga ? 'Alta de lote en Pre-carga' : 'Alta inicial de lote en planta'),
+          : (isPrecarga ? 'Alta de lote en Pre-carga' : (esTratadoAlta ? `Alta inicial de lote en planta (Tratado: ${formatNumberArg(kgAlta, 0)} kg)` : 'Alta inicial de lote en planta')),
       });
     }
 
@@ -359,12 +393,23 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
       const bolsas = Number(m.cantidadBolsas) || 0;
       const kg = Number(m.cantidadKg) || bolsas * (Number(m.kgPorBolsa) || Number(lote.kgPorBolsa) || 40);
 
+      const esTratadoEntrada =
+        esEntrada &&
+        (isLoteTratadoHelper(lote) ||
+          (m.tratamiento && !String(m.tratamiento).toLowerCase().includes('sin') && String(m.tratamiento).trim() !== '') ||
+          (m.producto && !String(m.producto).toLowerCase().includes('ninguno') && String(m.producto).trim() !== ''));
+
+      const tratNombreEntrada = m.producto || (Array.isArray(m.tratamiento) ? m.tratamiento.join(', ') : m.tratamiento) || (Array.isArray(lote.tratamiento) ? lote.tratamiento.join(', ') : lote.tratamiento) || '';
+
       list.push({
         id: m.id,
         fecha: m.fecha || lote.fechaIngreso || new Date().toISOString().split('T')[0],
         esIngreso: esEntrada,
         ingresoBolsas: esEntrada ? bolsas : 0,
         ingresoKg: esEntrada ? kg : 0,
+        esTratado: esTratadoEntrada,
+        kgTratados: esTratadoEntrada ? kg : 0,
+        tratamientoNombre: esTratadoEntrada ? tratNombreEntrada : undefined,
         esMovimiento: Boolean(tipoMovLabel),
         tipoMovimientoTexto: tipoMovLabel,
         tratamientoMovimiento: lote.producto || (Array.isArray(lote.tratamiento) ? lote.tratamiento.join(', ') : lote.tratamiento),
@@ -374,9 +419,9 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
         salidaKg: esSalida ? kg : 0,
         saldoBolsas: 0, // Se calcula progresivamente abajo
         saldoKg: 0,
-        remitoCliente: m.remitoCliente,
-        destino: m.destino,
-        chofer: m.chofer,
+        remitoCliente: m.remitoCliente || '',
+        destino: m.destino || '',
+        chofer: m.chofer || '',
         detalle: m.detalle,
         ordenId: m.ordenId,
       });
@@ -404,9 +449,9 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
             salidaKg: itemLote.kgTotales || itemLote.cantidadBolsas * (lote.kgPorBolsa || 40),
             saldoBolsas: 0,
             saldoKg: 0,
-            remitoCliente: oc.remitoCliente,
-            destino: oc.destino,
-            chofer: oc.chofer,
+            remitoCliente: oc.remitoCliente || '',
+            destino: oc.destino || '',
+            chofer: oc.chofer || '',
             detalle: `Despacho Orden de Carga #${oc.id}`,
             ordenId: oc.id,
           });
@@ -473,11 +518,15 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
     let salidasBolsas = 0;
     let salidasKg = 0;
     let movimientosCount = 0;
+    let altaTratadosKg = 0;
 
     rowsMovimientos.forEach((r) => {
       if (r.esIngreso && !r.esPrecarga) {
         entradasBolsas += r.ingresoBolsas;
         entradasKg += r.ingresoKg;
+        if (r.esTratado && r.kgTratados) {
+          altaTratadosKg += r.kgTratados;
+        }
       }
       if (r.esSalida) {
         salidasBolsas += r.salidaBolsas;
@@ -494,6 +543,7 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
     return {
       entradasBolsas,
       entradasKg,
+      altaTratadosKg,
       salidasBolsas,
       salidasKg,
       stockActualBolsas,
@@ -741,19 +791,19 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
         const targetId = editingRow.id;
         const exists = baseHistory.some((m) => m.id === targetId);
 
-        const movModificado: MovimientoStock = {
-          id: targetId.startsWith('OC-') ? targetId : targetId,
+        const movModificado: MovimientoStock = mapMovimientoStockToFirestore({
+          id: targetId,
           fecha: formFecha,
           tipo: formTipoMov,
           cantidadBolsas: formBolsas,
           kgPorBolsa: lote.kgPorBolsa || 40,
           cantidadKg: formKg,
-          remitoCliente: formRemitoCliente.trim() || undefined,
-          destino: formDestino.trim() || undefined,
-          chofer: formChofer.trim() || undefined,
+          remitoCliente: formRemitoCliente.trim() || '',
+          destino: formDestino.trim() || '',
+          chofer: formChofer.trim() || '',
           detalle: formDetalle.trim() || `${formTipoMov} editada en panel de lote`,
-          ordenId: editingRow.ordenId,
-        };
+          ...(editingRow.ordenId ? { ordenId: editingRow.ordenId } : {}),
+        });
         movGuardado = movModificado;
 
         if (exists) {
@@ -769,9 +819,9 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
             const ordenActualizada: OrdenCarga = {
               ...ordenMatch,
               fecha: formFecha,
-              remitoCliente: formRemitoCliente || ordenMatch.remitoCliente,
-              destino: formDestino || ordenMatch.destino,
-              chofer: formChofer || ordenMatch.chofer,
+              remitoCliente: formRemitoCliente.trim() || ordenMatch.remitoCliente || '',
+              destino: formDestino.trim() || ordenMatch.destino || '',
+              chofer: formChofer.trim() || ordenMatch.chofer || '',
               cantidadBolsas: (ordenMatch.loteId === lote.id || ordenMatch.loteId === lote.loteNro) ? formBolsas : ordenMatch.cantidadBolsas,
               kgTotales: (ordenMatch.loteId === lote.id || ordenMatch.loteId === lote.loteNro) ? formKg : ordenMatch.kgTotales,
               lotesOrigen: (ordenMatch.lotesOrigen || []).map((item) =>
@@ -789,18 +839,18 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
         }
       } else {
         // Nuevo Movimiento
-        const nuevoMov: MovimientoStock = {
+        const nuevoMov: MovimientoStock = mapMovimientoStockToFirestore({
           id: `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
           fecha: formFecha,
           tipo: formTipoMov,
           cantidadBolsas: formBolsas,
           kgPorBolsa: lote.kgPorBolsa || 40,
           cantidadKg: formKg,
-          remitoCliente: formRemitoCliente.trim() || undefined,
-          destino: formDestino.trim() || undefined,
-          chofer: formChofer.trim() || undefined,
+          remitoCliente: formRemitoCliente.trim() || '',
+          destino: formDestino.trim() || '',
+          chofer: formChofer.trim() || '',
           detalle: formDetalle.trim() || `${formTipoMov} registrada en panel de lote`,
-        };
+        });
         movGuardado = nuevoMov;
         nuevoHistorial = [nuevoMov, ...baseHistory];
       }
@@ -835,7 +885,7 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
       batch.set(loteRef, mapLoteToFirestore(loteActualizado));
       if (movGuardado.id && !movGuardado.id.startsWith('OC-')) {
         const movRef = doc(collection(db, 'lotes', lote.id, 'movimientos'), movGuardado.id);
-        batch.set(movRef, sanitizeForFirestore(movGuardado));
+        batch.set(movRef, mapMovimientoStockToFirestore(movGuardado));
       }
       await batch.commit();
 
@@ -1000,7 +1050,7 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
         for (const mov of hist) {
           if (mov.id && !mov.id.startsWith('OC-')) {
             const movRef = doc(collection(db, 'lotes', lote.id, 'movimientos'), mov.id);
-            batch.set(movRef, sanitizeForFirestore(mov));
+            batch.set(movRef, mapMovimientoStockToFirestore(mov));
           }
         }
       }
@@ -1026,7 +1076,9 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
   const handleExportExcel = () => {
     const dataToExport = rowsFiltradas.map((item) => ({
       Fecha: formatToDDMMAAAA(item.fecha),
-      'Ingresos (Alta)': item.esIngreso ? `${item.ingresoKg} kg / ${item.ingresoBolsas} b.` : '—',
+      'Ingresos (Alta)': item.esIngreso
+        ? `${item.ingresoKg} kg / ${item.ingresoBolsas} b.${item.esTratado ? ` (Tratado: ${item.kgTratados || item.ingresoKg} kg)` : ''}`
+        : '—',
       Movimiento: item.esMovimiento ? item.tipoMovimientoTexto : '—',
       'Salidas (Despacho / Consumo / Baja)': item.esSalida
         ? `${item.salidaKg} kg / ${item.salidaBolsas} b. (${item.salidaTipo})`
@@ -1192,6 +1244,16 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
                 (+{formatNumberArg(metrics.entradasBolsas, 0)} b.)
               </span>
             </div>
+            {metrics.altaTratadosKg > 0 && (
+              <div className="mt-2 pt-1.5 border-t border-emerald-800/60 flex items-center justify-between text-[10px]">
+                <span className="text-purple-300 font-bold flex items-center gap-1">
+                  <FlaskConical className="w-3 h-3 text-purple-300" /> Tratado en Alta:
+                </span>
+                <span className="font-mono font-black text-purple-200">
+                  {formatNumberArg(metrics.altaTratadosKg, 0)} kg
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Salidas (Despachos / Consumo / Bajas) */}
@@ -1611,6 +1673,13 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
                             {row.esPrecarga && (
                               <span className="mt-0.5 text-[9px] bg-amber-100 text-amber-900 px-1.5 py-0.2 rounded font-bold">
                                 Pre-carga
+                              </span>
+                            )}
+                            {/* Kilos dados de alta marcados como Tratados */}
+                            {row.esTratado && (
+                              <span className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-900 border border-purple-300 shadow-2xs">
+                                <FlaskConical className="w-3 h-3 text-purple-700 shrink-0" />
+                                <span>Alta Tratado: {formatNumberArg(row.kgTratados || row.ingresoKg, 0)} kg</span>
                               </span>
                             )}
                           </div>

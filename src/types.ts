@@ -274,6 +274,8 @@ export interface MovimientoStock {
   chofer?: string; // Chofer asignado
   tipoSalida?: 'manual' | 'movimiento' | 'despacho' | string;
   ordenId?: string; // ID de orden de carga o movimiento vinculada
+  tratamiento?: string | string[]; // Tratamiento químico
+  producto?: string; // Producto o químico aplicado
 }
 
 export interface OrigenBolsonItem {
@@ -301,6 +303,7 @@ export interface Lote {
   estadoRegistro?: EstadoRegistroLote; // 'PRE-CARGA' | 'REALIZADO'
   fechaHoraProduccion?: string; // Formato YYYY-MM-DDTHH:mm o similar
   observaciones?: string; // Cuadro de observaciones opcional
+  remitoCliente?: string; // N° de remito (cliente)
   historial: MovimientoStock[];
   auditoria?: AuditLogEntry[];
   ala?: string; // ej: 'A' | 'B' | 'C' | 'D'
@@ -329,6 +332,7 @@ export interface Lote {
   productoAplicado?: string; // Principio Activo o producto aplicado en el movimiento
   tipoEnvase?: string; // ej: 'Bolsa x 20 kg', 'Bolsa x 25 kg', 'Bolsa x 40 kg', 'Big Bag x 800 kg'
   envase?: string;
+  ordenProcesoId?: string;
 }
 
 export interface PreMovimientoLote {
@@ -396,6 +400,8 @@ export interface Chofer {
   patenteAcoplado?: string;
   patenteCamion?: string;
   patentes?: string;
+  licencia?: string;
+  telefono?: string;
   tara?: number; // Peso de la tara del camión en kg
 }
 
@@ -425,7 +431,7 @@ export interface SiloExtraccion {
 
 export type MotivoSalidaManual = 'Consumo a granel' | 'Manipulación' | 'Traslado a silo' | 'Descarte' | 'Descontaminación varietal';
 
-export type TipoMovimientoSilo = 'INGRESO' | 'EGRESO_OP' | 'EGRESO_MANUAL' | 'EGRESO_LOTE' | 'EGRESO' | 'AJUSTE_ZERO';
+export type TipoMovimientoSilo = 'INGRESO' | 'INGRESO_MANUAL' | 'EGRESO_OP' | 'EGRESO_MANUAL' | 'EGRESO_LOTE' | 'EGRESO' | 'AJUSTE_ZERO';
 
 export interface MovimientoSilo {
   id: string;

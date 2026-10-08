@@ -66,7 +66,7 @@ interface ModoPlantaMobileViewProps {
     fotoRemito?: string,
     firmaChofer?: string
   ) => void;
-  onDespacharStock: (loteId: string, bolsas: number, kg: number, ordenId: string) => boolean;
+  onDespacharStock: (loteId: string, bolsas: number, kg: number, ordenId: string) => boolean | Promise<boolean>;
   onDeleteOrdenCarga?: (id: string) => void;
   onSolicitarLogin?: () => void;
   onUpdateLoteEstado?: (lote: Lote, nuevoEstado: any) => void;
@@ -324,7 +324,7 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
         const cellLotes = isIncludedInFilter ? lotes.filter((l) => l.ala === a && l.sector === s) : [];
         const totalKg = cellLotes.reduce((sum, l) => sum + (l.stockKg || 0), 0);
         const totalBolsas = cellLotes.reduce((sum, l) => sum + (l.stockBolsas || 0), 0);
-        const rawSpecies = cellLotes.map((l) => l.especie).filter((e): e is string => Boolean(e));
+        const rawSpecies = cellLotes.map((l) => l.especie).filter(Boolean) as string[];
         const species: string[] = Array.from(new Set(rawSpecies));
 
         // Coincidencias con el buscador

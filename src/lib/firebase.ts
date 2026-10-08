@@ -244,12 +244,13 @@ export function mapFirestoreToLote(id: string, data: any): Lote {
     stockBolsas: data.stockBolsas || 0,
     kgPorBolsa: data.kgPorBolsa || 800,
     stockKg: data.stockKgTotal !== undefined ? data.stockKgTotal : (data.stockBolsas || 0) * (data.kgPorBolsa || 800),
+    remitoCliente: data.remitoCliente || '',
     fechaIngreso: fechaIngreso,
     campaniaId: campaniaId,
     estado: data.estado || 'Disponible',
     estadoRegistro: data.estadoRegistro || 'PRE-CARGA',
     fechaHoraProduccion: data.fechaHoraProduccion || undefined,
-    historial: data.historial || [],
+    historial: Array.isArray(data.historial) ? data.historial.map((m: any) => mapMovimientoStockToFirestore(m)) : [],
     auditoria: data.auditoria || [],
     observaciones: data.observaciones || '',
     ala: data.ala || '',
@@ -292,7 +293,10 @@ export function sanitizeForFirestore<T>(obj: T): T {
     const cleaned: Record<string, any> = {};
     for (const [key, value] of Object.entries(obj)) {
       if (value !== undefined) {
-        cleaned[key] = sanitizeForFirestore(value);
+        const sanitizedVal = sanitizeForFirestore(value);
+        if (sanitizedVal !== undefined) {
+          cleaned[key] = sanitizedVal;
+        }
       }
     }
     return cleaned as T;
@@ -309,31 +313,31 @@ export function mapLoteToFirestore(lote: Lote): any {
 
   const raw = {
     id: lote.id,
-    especie: lote.especie,
-    variedad: lote.variedad,
-    numeroLote: lote.loteNro,
-    cliente: lote.cliente,
-    tipoLote: lote.tipo,
-    categoria: lote.categoria,
-    tratamiento: lote.tratamiento,
-    stockBolsas: lote.stockBolsas,
-    kgPorBolsa: lote.kgPorBolsa,
-    stockKg: lote.stockKg !== undefined ? lote.stockKg : (lote.stockBolsas * (lote.kgPorBolsa || 40)),
-    stockKgTotal: lote.stockKg !== undefined ? lote.stockKg : (lote.stockBolsas * (lote.kgPorBolsa || 40)),
-    remitoCliente: (lote as any).remitoCliente || '',
-    estado: lote.stockBolsas === 0 ? 'Agotado' : lote.estado,
+    especie: lote.especie || '',
+    variedad: lote.variedad || '',
+    numeroLote: lote.loteNro || '',
+    cliente: lote.cliente || '',
+    tipoLote: lote.tipo || 'Final',
+    categoria: lote.categoria || '',
+    tratamiento: lote.tratamiento || ['Sin Tratar'],
+    stockBolsas: Number(lote.stockBolsas) || 0,
+    kgPorBolsa: Number(lote.kgPorBolsa) || 40,
+    stockKg: lote.stockKg !== undefined && lote.stockKg !== null ? Number(lote.stockKg) : ((Number(lote.stockBolsas) || 0) * (Number(lote.kgPorBolsa) || 40)),
+    stockKgTotal: lote.stockKg !== undefined && lote.stockKg !== null ? Number(lote.stockKg) : ((Number(lote.stockBolsas) || 0) * (Number(lote.kgPorBolsa) || 40)),
+    remitoCliente: (lote as any).remitoCliente ? String((lote as any).remitoCliente).trim() : '',
+    estado: lote.stockBolsas === 0 ? 'Agotado' : (lote.estado || 'Disponible'),
     estadoRegistro: lote.estadoRegistro || 'PRE-CARGA',
     fechaHoraProduccion: lote.fechaHoraProduccion || null,
     fechaIngreso: fechaIngreso,
     campaniaId: campaniaId,
-    producto: lote.producto,
-    historial: lote.historial || [],
-    auditoria: lote.auditoria || [],
+    producto: lote.producto || 'Ninguno',
+    historial: Array.isArray(lote.historial) ? lote.historial.map(m => mapMovimientoStockToFirestore(m)) : [],
+    auditoria: Array.isArray(lote.auditoria) ? lote.auditoria.map(a => sanitizeForFirestore(a)) : [],
     observaciones: lote.observaciones || '',
     ala: lote.ala || '',
     sector: lote.sector || '',
     ubicacionAcopio: lote.ubicacionAcopio || '',
-    humedad: lote.humedad !== undefined && lote.humedad !== null ? Number(lote.humedad) : null,
+    humedad: lote.humedad !== undefined && lote.humedad !== null && !isNaN(Number(lote.humedad)) ? Number(lote.humedad) : null,
     pesoDeMil: lote.pesoDeMil !== undefined && lote.pesoDeMil !== null && !isNaN(Number(lote.pesoDeMil)) ? Number(lote.pesoDeMil) : null,
     inaseInicio: lote.inaseInicio || '',
     inaseFinal: lote.inaseFinal || '',
@@ -343,7 +347,7 @@ export function mapLoteToFirestore(lote: Lote): any {
     numeroBolsonOrigen: lote.numeroBolsonOrigen || lote.bolsonOrigenNro || '',
     bolsonOrigenNro: lote.bolsonOrigenNro || lote.numeroBolsonOrigen || '',
     sectorBolsonOrigen: lote.sectorBolsonOrigen || '',
-    esMovimiento: lote.esMovimiento || false,
+    esMovimiento: Boolean(lote.esMovimiento),
     loteOrigen: lote.loteOrigen || '',
     tipoMovimiento: lote.tipoMovimiento || '',
     fechaMovimiento: lote.fechaMovimiento || '',
@@ -352,6 +356,32 @@ export function mapLoteToFirestore(lote: Lote): any {
     preMovimientos: lote.preMovimientos || []
   };
 
+  return sanitizeForFirestore(raw);
+}
+
+/**
+ * Sanitiza y prepara un MovimientoStock para su persistencia segura en subcolecciones y campos de Firestore,
+ * garantizando que ningún campo sea undefined y proveyendo valores por defecto seguros.
+ */
+export function mapMovimientoStockToFirestore(mov: any): any {
+  if (!mov || typeof mov !== 'object') return {};
+  const raw: Record<string, any> = {
+    id: mov.id || `MOV-${Date.now()}`,
+    fecha: mov.fecha || new Date().toISOString().split('T')[0],
+    tipo: mov.tipo || 'Movimiento',
+    cantidadBolsas: Number(mov.cantidadBolsas) || 0,
+    kgPorBolsa: Number(mov.kgPorBolsa) || 40,
+    cantidadKg: Number(mov.cantidadKg) || 0,
+    detalle: mov.detalle || '',
+    remitoCliente: mov.remitoCliente !== undefined && mov.remitoCliente !== null ? String(mov.remitoCliente).trim() : '',
+    destino: mov.destino !== undefined && mov.destino !== null ? String(mov.destino).trim() : '',
+    chofer: mov.chofer !== undefined && mov.chofer !== null ? String(mov.chofer).trim() : '',
+  };
+  if (mov.hora) raw.hora = String(mov.hora);
+  if (mov.tipoSalida) raw.tipoSalida = String(mov.tipoSalida);
+  if (mov.ordenId) raw.ordenId = String(mov.ordenId);
+  if (mov.tratamiento) raw.tratamiento = mov.tratamiento;
+  if (mov.producto) raw.producto = mov.producto;
   return sanitizeForFirestore(raw);
 }
 

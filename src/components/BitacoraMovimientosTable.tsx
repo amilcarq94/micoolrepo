@@ -6,7 +6,7 @@
 import React, { useState, useMemo } from 'react';
 import { Lote, MovimientoStock, EstadoLoteType, OrdenCarga, AuditLogEntry } from '../types';
 import { formatNumberArg, formatDateStr } from '../utils/formatters';
-import { db, mapLoteToFirestore, sanitizeForFirestore } from '../lib/firebase';
+import { db, mapLoteToFirestore, sanitizeForFirestore, mapMovimientoStockToFirestore } from '../lib/firebase';
 import { collection, doc, writeBatch } from 'firebase/firestore';
 import {
   ArrowUpRight,
@@ -376,9 +376,9 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
         esPrecarga: esPrecargaMov,
         cantidadBolsas: Math.abs(mov.cantidadBolsas),
         cantidadKg: Math.abs(mov.cantidadKg),
-        remitoCliente: mov.remitoCliente,
-        destino: mov.destino,
-        chofer: mov.chofer,
+        remitoCliente: mov.remitoCliente || '',
+        destino: mov.destino || '',
+        chofer: mov.chofer || '',
         detalle: esPrecargaMov && !mov.detalle?.includes('Pre-carga')
           ? `${mov.detalle || 'Alta preliminar'} (Pre-carga informativa)`
           : mov.detalle,
@@ -410,9 +410,9 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                 tipoMovimiento: 'Despacho',
                 cantidadBolsas: b,
                 cantidadKg: k,
-                remitoCliente: o.remitoCliente || '-',
-                destino: o.destino || '-',
-                chofer: o.chofer,
+                remitoCliente: o.remitoCliente || '',
+                destino: o.destino || '',
+                chofer: o.chofer || '',
                 detalle: `Despacho según Orden de Carga ${o.id}`,
                 ordenId: o.id,
               });
@@ -433,6 +433,9 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
           esPrecarga: true,
           cantidadBolsas: lote.stockBolsas,
           cantidadKg: lote.stockKg || lote.stockBolsas * (lote.kgPorBolsa || 40),
+          remitoCliente: (lote as any).remitoCliente || '',
+          destino: lote.ubicacionAcopio || '',
+          chofer: '',
           detalle: 'Alta preliminar en Pre-carga (Informativa - no suma a ingresos)',
         });
       } else {
@@ -451,6 +454,9 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
           esPrecarga: false,
           cantidadBolsas: bolsasIniciales,
           cantidadKg: kgIniciales,
+          remitoCliente: (lote as any).remitoCliente || '',
+          destino: lote.ubicacionAcopio || '',
+          chofer: '',
           detalle: 'Alta de bolsas en planta (Lote Realizado)',
         });
       }
@@ -854,7 +860,7 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
       const loteRef = doc(db, 'lotes', lote.id);
       const movRef = doc(collection(db, 'lotes', lote.id, 'movimientos'), movAltaId);
       batch.set(loteRef, mapLoteToFirestore(loteActualizado));
-      batch.set(movRef, sanitizeForFirestore(nuevoMovAlta));
+      batch.set(movRef, mapMovimientoStockToFirestore(nuevoMovAlta));
       await batch.commit();
 
       // 2. Notificar callbacks de React
@@ -928,16 +934,16 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
 
         const movIdFinal = editingRecord.id && !editingRecord.id.startsWith('OC-') ? editingRecord.id : `MOV-${Date.now()}`;
 
-        const movModificado: MovimientoStock = {
+        const movModificado: MovimientoStock = mapMovimientoStockToFirestore({
           id: movIdFinal,
           fecha: formFecha,
           tipo: formTipoMov,
           cantidadBolsas: deltaBolsas,
           kgPorBolsa: lote.kgPorBolsa || 40,
           cantidadKg: deltaKg,
-          remitoCliente: formRemitoCliente.trim() || undefined,
-          destino: formDestino.trim() || undefined,
-          chofer: formChofer.trim() || undefined,
+          remitoCliente: formRemitoCliente.trim() || '',
+          destino: formDestino.trim() || '',
+          chofer: formChofer.trim() || '',
           detalle: formDetalle.trim() || `${formTipoMov} modificada en bitácora`,
           tipoSalida:
             formDireccion === 'Salida' && formTipoMov !== 'Ajuste de Auditoría'
@@ -948,7 +954,7 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                 : 'consumo'
               : undefined,
           ordenId: editingRecord.ordenId || (editingRecord.id.startsWith('OC-') ? editingRecord.id.replace('OC-', '') : undefined),
-        };
+        });
 
         movGuardado = movModificado;
 
@@ -968,9 +974,9 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
               fecha: formFecha,
               cantidadBolsas: Math.abs(deltaBolsas),
               kgTotales: Math.abs(deltaKg),
-              remitoCliente: formRemitoCliente.trim() || ordenMatch.remitoCliente,
-              destino: formDestino.trim() || ordenMatch.destino,
-              chofer: formChofer.trim() || ordenMatch.chofer,
+              remitoCliente: formRemitoCliente.trim() || ordenMatch.remitoCliente || '',
+              destino: formDestino.trim() || ordenMatch.destino || '',
+              chofer: formChofer.trim() || ordenMatch.chofer || '',
             };
             try {
               await onSaveOrdenCarga(ordenActualizada);
@@ -981,16 +987,16 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
         }
       } else {
         // Modo Nuevo Movimiento
-        const nuevoMovimiento: MovimientoStock = {
+        const nuevoMovimiento: MovimientoStock = mapMovimientoStockToFirestore({
           id: `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
           fecha: formFecha,
           tipo: formTipoMov,
           cantidadBolsas: deltaBolsas,
           kgPorBolsa: lote.kgPorBolsa || 40,
           cantidadKg: deltaKg,
-          remitoCliente: formRemitoCliente.trim() || undefined,
-          destino: formDestino.trim() || undefined,
-          chofer: formChofer.trim() || undefined,
+          remitoCliente: formRemitoCliente.trim() || '',
+          destino: formDestino.trim() || '',
+          chofer: formChofer.trim() || '',
           detalle: formDetalle.trim() || `${formTipoMov} registrada en bitácora`,
           tipoSalida:
             formDireccion === 'Salida' && formTipoMov !== 'Ajuste de Auditoría'
@@ -1000,7 +1006,7 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                 ? 'movimiento'
                 : 'consumo'
               : undefined,
-        };
+        });
         movGuardado = nuevoMovimiento;
         nuevoHistorial = [nuevoMovimiento, ...baseHistory];
       }
@@ -1046,7 +1052,7 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
       batch.set(loteRef, mapLoteToFirestore(loteActualizado));
       if (movGuardado.id && !movGuardado.id.startsWith('OC-')) {
         const movRef = doc(collection(db, 'lotes', lote.id, 'movimientos'), movGuardado.id);
-        batch.set(movRef, sanitizeForFirestore(movGuardado));
+        batch.set(movRef, mapMovimientoStockToFirestore(movGuardado));
       }
       await batch.commit();
 
@@ -1240,7 +1246,7 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
         for (const mov of hist) {
           if (mov.id && !mov.id.startsWith('OC-')) {
             const movRef = doc(collection(db, 'lotes', lote.id, 'movimientos'), mov.id);
-            batch.set(movRef, sanitizeForFirestore(mov));
+            batch.set(movRef, mapMovimientoStockToFirestore(mov));
           }
         }
       }

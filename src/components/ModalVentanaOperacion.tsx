@@ -20,10 +20,14 @@ import {
 export interface ModalVentanaOperacionProps {
   isOpen: boolean;
   onClose: () => void;
-  title: React.ReactNode;
+  title?: React.ReactNode;
+  titulo?: React.ReactNode;
   subtitle?: string;
+  subtitulo?: string;
   icon?: React.ElementType;
+  icono?: React.ReactNode;
   badge?: React.ReactNode;
+  badgeText?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
   maxWidth?: string; // default 'max-w-5xl'
@@ -42,9 +46,13 @@ export const ModalVentanaOperacion: React.FC<ModalVentanaOperacionProps> = ({
   isOpen,
   onClose,
   title,
+  titulo,
   subtitle,
+  subtitulo,
   icon: Icon,
+  icono,
   badge,
+  badgeText,
   children,
   footer,
   maxWidth = 'max-w-5xl',
@@ -56,6 +64,9 @@ export const ModalVentanaOperacion: React.FC<ModalVentanaOperacionProps> = ({
   headerRightExtra,
   hideHeader = false,
 }) => {
+  const displayTitle = title ?? titulo;
+  const displaySubtitle = subtitle ?? subtitulo;
+  const displayBadge = badge ?? badgeText;
   const [isMaximized, setIsMaximized] = useState<boolean>(defaultMaximized);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [zoomLevel, setZoomLevel] = useState<number>(initialZoom);
@@ -179,16 +190,21 @@ export const ModalVentanaOperacion: React.FC<ModalVentanaOperacionProps> = ({
                   <Icon className="w-5 h-5" />
                 </div>
               )}
+              {!Icon && icono && (
+                <div className="p-2 bg-white/10 rounded-xl text-amber-300 shrink-0 border border-white/10 flex items-center justify-center">
+                  {icono}
+                </div>
+              )}
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-serif font-bold text-sm sm:text-base text-white tracking-wide truncate">
-                    {title}
+                    {displayTitle}
                   </h3>
-                  {badge && <div className="shrink-0">{badge}</div>}
+                  {displayBadge && <div className="shrink-0">{displayBadge}</div>}
                 </div>
-                {subtitle && (
+                {displaySubtitle && (
                   <p className="text-[11px] text-emerald-100/80 truncate mt-0.5">
-                    {subtitle}
+                    {displaySubtitle}
                   </p>
                 )}
               </div>

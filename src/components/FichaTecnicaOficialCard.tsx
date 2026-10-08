@@ -78,11 +78,12 @@ export const FichaTecnicaOficialCard: React.FC<FichaTecnicaOficialCardProps> = (
 
   // Lógica de Tratamiento
   const isTratado = (() => {
-    if (Array.isArray(lote.tratamiento)) {
-      return lote.tratamiento.some((t) => t.toLowerCase().includes('tratado') || t.toLowerCase().includes('curado'));
+    const trat = (lote as any).tratamiento;
+    if (Array.isArray(trat)) {
+      return trat.some((t: any) => String(t).toLowerCase().includes('tratado') || String(t).toLowerCase().includes('curado'));
     }
-    if (typeof lote.tratamiento === 'string') {
-      return lote.tratamiento.toLowerCase().includes('tratado') || lote.tratamiento.toLowerCase().includes('curado');
+    if (typeof trat === 'string') {
+      return trat.toLowerCase().includes('tratado') || trat.toLowerCase().includes('curado');
     }
     return false;
   })();

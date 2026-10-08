@@ -196,7 +196,7 @@ export const RegistrarSalida: React.FC<RegistrarSalidaProps> = ({
       ) || lote.cliente;
       setCliente(shortName);
 
-      const matchedTipo = lote.estado === 'Final' || lote.estado === 'Intermedio' ? lote.estado : 'Intermedio';
+      const matchedTipo = lote.tipo === 'Final' || lote.tipo === 'Intermedio' ? lote.tipo : 'Intermedio';
       setTipoLote(matchedTipo);
 
       const matchedProd = ["Preba", "Original", "Primu"].find(p => 

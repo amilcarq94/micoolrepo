@@ -8,21 +8,24 @@ import { LoteLimitsConfig, DEFAULT_LOTE_LIMITS } from '../types';
 import { Sliders, X, Check, RefreshCw, AlertCircle, Scale, Package } from 'lucide-react';
 
 interface LoteLimitsConfigModalProps {
-  isOpen: boolean;
-  limits: LoteLimitsConfig;
+  isOpen?: boolean;
+  limits?: LoteLimitsConfig;
+  currentConfig?: LoteLimitsConfig;
   onSave: (newLimits: LoteLimitsConfig) => void;
   onClose: () => void;
 }
 
 export const LoteLimitsConfigModal: React.FC<LoteLimitsConfigModalProps> = ({
-  isOpen,
+  isOpen = true,
   limits,
+  currentConfig,
   onSave,
   onClose,
 }) => {
-  const [maxKg, setMaxKg] = useState<number>(limits.maxKgPorLote || DEFAULT_LOTE_LIMITS.maxKgPorLote);
-  const [maxBolsas, setMaxBolsas] = useState<number>(limits.maxBolsasPorLote || DEFAULT_LOTE_LIMITS.maxBolsasPorLote);
-  const [kgBolsa, setKgBolsa] = useState<number>(limits.kgPorBolsaDefault || DEFAULT_LOTE_LIMITS.kgPorBolsaDefault);
+  const activeLimits = limits || currentConfig || DEFAULT_LOTE_LIMITS;
+  const [maxKg, setMaxKg] = useState<number>(activeLimits.maxKgPorLote || DEFAULT_LOTE_LIMITS.maxKgPorLote);
+  const [maxBolsas, setMaxBolsas] = useState<number>(activeLimits.maxBolsasPorLote || DEFAULT_LOTE_LIMITS.maxBolsasPorLote);
+  const [kgBolsa, setKgBolsa] = useState<number>(activeLimits.kgPorBolsaDefault || DEFAULT_LOTE_LIMITS.kgPorBolsaDefault);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 

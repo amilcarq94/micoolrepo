@@ -9,7 +9,7 @@ import { getLoteAuditoria } from '../utils/audit';
 import { formatNumberArg, formatKg, formatBolsas, formatDateStr } from '../utils/formatters';
 import { LogoSiloLoose } from './Logo';
 import { ArrowLeft, ArrowUpRight, ArrowDownRight, Plus, AlertCircle, Trash2, ShieldCheck, Download, QrCode, Barcode, Clock, Calendar, User, Edit2, Edit3, KeyRound, X, Warehouse, FileText, FileSpreadsheet, Package, Loader2, RotateCcw, Check, CheckCircle, CheckCircle2, SlidersHorizontal, ChevronDown, ChevronUp, Tag, Truck, ArrowRight, Search, Layers, FileDown, Printer, Settings, MapPin, Scale } from 'lucide-react';
-import { db, mapLoteToFirestore, sanitizeForFirestore } from '../lib/firebase';
+import { db, mapLoteToFirestore, sanitizeForFirestore, mapMovimientoStockToFirestore } from '../lib/firebase';
 import { collection, doc, writeBatch } from 'firebase/firestore';
 import { QrCodeModal } from './QrCodeModal';
 import { BarcodeLabelModal } from './BarcodeLabelModal';
@@ -322,9 +322,9 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
         kgPorBolsa: pesoBolsa,
         cantidadKg: totalKgMov,
         detalle: detalle.trim() || 'Pasado a consumo de bolsas',
-        remitoCliente: remitoClienteModal.trim() || undefined,
+        remitoCliente: remitoClienteModal.trim() || '',
         destino: destinoModal.trim() || 'Consumo',
-        chofer: choferModal.trim() || undefined,
+        chofer: choferModal.trim() || '',
         tipoSalida: 'consumo',
       };
 
@@ -416,6 +416,9 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
           cantidadBolsas: nuevoAltaBolsas,
           kgPorBolsa: pesoBolsa,
           cantidadKg: totalKgAlta,
+          remitoCliente: (lote as any).remitoCliente || '',
+          destino: lote.ubicacionAcopio || '',
+          chofer: '',
           detalle: `Alta inicial del lote ajustada por auditoría a ${nuevoAltaBolsas} bolsas`,
         });
       }
@@ -453,7 +456,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
           auditoria: [auditEntry, ...(lote.auditoria || [])]
         };
         batch.set(loteRef, mapLoteToFirestore(loteActualizado));
-        batch.set(movRef, sanitizeForFirestore(movAuditoria));
+        batch.set(movRef, mapMovimientoStockToFirestore(movAuditoria));
         await batch.commit();
 
         // 2. Actualizar estado en memoria y notificar al estado global
@@ -525,7 +528,7 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
       detalle: motivoSalidaManual.trim() || `Salida manual registrada (${bolsasSalidaManual} bolsas)`,
       remitoCliente: remitoClienteSalidaManual.trim() || '-',
       destino: destinoSalidaManual.trim() || '-',
-      chofer: choferSalidaManual.trim() || undefined,
+      chofer: choferSalidaManual.trim() || '-',
       tipoSalida: 'manual'
     };
 

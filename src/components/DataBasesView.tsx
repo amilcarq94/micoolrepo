@@ -9,7 +9,9 @@ interface DataBasesViewProps {
   choferes?: Chofer[];
   bolsones?: any;
   lotes?: Lote[];
-  siloStocks?: Record<SiloId, { kg: number; especie: string; cliente: string; variedad?: string }>;
+  siloStocks?: any;
+  clientes?: string[];
+  especies?: string[];
   movimientosSilo?: MovimientoSilo[];
   initialSubTab?: 'planta' | 'parking-autorizados';
   onSavePlantaConfig: (newConfig: PlantaConfig) => void;

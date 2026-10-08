@@ -3542,6 +3542,14 @@ export const LotesView: React.FC<LotesViewProps> = ({
                                     PRE
                                   </span>
                                 )}
+                                {((l.inaseInicio && l.inaseInicio.trim() !== '') || (l.inaseFinal && l.inaseFinal.trim() !== '')) && (
+                                  <span
+                                    className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] font-black cursor-help shadow-2xs hover:bg-blue-700 hover:scale-110 transition-transform shrink-0"
+                                    title={`Datos INASE cargados:\n• Inicio: ${l.inaseInicio || '—'}\n• Final: ${l.inaseFinal || '—'}`}
+                                  >
+                                    i
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-1 text-[11px] text-slate-500 font-mono">
                                 <Calendar className="w-3 h-3 text-slate-400" />
@@ -3707,6 +3715,14 @@ export const LotesView: React.FC<LotesViewProps> = ({
                                 {l.estadoRegistro === 'PRE-CARGA' && (
                                   <span className="px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[9px] rounded font-mono" title="Pre-Carga: Planificado">
                                     PRE
+                                  </span>
+                                )}
+                                {((l.inaseInicio && l.inaseInicio.trim() !== '') || (l.inaseFinal && l.inaseFinal.trim() !== '')) && (
+                                  <span
+                                    className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] font-black cursor-help shadow-2xs hover:bg-blue-700 hover:scale-110 transition-transform shrink-0"
+                                    title={`Datos INASE cargados:\n• Inicio: ${l.inaseInicio || '—'}\n• Final: ${l.inaseFinal || '—'}`}
+                                  >
+                                    i
                                   </span>
                                 )}
                               </div>

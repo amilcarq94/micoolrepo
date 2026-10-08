@@ -343,8 +343,9 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
     // 4. Base de variedades de plantaConfig
     if (plantaConfig?.variedadesDb) {
       plantaConfig.variedadesDb.forEach((v) => {
-        if (v.cliente && v.cliente.trim().toLowerCase() === clienteNorm && v.variedad) {
-          setVars.add(v.variedad);
+        const varName = (v as any).variedad || v.nombre;
+        if (v.cliente && v.cliente.trim().toLowerCase() === clienteNorm && varName) {
+          setVars.add(varName);
         }
       });
     }

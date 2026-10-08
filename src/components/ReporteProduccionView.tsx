@@ -49,6 +49,7 @@ export interface ReporteProduccionViewProps {
   clientes?: string[];
   onSelectLote?: (lote: Lote) => void;
   onNavigateToLotes?: () => void;
+  onRefresh?: () => Promise<void> | void;
 }
 
 export interface LoteProductionSummary {
@@ -81,13 +82,35 @@ export const ReporteProduccionView: React.FC<ReporteProduccionViewProps> = ({
   plantaConfig,
   clientes: clientesProp = [],
   onSelectLote,
-  onNavigateToLotes
+  onNavigateToLotes,
+  onRefresh
 }) => {
   // 1. Estados de Filtros
   const [filterCliente, setFilterCliente] = useState<string>('');
   const [filterVariedad, setFilterVariedad] = useState<string>('');
   const [filterTratamiento, setFilterTratamiento] = useState<string>('todos');
   const [searchTerm, setSearchTerm] = useState<string>('');
+
+  // 1.1 Estado de Actualización / Sincronización de Datos
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [refreshToast, setRefreshToast] = useState<string | null>(null);
+
+  const handleActualizarDatos = async () => {
+    setIsRefreshing(true);
+    setRefreshToast(null);
+    try {
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setRefreshToast('¡Datos actualizados! Se sincronizaron las últimas modificaciones registradas en los lotes.');
+    } catch (err) {
+      console.error('Error al actualizar datos del reporte:', err);
+      setRefreshToast('Error al actualizar datos. Por favor intente nuevamente.');
+    } finally {
+      setIsRefreshing(false);
+      setTimeout(() => setRefreshToast(null), 4000);
+    }
+  };
 
   // 2. Estado para el modal de inspección/revisión de lotes
   const [variedadDetalleSeleccionada, setVariedadDetalleSeleccionada] = useState<VariedadProductionRow | null>(null);
@@ -148,33 +171,41 @@ export const ReporteProduccionView: React.FC<ReporteProduccionViewProps> = ({
     return Array.from(setTrat);
   }, [plantaConfig, lotes]);
 
+// Helper para determinar si un lote está marcado como tratado
+const isLoteTratadoHelper = (l: Lote): boolean => {
+  if (!l) return false;
+  const t = (l as any).tratamiento;
+  if (Array.isArray(t)) {
+    const hasTrat = t.some(item => {
+      const s = String(item).toLowerCase().trim();
+      return s !== 'sin tratar' && s !== 'ninguno' && s !== '' && !s.includes('sin');
+    });
+    if (hasTrat) return true;
+  } else if (typeof t === 'string') {
+    const s = String(t).toLowerCase().trim();
+    if (s !== 'sin tratar' && s !== 'ninguno' && s !== '' && !s.includes('sin')) return true;
+  }
+  if (l.producto && l.producto.toLowerCase().trim() !== 'ninguno' && l.producto.trim() !== '') return true;
+  if (l.productoAplicado && l.productoAplicado.toLowerCase().trim() !== 'ninguno' && l.productoAplicado.trim() !== '') return true;
+  if (l.tipo && l.tipo.toLowerCase().includes('tratado')) return true;
+  if (l.tipoMovimiento && l.tipoMovimiento.toLowerCase().includes('tratado')) return true;
+  if (l.estado && String(l.estado).toLowerCase().includes('tratado')) return true;
+  return false;
+};
+
   // 4. Lotes que aplican al Reporte de Producción:
   // Regla de Negocio:
-  // "para cantidad de kg producidos solo contar los lotes que se hayan dado de alta como realizado,
-  // no incluir movimientos (intermedio a final, intermedio a final tratado, final a final tratado) como Total Kilos Producidos,
-  // solo contar los kilos que se hayan pasado a tratado en 'kilos tratado'"
+  // "para kilos producidos tomar todos los kilos dados de alta de los lotes, no contar los kilos 'tratados' para cantidad de kilos producidos"
+  // "no contar aquellos kg en lotes generados por movimientos"
   const lotesAptosProduccion = useMemo(() => {
     return lotes.filter((lote) => {
-      // a) Solo contar lotes dados de alta como REALIZADO
-      const esRealizado = lote.estadoRegistro === 'REALIZADO';
-      if (!esRealizado) return false;
-
+      // a) Se toman todos los lotes dados de alta en planta (independientemente del estado de registro)
       // b) Lotes originados por movimiento:
       // Si el lote proviene de un movimiento (int a final, int a final tratado, final a final tratado):
-      // NO suma a Total Kilos Producidos. Solo se incluye si fue pasado a tratado para computar en "kilos tratado".
+      // NO suma a Kilos Producidos. Solo se incluye si fue pasado a tratado para computar en "kilos tratado".
       const esMovimiento = isLoteOriginadoPorMovimiento(lote);
       if (esMovimiento) {
-        const trats = Array.isArray(lote.tratamiento) ? lote.tratamiento : [lote.tratamiento || 'Sin Tratar'];
-        const isTratado =
-          trats.some(t => {
-            const tl = String(t).trim().toLowerCase();
-            return tl !== 'sin tratar' && tl !== 'ninguno' && tl !== '' && !tl.includes('sin');
-          }) ||
-          Boolean(lote.producto && lote.producto.toLowerCase() !== 'ninguno' && lote.producto.trim() !== '') ||
-          Boolean(lote.productoAplicado && lote.productoAplicado.toLowerCase() !== 'ninguno' && lote.productoAplicado.trim() !== '') ||
-          Boolean(lote.tipoMovimiento && lote.tipoMovimiento.toLowerCase().includes('tratado')) ||
-          Boolean(lote.tipo && lote.tipo.toLowerCase().includes('tratado'));
-
+        const isTratado = isLoteTratadoHelper(lote);
         // Si no es tratado, un lote de movimiento no aporta a producción ni a tratado, se excluye
         if (!isTratado) return false;
       }
@@ -211,54 +242,79 @@ export const ReporteProduccionView: React.FC<ReporteProduccionViewProps> = ({
         const t = (m.tipo || '').toLowerCase();
         return t.includes('entrada') || t === 'alta' || t.includes('ingreso') || t.includes('excel');
       });
-      const kgEntradas = entradas.reduce((acc, m) => acc + (Number(m.cantidadKg) || 0), 0);
+      const kgEntradas = entradas.reduce((acc, m) => {
+        const kgDirecto = Number(m.cantidadKg) || 0;
+        if (kgDirecto > 0) return acc + kgDirecto;
+        const b = Number(m.cantidadBolsas) || 0;
+        const pb = Number(m.kgPorBolsa) || Number(lote.kgPorBolsa) || 40;
+        return acc + (b * pb);
+      }, 0);
 
       // d) Stock actual en el sistema
-      const stockActualKg = Number(lote.stockKg) || ((Number(lote.stockBolsas) || 0) * (Number(lote.kgPorBolsa) || 800));
+      const stockActualKg = Number(lote.stockKg) || ((Number(lote.stockBolsas) || 0) * (Number(lote.kgPorBolsa) || 40));
       const stockActualBolsas = Number(lote.stockBolsas) || 0;
 
-      // e) KILOS PRODUCIDOS:
-      // "para el reporte de produccion no incluir movimientos(intermedio a final, intermedio a final tratado, final a final tratado) como Total Kilos Producidos"
-      let kgProducidos = 0;
-      if (!esMovimiento) {
-        const kgReconstituidos = stockActualKg + kgDespachados + kgMovimientos;
-        kgProducidos = Math.max(kgEntradas, kgReconstituidos, stockActualKg);
+      // e) Detección de Tratamiento:
+      const isTratado = isLoteTratadoHelper(lote);
 
-        if (kgProducidos === 0 && stockActualBolsas > 0) {
-          kgProducidos = stockActualBolsas * (Number(lote.kgPorBolsa) || 800);
-        }
-        if (kgProducidos === 0 && entradas.length > 0) {
-          const bolsasEnt = entradas.reduce((acc, m) => acc + (Number(m.cantidadBolsas) || 0), 0);
-          if (bolsasEnt > 0) {
-            kgProducidos = bolsasEnt * (Number(lote.kgPorBolsa) || 800);
-          }
+      // f) Obtención de Kilos dados de alta de este lote:
+      let kgAlta = 0;
+      if (!esMovimiento) {
+        // 1. Buscar movimiento inicial de alta en planta en el historial
+        const movsAlta = entradas.filter(m => {
+          const t = (m.tipo || '').toLowerCase();
+          const d = (m.detalle || '').toLowerCase();
+          return (
+            t === 'alta' ||
+            m.id.startsWith('MOV-ALTA') ||
+            m.id.startsWith('alta-') ||
+            d.includes('alta') ||
+            d.includes('ingreso') ||
+            d.includes('stock inicial') ||
+            d.includes('precarga') ||
+            (t.includes('entrada') && !t.includes('movimiento') && !d.includes('movimiento'))
+          );
+        });
+        const kgAltaHistorial = movsAlta.reduce((acc, m) => {
+          const kgDir = Number(m.cantidadKg) || 0;
+          if (kgDir > 0) return acc + kgDir;
+          const b = Number(m.cantidadBolsas) || 0;
+          const pb = Number(m.kgPorBolsa) || Number(lote.kgPorBolsa) || 40;
+          return acc + (b * pb);
+        }, 0);
+
+        // 2. Reconstitución a partir del stock actual más salidas y movimientos para evitar pérdidas si se despachó
+        const kgReconstituidos = stockActualKg + kgDespachados + kgMovimientos;
+
+        // 3. Tomar el valor consolidado más representativo del alta del lote
+        kgAlta = Math.max(kgAltaHistorial, kgEntradas, kgReconstituidos, stockActualKg);
+        if (kgAlta === 0 && stockActualBolsas > 0) {
+          kgAlta = stockActualBolsas * (Number(lote.kgPorBolsa) || 40);
         }
       }
 
-      // f) Detección de Tratamiento y Kilos Tratados:
-      // "solo contar los kilos que se hayan pasado a tratado en 'kilos tratado'"
-      const trats = Array.isArray(lote.tratamiento) ? lote.tratamiento : [lote.tratamiento || 'Sin Tratar'];
-      const isTratado =
-        trats.some(t => {
-          const tl = String(t).trim().toLowerCase();
-          return tl !== 'sin tratar' && tl !== 'ninguno' && tl !== '' && !tl.includes('sin');
-        }) ||
-        Boolean(lote.producto && lote.producto.toLowerCase() !== 'ninguno' && lote.producto.trim() !== '') ||
-        Boolean(lote.productoAplicado && lote.productoAplicado.toLowerCase() !== 'ninguno' && lote.productoAplicado.trim() !== '') ||
-        Boolean(lote.tipoMovimiento && lote.tipoMovimiento.toLowerCase().includes('tratado')) ||
-        Boolean(lote.tipo && lote.tipo.toLowerCase().includes('tratado'));
+      // g) KILOS PRODUCIDOS:
+      // Regla de Negocio solicitada:
+      // "para kilos producidos tomar todos los kilos dados de alta de los lotes, no contar los kilos 'tratados' para cantidad de kilos producidos"
+      let kgProducidos = 0;
+      if (!esMovimiento && !isTratado) {
+        kgProducidos = kgAlta;
+      }
 
+      // h) KILOS TRATADOS:
+      // "aquellos kilos dados de alta marcados como 'tratados' son los que alimentaran 'Cantidad Kilos Tratados' en el reporte"
       let kgTratados = 0;
       if (isTratado) {
         if (esMovimiento) {
-          // Kilos que se hayan pasado a tratado en este movimiento
+          // Kilos que se hayan pasado a tratado mediante movimiento
           kgTratados = Math.max(kgEntradas, stockActualKg + kgDespachados, stockActualKg);
           if (kgTratados === 0 && stockActualBolsas > 0) {
-            kgTratados = stockActualBolsas * (Number(lote.kgPorBolsa) || 800);
+            kgTratados = stockActualBolsas * (Number(lote.kgPorBolsa) || 40);
           }
         } else {
-          // Lote de producción original que fue tratado
-          kgTratados = kgProducidos;
+          // Lote dado de alta en planta marcado como tratado:
+          // Alimenta directamente la columna de Kilos Tratados (y no suma a Kilos Producidos)
+          kgTratados = kgAlta;
         }
       }
 
@@ -351,10 +407,11 @@ export const ReporteProduccionView: React.FC<ReporteProduccionViewProps> = ({
       grupo.kgTratados += item.kgTratados;
       grupo.lotes.push(item);
       grupo.cantidadLotes = grupo.lotes.length;
-      grupo.kgSinTratar = Math.max(0, grupo.kgProducidos - grupo.kgTratados);
-      grupo.porcentajeTratado = grupo.kgProducidos > 0
-        ? Math.min(100, Math.round((grupo.kgTratados / grupo.kgProducidos) * 100))
-        : (grupo.kgTratados > 0 ? 100 : 0);
+      grupo.kgSinTratar = grupo.kgProducidos;
+      const totalVolumenGrupo = grupo.kgProducidos + grupo.kgTratados;
+      grupo.porcentajeTratado = totalVolumenGrupo > 0
+        ? Math.round((grupo.kgTratados / totalVolumenGrupo) * 100)
+        : 0;
     });
 
     // Ordenar alfabéticamente por Cliente y luego Variedad
@@ -377,14 +434,15 @@ export const ReporteProduccionView: React.FC<ReporteProduccionViewProps> = ({
       totalLotes += r.cantidadLotes;
     });
 
-    const porcentajeTratadoGlobal = totalKgProducidos > 0
-      ? Math.round((totalKgTratados / totalKgProducidos) * 100)
+    const totalVolumenGlobal = totalKgProducidos + totalKgTratados;
+    const porcentajeTratadoGlobal = totalVolumenGlobal > 0
+      ? Math.round((totalKgTratados / totalVolumenGlobal) * 100)
       : 0;
 
     return {
       totalKgProducidos,
       totalKgTratados,
-      totalKgSinTratar: Math.max(0, totalKgProducidos - totalKgTratados),
+      totalKgSinTratar: totalKgProducidos,
       porcentajeTratadoGlobal,
       totalVariedades: filasReporte.length,
       totalLotes
@@ -475,9 +533,22 @@ export const ReporteProduccionView: React.FC<ReporteProduccionViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
           <button
             type="button"
+            id="btn-actualizar-datos-reporte"
+            onClick={handleActualizarDatos}
+            disabled={isRefreshing}
+            className="px-4 py-2.5 bg-emerald-800/90 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer border border-emerald-500/40 active:scale-95 disabled:opacity-50"
+            title="Actualizar datos del reporte tras modificaciones realizadas en lotes"
+          >
+            <RotateCcw className={`w-4 h-4 text-emerald-200 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'Actualizando...' : 'Actualizar Datos'}</span>
+          </button>
+
+          <button
+            type="button"
+            id="btn-exportar-excel-reporte"
             onClick={handleExportarExcel}
             className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-emerald-950 font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer"
             title="Descargar reporte completo en formato Excel (.xlsx)"
@@ -488,12 +559,29 @@ export const ReporteProduccionView: React.FC<ReporteProduccionViewProps> = ({
         </div>
       </div>
 
+      {/* NOTIFICACIÓN TOAST DE ACTUALIZACIÓN DE DATOS */}
+      {refreshToast && (
+        <div className="p-3.5 bg-emerald-900 border border-emerald-400 text-emerald-100 rounded-2xl text-xs flex items-center justify-between shadow-lg animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0" />
+            <span className="font-semibold">{refreshToast}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRefreshToast(null)}
+            className="text-emerald-300 hover:text-white p-1 rounded cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* BANNER REGLA OFICIAL DE PRODUCCIÓN */}
       <div className="bg-emerald-50/90 border border-emerald-300/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-2xs">
         <div className="flex items-center gap-2.5 text-emerald-950">
           <ShieldCheck className="w-5 h-5 text-[#00603C] shrink-0" />
           <span>
-            <strong>Regla Oficial de Producción:</strong> Para el total de kilos producidos y tratados <strong>solo se contabilizan lotes con Alta como REALIZADO</strong>. No se cuentan lotes con "movimientos" (Int a Final, Int a Final Tratado, Final a Final Tratado) ni pre-cargas para evitar duplicación.
+            <strong>Regla Oficial de Producción:</strong> Para cantidad de kilos producidos se toman todos los kilos dados de alta de los lotes, <strong>sin contar los kilos tratados</strong>. Los kilos dados de alta marcados como tratados alimentan la columna de Kilos Tratados. No se cuentan lotes originados por movimientos para kilos producidos.
           </span>
         </div>
         <span className="font-mono font-bold text-[11px] text-[#00603C] bg-white px-3 py-1 rounded-xl border border-emerald-200 shrink-0 shadow-2xs">
@@ -918,7 +1006,7 @@ export const ReporteProduccionView: React.FC<ReporteProduccionViewProps> = ({
             <div className="bg-emerald-50/90 px-5 py-3 border-b border-emerald-200/80 text-emerald-950 text-xs flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-[#00603C] shrink-0" />
               <span>
-                <strong>Regla de Producción:</strong> Se listan exclusivamente los lotes con <strong>Alta como REALIZADO</strong> que integran esta variedad. Se excluyen movimientos (Int a Final, Int a Final Tratado, Final a Final Tratado) y pre-cargas para garantizar que no haya duplicación.
+                <strong>Regla de Producción:</strong> Se listan los lotes dados de alta que integran esta variedad. Para cantidad de kilos producidos se toman todos los kilos dados de alta de los lotes, <strong>sin contar los kilos tratados</strong>. Los kilos dados de alta marcados como tratados alimentan la columna de Kilos Tratados. No se cuentan lotes originados por movimientos para kilos producidos.
               </span>
             </div>
 
@@ -1005,7 +1093,17 @@ export const ReporteProduccionView: React.FC<ReporteProduccionViewProps> = ({
 
                           {/* Kg Producidos */}
                           <td className="py-2.5 px-3 text-right font-mono font-black text-sm text-gray-900 whitespace-nowrap">
-                            {formatNumberArg(item.kgProducidos, 0)} kg
+                            <div>{formatNumberArg(item.kgProducidos, 0)} kg</div>
+                            {item.kgProducidos === 0 && item.isTratado && (
+                              <span className="text-[9px] font-sans font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">
+                                Tratado
+                              </span>
+                            )}
+                            {item.kgProducidos === 0 && !item.isTratado && (
+                              <span className="text-[9px] font-sans font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                Movimiento
+                              </span>
+                            )}
                           </td>
 
                           {/* Kg Tratados */}

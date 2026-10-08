@@ -36,7 +36,7 @@ import { getActiveCampaniaIdStored, setActiveCampaniaIdStored, getCampaniaIdFrom
 import { findExistingChofer, mergeChoferData } from './utils/choferes';
 import { getLoteLimits } from './utils/loteLimits';
 import { LoteLimitsConfig } from './types';
-import { db, getLoteDocId, uploadBase64ToStorage, seedLotesIfEmpty, seedOrdenesProcesoIfEmpty, seedMovimientosSiloIfEmpty, seedChoferesIfEmpty, seedBolsonesIfEmpty, seedSilosEstadoIfEmpty, seedPlantaConfigIfEmpty, guardarPlantaConfigFirestore, guardarSiloEstadoFirestore, registrarMovimientoTransaccion, mapFirestoreToLote, mapLoteToFirestore, sanitizeForFirestore, mapMovimientoSiloToFirestore } from './lib/firebase';
+import { db, getLoteDocId, uploadBase64ToStorage, seedLotesIfEmpty, seedOrdenesProcesoIfEmpty, seedMovimientosSiloIfEmpty, seedChoferesIfEmpty, seedBolsonesIfEmpty, seedSilosEstadoIfEmpty, seedPlantaConfigIfEmpty, guardarPlantaConfigFirestore, guardarSiloEstadoFirestore, registrarMovimientoTransaccion, mapFirestoreToLote, mapLoteToFirestore, sanitizeForFirestore, mapMovimientoSiloToFirestore, mapMovimientoStockToFirestore } from './lib/firebase';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, runTransaction, writeBatch, getDocs } from 'firebase/firestore';
 
 export default function App() {
@@ -242,11 +242,30 @@ export default function App() {
     return Array.from(set);
   }, [lotes, salidas, ordenesCarga, ordenesProceso]);
 
-  // Colecciones filtradas según la campaña activa/fijada
+  // Colecciones filtradas según la campaña activa/fijada y estrictamente por Data Bases (Especies y Variedades oficiales)
   const filteredLotesByCampania = useMemo(() => {
-    if (activeCampaniaId === 'TODAS') return lotes;
-    return lotes.filter(l => (l.campaniaId || getCampaniaIdFromDate(l.fechaIngreso)) === activeCampaniaId);
-  }, [lotes, activeCampaniaId]);
+    const activeEspecies = (plantaConfig.especies && plantaConfig.especies.length > 0)
+      ? plantaConfig.especies.map(e => e.trim().toLowerCase())
+      : ['soja'];
+    const activeVariedades = (plantaConfig.variedadesDb && plantaConfig.variedadesDb.length > 0)
+      ? plantaConfig.variedadesDb.map(v => v.nombre.trim().toLowerCase())
+      : (plantaConfig.variedades || []).map(v => v.trim().toLowerCase());
+
+    const base = lotes.filter(l => {
+      // Si la especie del lote no está incluida en Data Bases, excluir
+      if (l.especie && activeEspecies.length > 0 && !activeEspecies.includes(l.especie.trim().toLowerCase())) {
+        return false;
+      }
+      // Si la variedad del lote no está incluida en Data Bases, excluir
+      if (l.variedad && activeVariedades.length > 0 && !activeVariedades.includes(l.variedad.trim().toLowerCase())) {
+        return false;
+      }
+      return true;
+    });
+
+    if (activeCampaniaId === 'TODAS') return base;
+    return base.filter(l => (l.campaniaId || getCampaniaIdFromDate(l.fechaIngreso)) === activeCampaniaId);
+  }, [lotes, activeCampaniaId, plantaConfig]);
 
   const filteredSalidasByCampania = useMemo(() => {
     if (activeCampaniaId === 'TODAS') return salidas;
@@ -951,7 +970,7 @@ export default function App() {
 
           // Registrar el movimiento en la subcolección del lote
           const movRef = doc(collection(db, 'lotes', targetLote.id, 'movimientos'), nuevoMov.id);
-          batch.set(movRef, nuevoMov);
+          batch.set(movRef, mapMovimientoStockToFirestore(nuevoMov));
 
           // Calcular nuevos stocks del lote padre
           const nuevoStockBolsas = Math.max(0, targetLote.stockBolsas - item.cantidadBolsas);
@@ -1610,8 +1629,10 @@ export default function App() {
       // Persistir movimientos en subcolección para sincronización en tiempo real
       if (loteGuardar.historial && loteGuardar.historial.length > 0) {
         for (const mov of loteGuardar.historial) {
-          const movRef = doc(collection(db, 'lotes', docId, 'movimientos'), mov.id);
-          batch.set(movRef, mov);
+          if (mov && mov.id) {
+            const movRef = doc(collection(db, 'lotes', docId, 'movimientos'), mov.id);
+            batch.set(movRef, mapMovimientoStockToFirestore(mov));
+          }
         }
       }
 
@@ -1697,7 +1718,7 @@ export default function App() {
         if (loteGuardar.historial && loteGuardar.historial.length > 0) {
           for (const mov of loteGuardar.historial) {
             const movRef = doc(collection(db, 'lotes', loteGuardar.id, 'movimientos'), mov.id);
-            batch.set(movRef, mov);
+            batch.set(movRef, mapMovimientoStockToFirestore(mov));
           }
         }
 
@@ -1787,7 +1808,7 @@ export default function App() {
         for (const mov of nuevosMovimientos) {
           if (mov.id && !mov.id.startsWith('OC-') && !mov.id.startsWith('alta-')) {
             const movRef = doc(collection(db, 'lotes', loteId, 'movimientos'), mov.id);
-            batch.set(movRef, sanitizeForFirestore(mov));
+            batch.set(movRef, mapMovimientoStockToFirestore(mov));
           }
         }
       }
@@ -1801,20 +1822,20 @@ export default function App() {
         detalles: `Stock recalculado en todas las hojas: ${nuevoStockBolsas} bolsas (${formatNumberArg(nuevoStockKg, 2)} kg). Estado: ${nuevoEstado}.`
       };
 
-      const updateData: Record<string, any> = {
-        stockBolsas: nuevoStockBolsas,
-        stockKg: nuevoStockKg,
-        stockKgTotal: nuevoStockKg,
-        estado: nuevoEstado,
-        historial: nuevosMovimientos,
-        auditoria: [nuevoEvento, ...(loteAnterior?.auditoria || [])]
-      };
+      const updateData: Record<string, any> = sanitizeForFirestore({
+        stockBolsas: Number(nuevoStockBolsas) || 0,
+        stockKg: Number(nuevoStockKg) || 0,
+        stockKgTotal: Number(nuevoStockKg) || 0,
+        estado: nuevoEstado || 'Disponible',
+        historial: nuevosMovimientos.map(m => mapMovimientoStockToFirestore(m)),
+        auditoria: [nuevoEvento, ...(loteAnterior?.auditoria || [])].map(a => sanitizeForFirestore(a))
+      });
 
       if (loteAnterior?.estadoRegistro === 'PRE-CARGA' && nuevosMovimientos.some(m => m.tipo === 'Alta' && !m.id.startsWith('alta-pre'))) {
         updateData.estadoRegistro = 'REALIZADO';
       }
 
-      batch.set(loteRef, updateData, { merge: true });
+      batch.set(loteRef, sanitizeForFirestore(updateData), { merge: true });
       await batch.commit();
 
       // Actualizar estado local inmediatamente para refrescar la UI al instante
@@ -2336,7 +2357,7 @@ export default function App() {
           detalles: `Remito ${nuevaSalida.id}. Chofer: ${nuevaSalida.choferNombre} (DNI ${nuevaSalida.choferDni}), Patente: ${nuevaSalida.patenteCamion || 'N/A'}.`
         };
 
-        transaction.set(movRef, ultimoMov);
+        transaction.set(movRef, mapMovimientoStockToFirestore(ultimoMov));
         transaction.update(loteRef, {
           stockBolsas: nuevoStockBolsas,
           stockKgTotal: nuevoStockKg,
@@ -2388,7 +2409,7 @@ export default function App() {
         if (lote.historial && lote.historial.length > 0) {
           for (const mov of lote.historial) {
             const movRef = doc(collection(db, 'lotes', docId, 'movimientos'), mov.id);
-            batch.set(movRef, mov);
+            batch.set(movRef, mapMovimientoStockToFirestore(mov));
           }
         }
       }
@@ -2416,7 +2437,7 @@ export default function App() {
         if (lote.historial && lote.historial.length > 0) {
           for (const mov of lote.historial) {
             const movRef = doc(collection(db, 'lotes', docId, 'movimientos'), mov.id);
-            batch.set(movRef, mov);
+            batch.set(movRef, mapMovimientoStockToFirestore(mov));
           }
         }
       }
@@ -3575,6 +3596,7 @@ export default function App() {
               setLoteDetailSourceView('reporte-produccion');
             }}
             onNavigateToLotes={() => navigateTo('lotes')}
+            onRefresh={handleRefreshData}
           />
         ) : activeView === 'choferes' ? (
           <DataBasesView

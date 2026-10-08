@@ -167,7 +167,16 @@ export const FichaTecnicaSiloModal: React.FC<FichaTecnicaSiloModalProps> = ({
         <div className="ficha-silo-print-wrapper w-full max-w-[520px]">
           <FichaTecnicaSiloCard
             elementId="ficha-silo-printable-card"
-            ficha={ficha}
+            ficha={{
+              siloId: ficha.siloId,
+              cliente: ficha.cliente || '',
+              especie: ficha.especie || '',
+              variedad: ficha.variedad || '',
+              stockKg: ficha.capacidadKg || 0,
+              humedad: ficha.humedad ?? '',
+              categoria: ficha.categoria,
+              ultimoMovimiento: (ficha as any).ultimoMovimiento
+            }}
           />
         </div>
 

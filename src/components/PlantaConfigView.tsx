@@ -28,12 +28,12 @@ import {
   CheckSquare
 } from 'lucide-react';
 
-type CatalogKey = keyof PlantaConfig;
+type CatalogKey = 'clientes' | 'especies' | 'variedades' | 'tipos' | 'categorias' | 'tratamientos';
 
 interface PlantaConfigViewProps {
   plantaConfig: PlantaConfig;
   lotes?: Lote[];
-  siloStocks?: Record<SiloId, { kg: number; especie: string; cliente: string; variedad?: string }>;
+  siloStocks?: any;
   movimientosSilo?: MovimientoSilo[];
   onSavePlantaConfig: (newConfig: PlantaConfig) => void;
 }
@@ -512,8 +512,8 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
     return CATALOG_DEFINITIONS.find(c => c.key === activeCatalog) || CATALOG_DEFINITIONS[0];
   }, [activeCatalog]);
 
-  const currentList = useMemo(() => {
-    return plantaConfig[activeCatalog] || [];
+  const currentList: string[] = useMemo(() => {
+    return (plantaConfig[activeCatalog] as string[]) || [];
   }, [plantaConfig, activeCatalog]);
 
   // Filtrar lista por término de búsqueda
@@ -1585,7 +1585,7 @@ export const PlantaConfigView: React.FC<PlantaConfigViewProps> = ({
                                   </span>
                                 )}
 
-                                {(activeCatalog === 'clientes' || activeCatalog === 'especies' || activeCatalog === 'variedades') && usage.totalSilos > 0 && (
+                                {((activeCatalog as string) === 'clientes' || (activeCatalog as string) === 'especies' || (activeCatalog as string) === 'variedades') && usage.totalSilos > 0 && (
                                   <span className="text-[10px] font-semibold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200/60" title={`Presente en ${usage.totalSilos} silo(s)`}>
                                     {usage.totalSilos} {usage.totalSilos === 1 ? 'silo' : 'silos'}
                                   </span>

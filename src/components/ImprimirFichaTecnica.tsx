@@ -21,6 +21,7 @@ import {
 
 export interface ImprimirFichaTecnicaProps {
   lote: Lote;
+  ordenesProceso?: any[];
   isOpen?: boolean;
   onClose?: () => void;
   onSaveLote?: (updatedLote: Lote) => void;

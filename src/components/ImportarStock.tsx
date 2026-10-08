@@ -507,7 +507,7 @@ export const ImportarStock: React.FC<ImportarStockProps> = ({
           id: uniqueId,
           loteNro: f.loteId,
           cliente: f.cliente,
-          especie: f.especie,
+          especie: f.especie as any,
           variedad: f.variedad,
           tipo: f.tipo as TipoLoteType,
           categoria: (f.categoria as any) || 'Original',
