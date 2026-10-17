@@ -9,7 +9,6 @@ import { formatNumberArg, formatKg } from '../utils/formatters';
 import { DespachosSection } from './DespachosSection';
 import { QrCodeModal } from './QrCodeModal';
 import { LoteFichaQuickModal } from './LoteFichaQuickModal';
-import { VisorSilosPlantaMovil } from './VisorSilosPlantaMovil';
 import { unlockScannerAudio } from '../utils/scannerAudio';
 import {
   Warehouse,
@@ -97,8 +96,8 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
   onUpdateLoteEstado: _onUpdateLoteEstado,
   onRegistrarIngresoSilo: _onRegistrarIngresoSilo
 }) => {
-  // Pestañas principales de Planta Móvil: Visor de Silos (Centro de Información), Mapa de Calor, Despachos (Playa)
-  const [subTab, setSubTab] = useState<'VISOR_SILOS' | 'MAPA_CALOR' | 'DESPACHOS_PLAYA'>('VISOR_SILOS');
+  // Pestañas principales de Planta Móvil: Mapa de Calor (Acopio), Despachos (Playa)
+  const [subTab, setSubTab] = useState<'MAPA_CALOR' | 'DESPACHOS_PLAYA'>('MAPA_CALOR');
   const [isNavDropdownOpen, setIsNavDropdownOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
 
@@ -143,10 +142,10 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
 
   // Helper para normalizar tratamientos de un lote
   const getTratamientosDeLote = (lote: Lote): string[] => {
-    if (!lote.tratamiento) return ['Sin Tratar'];
+    if (!lote.tratamiento) return ['Sin Curar'];
     if (Array.isArray(lote.tratamiento)) return lote.tratamiento.filter(Boolean);
     if (typeof lote.tratamiento === 'string') return [lote.tratamiento];
-    return ['Sin Tratar'];
+    return ['Sin Curar'];
   };
 
   // Clientes disponibles para filtros
@@ -181,8 +180,8 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
   // Tratamientos disponibles para filtros
   const availableTratamientos = useMemo(() => {
     const list = new Set<string>();
-    list.add('Tratado');
-    list.add('Sin Tratar');
+    list.add('Curado');
+    list.add('Sin Curar');
     lotes.forEach((l) => {
       getTratamientosDeLote(l).forEach((t) => {
         if (t) list.add(t);
@@ -253,7 +252,7 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
         const trats = getTratamientosDeLote(lote);
         const filtNorm = filtroTratamiento.toLowerCase();
 
-        if (filtNorm === 'tratado') {
+        if (filtNorm === 'tratado' || filtNorm === 'curado') {
           const esTratado = trats.some((t) =>
             t.toLowerCase().includes('tratado') ||
             t.toLowerCase().includes('curado') ||
@@ -261,9 +260,10 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
             t.toLowerCase().includes('inocula')
           );
           if (!esTratado) return false;
-        } else if (filtNorm === 'sin tratar') {
+        } else if (filtNorm === 'sin tratar' || filtNorm === 'sin curar') {
           const esSinTratar = trats.some((t) =>
             t.toLowerCase().includes('sin tratar') ||
+            t.toLowerCase().includes('sin curar') ||
             t.toLowerCase().includes('sin tratamiento')
           );
           if (!esSinTratar) return false;
@@ -444,22 +444,7 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
       </button>
 
       {/* 3. BARRA DE ACCESO RÁPIDO - CENTRO DE INFORMACIÓN Y SECTORES DE PLANTA */}
-      <div className="grid grid-cols-3 gap-1.5 sm:gap-2 p-1 sm:p-1.5 bg-white rounded-2xl border-2 border-[#00603C]/30 shadow-sm" id="barra-acceso-rapido-planta-movil">
-        <button
-          type="button"
-          id="btn-quick-visor-silos"
-          onClick={() => setSubTab('VISOR_SILOS')}
-          className={`py-2.5 px-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-            subTab === 'VISOR_SILOS'
-              ? 'bg-[#00603C] text-white shadow-md ring-2 ring-[#C9922E]'
-              : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
-          }`}
-          title="Centro de Información: Stock, Kilos de Ingreso, Variedad y Cliente"
-        >
-          <Warehouse className={`w-4 h-4 shrink-0 ${subTab === 'VISOR_SILOS' ? 'text-[#C9922E]' : 'text-slate-500'}`} />
-          <span className="truncate">Visor Silos</span>
-        </button>
-
+      <div className="grid grid-cols-2 gap-1.5 sm:gap-2 p-1 sm:p-1.5 bg-white rounded-2xl border-2 border-[#00603C]/30 shadow-sm" id="barra-acceso-rapido-planta-movil">
         <button
           type="button"
           id="btn-quick-mapa-calor"
@@ -503,9 +488,6 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
           >
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-10 h-10 rounded-xl bg-[#00603C]/10 border border-[#00603C]/20 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
-                {subTab === 'VISOR_SILOS' && (
-                  <Warehouse className="w-5 h-5 text-[#00603C] shrink-0" />
-                )}
                 {subTab === 'MAPA_CALOR' && (
                   <Flame className="w-5 h-5 text-amber-600 shrink-0" />
                 )}
@@ -519,13 +501,11 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
                     VISTA ACTIVA:
                   </span>
                   <span className="text-sm font-black text-slate-950 uppercase tracking-wide">
-                    {subTab === 'VISOR_SILOS' && 'Visor de Silos (Centro de Información)'}
                     {subTab === 'MAPA_CALOR' && 'Mapa de Calor (Acopio)'}
                     {subTab === 'DESPACHOS_PLAYA' && 'Playa (Despachos)'}
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 truncate mt-0.5">
-                  {subTab === 'VISOR_SILOS' && 'Stock de cada silo, kilos de ingreso, variedad y cliente en vivo'}
                   {subTab === 'MAPA_CALOR' && 'Distribución térmica de bolsas y buscador de lotes por sectores'}
                   {subTab === 'DESPACHOS_PLAYA' && (() => {
                     const pendientes = ordenesCarga.filter(o => o.estado !== 'Despachada').length;
@@ -557,60 +537,6 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
             </div>
 
             <div className="flex flex-col gap-2 pt-1">
-              <button
-                type="button"
-                id="btn-dropdown-option-visor-silos"
-                onClick={() => {
-                  setSubTab('VISOR_SILOS');
-                  setIsNavDropdownOpen(false);
-                }}
-                className={`w-full p-3 rounded-xl transition-all flex items-center justify-between gap-3 text-left cursor-pointer border ${
-                  subTab === 'VISOR_SILOS'
-                    ? 'bg-[#00603C] text-white border-[#00603C] shadow-md'
-                    : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
-                }`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                      subTab === 'VISOR_SILOS' ? 'bg-white/20' : 'bg-emerald-500/10'
-                    }`}
-                  >
-                    <Warehouse
-                      className={`w-5 h-5 shrink-0 ${
-                        subTab === 'VISOR_SILOS' ? 'text-amber-300' : 'text-[#00603C]'
-                      }`}
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-sm uppercase tracking-wide">Visor de Silos</span>
-                      <span
-                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                          subTab === 'VISOR_SILOS'
-                            ? 'bg-white/20 text-white'
-                            : 'bg-emerald-100 text-emerald-800'
-                        }`}
-                      >
-                        Centro Info · 6 Silos
-                      </span>
-                    </div>
-                    <p
-                      className={`text-xs mt-0.5 truncate ${
-                        subTab === 'VISOR_SILOS' ? 'text-emerald-100' : 'text-slate-500'
-                      }`}
-                    >
-                      Stock en kg, kilos de ingreso, variedad y cliente en cada silo
-                    </p>
-                  </div>
-                </div>
-
-                {subTab === 'VISOR_SILOS' ? (
-                  <CheckCircle2 className="w-5 h-5 text-amber-300 shrink-0" />
-                ) : (
-                  <span className="text-xs font-bold text-slate-400">Elegir</span>
-                )}
-              </button>
 
               <button
                 type="button"
@@ -958,7 +884,7 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
                                   esTratado ? 'bg-sky-100 text-sky-800' : 'bg-slate-200 text-slate-700'
                                 }`}
                               >
-                                {tratamientos[0] || 'Sin Tratar'}
+                                {tratamientos[0] || 'Sin Curar'}
                               </span>
                             </div>
 
@@ -1408,7 +1334,7 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
                                 esTratado ? 'bg-sky-100 text-sky-800' : 'bg-slate-200 text-slate-700'
                               }`}
                             >
-                              {tratamientos[0] || 'Sin Tratar'}
+                              {tratamientos[0] || 'Sin Curar'}
                             </span>
                           </div>
 
@@ -1502,19 +1428,7 @@ export const ModoPlantaMobileView: React.FC<ModoPlantaMobileViewProps> = ({
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 6. VISOR DE SILOS (CENTRO DE INFORMACIÓN, STOCK, INGRESOS Y VARIEDAD)     */}
-      {/* ========================================================================= */}
-      {subTab === 'VISOR_SILOS' && (
-        <div className="space-y-4" id="seccion-visor-silos-planta-movil">
-          <VisorSilosPlantaMovil
-            siloStocks={siloStocks}
-            movimientosSilo={movimientosSilo}
-            silosEstadoManual={silosEstadoManualProp}
-            onUpdateSiloEstadoManual={_onUpdateSiloEstadoManual}
-          />
-        </div>
-      )}
+
 
       {/* Modal de Código QR para Lote */}
       {qrModalLote && <QrCodeModal lote={qrModalLote} onClose={() => setQrModalLote(null)} />}

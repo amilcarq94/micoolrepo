@@ -567,8 +567,8 @@ export const DashboardReporteProduccion: React.FC<DashboardReporteProduccionProp
       const isTratado = trats.some(t => 
         String(t).toLowerCase() === 'tratado' ||
         String(t).toLowerCase() === 'curado' ||
-        (t && t !== 'Sin Tratar' && t !== 'Sin Tratamiento' && t !== 'Ninguno')
-      ) || (l.estado as string) === 'Tratado';
+        (t && t !== 'Sin Curar' && t !== 'Sin Tratar' && t !== 'Sin Tratamiento' && t !== 'Ninguno')
+      ) || (l.estado as string) === 'Tratado' || (l.estado as string) === 'Curado';
 
       if (!isTratado) return false;
 

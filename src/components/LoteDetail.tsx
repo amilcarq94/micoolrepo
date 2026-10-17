@@ -544,67 +544,6 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
     setMotivoSalidaManual('');
   };
 
-  // Pasar a Realizado directo: Dar de alta bolsas y sumar a los movimientos de Total Ingresado (Alta)
-  const handlePasarARealizadoDirecto = async () => {
-    const bolsas = lote.stockBolsas > 0 ? lote.stockBolsas : 1;
-    const kgB = lote.kgPorBolsa || 40;
-    const kgTot = lote.stockKg > 0 ? lote.stockKg : bolsas * kgB;
-    const hoy = new Date().toISOString().split('T')[0];
-
-    const movimientoAlta: MovimientoStock = {
-      id: `MOV-REAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      fecha: hoy,
-      tipo: 'Alta',
-      cantidadBolsas: bolsas,
-      kgPorBolsa: kgB,
-      cantidadKg: kgTot,
-      detalle: `Alta efectiva de bolsas (Pasado a Realizado el ${hoy})`
-    };
-
-    const historialSinPrecarga = (lote.historial || []).filter(mov => {
-      const idLower = (mov.id || '').toLowerCase();
-      const detLower = (mov.detalle || '').toLowerCase();
-      const tipoLower = (mov.tipo || '').toLowerCase();
-      return !(
-        idLower.startsWith('mov-pre') ||
-        idLower.startsWith('alta-precarga') ||
-        tipoLower.includes('precarga') ||
-        detLower.includes('precarga') ||
-        detLower.includes('pre-carga') ||
-        detLower.includes('carga inicial')
-      );
-    });
-
-    const nuevoHistorial = [movimientoAlta, ...historialSinPrecarga];
-
-    const loteRealizado: Lote = {
-      ...lote,
-      estadoRegistro: 'REALIZADO',
-      fechaIngreso: hoy,
-      fechaHoraProduccion: `${hoy}T${new Date().toTimeString().slice(0, 5)}`,
-      stockBolsas: bolsas,
-      kgPorBolsa: kgB,
-      stockKg: kgTot,
-      estado: bolsas > 0 ? 'Disponible' : 'Agotado',
-      historial: nuevoHistorial,
-      auditoria: [
-        {
-          id: `AUD-REAL-${Date.now()}`,
-          fechaHora: new Date().toISOString(),
-          tipo: 'Edición',
-          usuario: 'Operador Planta',
-          descripcion: `Lote pasado a REALIZADO: Alta efectiva de ${bolsas} bolsas (${kgTot} kg).`,
-        },
-        ...(lote.auditoria || [])
-      ]
-    };
-
-    if (onSaveLote) {
-      await onSaveLote(loteRealizado);
-    }
-    onUpdateLoteStock(lote.id, nuevoHistorial, bolsas, kgTot, 'Disponible');
-  };
-
   // Lista unificada de todas las salidas del lote (Despachos, Órdenes de Movimiento y Salidas por Consumo)
   const salidasList = useMemo(() => {
     const list: Array<{
@@ -1262,25 +1201,12 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
             </button>
             <span className="text-gray-300 hidden sm:inline">|</span>
             <h1 className="text-sm sm:text-base font-serif font-black text-slate-800 tracking-wide uppercase">
-              FICHA TÉCNICA
+              DETALLE DE LOTE
             </h1>
           </div>
 
-          {/* Barra de Acciones Superior: IMPRIMIR ETIQUETAS, CODIGO INASE y IMPRIMIR FICHA TECNICA */}
+          {/* Barra de Acciones Superior: IMPRIMIR ETIQUETAS, CODIGO INASE */}
           <div className="flex flex-wrap items-center gap-2.5" id="lote-detail-actions-bar">
-            {/* Botón Pasar a Realizado para lotes en PRE-CARGA */}
-            {lote.estadoRegistro === 'PRE-CARGA' && !readOnly && (
-              <button
-                id="btn-pasar-realizado-lotedetail"
-                onClick={handlePasarARealizadoDirecto}
-                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition text-xs font-black uppercase tracking-wider shadow-sm cursor-pointer active:scale-95 border border-emerald-500"
-                title="Pasar a Realizado: Dar de alta bolsas y sumar a los movimientos de Total Ingresado (Alta)"
-              >
-                <CheckCircle2 className="w-4 h-4 text-emerald-200 stroke-[2.5]" />
-                <span>Pasar a Realizado (Alta Bolsas)</span>
-              </button>
-            )}
-
             {/* Botón EDITAR ALTA DE LOTE */}
             {!readOnly && (
               <button
@@ -1321,20 +1247,6 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
             >
               <FileSpreadsheet className="w-4 h-4 text-amber-300 stroke-[2.5]" />
               <span>Codigo INASE (inicio/final)</span>
-            </button>
-
-            {/* Botón IMPRIMIR FICHA */}
-            <button
-              id="btn-imprimir-ficha-lotedetail"
-              onClick={() => {
-                setInitialFichaEditMode(false);
-                setShowImprimirFichaModal(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[#00603C] hover:bg-[#254731] text-white border border-[#00603C] rounded-xl transition text-xs font-black uppercase tracking-wider shadow-sm cursor-pointer active:scale-95"
-              title="Abrir e imprimir Ficha Técnica Oficial optimizada para A4"
-            >
-              <Printer className="w-4 h-4 text-[#C9922E]" />
-              <span>Imprimir Ficha</span>
             </button>
           </div>
         </div>
@@ -1674,14 +1586,11 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               </div>
             )}
 
-            {/* Código QR de Trazabilidad Oficial (Full Size 300x300 con etiqueta y enlace público) */}
+            {/* Código QR de Trazabilidad */}
             <div className="border-t border-gray-100 pt-4 mt-4 flex flex-col items-center">
               <div className="w-full flex items-center justify-between mb-2">
                 <span className="text-[9.5px] uppercase tracking-wider text-gray-400 font-bold block">
                   Código QR de Trazabilidad
-                </span>
-                <span className="text-[9px] font-mono font-bold text-[#00603C] bg-[#E3EFE7] px-2 py-0.5 rounded">
-                  Oficial
                 </span>
               </div>
               <div className="w-full flex justify-center cursor-pointer" onClick={() => setShowQrModal(true)}>
@@ -1702,22 +1611,6 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               >
                 <QrCode className="w-4 h-4 text-[#C9922E] group-hover:scale-110 transition-transform" />
                 <span>Generar QR Ficha Técnica Pública</span>
-              </button>
-            </div>
-
-            {/* Botón Imprimir Ficha Técnica A4 */}
-            <div className="pt-2">
-              <button
-                id="btn-imprimir-ficha-panel-izquierdo"
-                onClick={() => {
-                  setInitialFichaEditMode(false);
-                  setShowImprimirFichaModal(true);
-                }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-[#00603C] hover:bg-[#254731] text-white rounded-xl transition font-black text-xs uppercase tracking-wider cursor-pointer shadow-sm active:scale-95 border border-[#00603C]"
-                title="Abrir e imprimir Ficha Técnica Oficial optimizada para formato A4"
-              >
-                <Printer className="w-4 h-4 text-[#C9922E]" />
-                <span>Imprimir Ficha</span>
               </button>
             </div>
 

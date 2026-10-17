@@ -181,7 +181,7 @@ export const IngresoSiloBloqueCard: React.FC<IngresoSiloBloqueCardProps> = ({
     if (plantaConfig?.variedades && plantaConfig.variedades.length > 0) {
       return plantaConfig.variedades;
     }
-    return ['P46A03', 'CASUARINA', 'DM 46R18', 'DM 40R16', 'BIO 4.50', 'STINE 4000', 'BAGUETTE 601'];
+    return Array.from(new Set((plantaConfig?.variedadesDb || []).map((v) => v.nombre.trim())));
   }, [plantaConfig, bloque.especie, bloque.cliente]);
 
   const handleChange = <K extends keyof IngresoBloqueItem>(key: K, value: IngresoBloqueItem[K]) => {
@@ -435,7 +435,7 @@ export const IngresoSiloBloqueCard: React.FC<IngresoSiloBloqueCardProps> = ({
             ) : (
               <input
                 type="text"
-                placeholder="ej: P46A03, CASUARINA..."
+                placeholder="ej: DM40E25, P42A84SE..."
                 value={bloque.variedad}
                 onChange={(e) => handleChange('variedad', e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-semibold text-slate-900 uppercase focus:ring-2 focus:ring-emerald-500 outline-none shadow-2xs text-xs"

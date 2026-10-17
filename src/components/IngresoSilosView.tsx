@@ -117,7 +117,7 @@ export interface OrigenCargaSiloItem {
 export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
   movimientosSilo = [],
   clientes = [],
-  especies = ['Soja', 'Trigo', 'Maíz', 'Arveja', 'Cebada', 'Girasol'],
+  especies = ['Soja'],
   plantaConfig,
   currentUser,
   bolsones = [],
@@ -1373,7 +1373,7 @@ export const IngresoSilosView: React.FC<IngresoSilosViewProps> = ({
                 onChange={(e) => setEspecieManual(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none"
               >
-                {especies.map((esp) => (
+                {(plantaConfig?.especies && plantaConfig.especies.length > 0 ? plantaConfig.especies : especies).map((esp) => (
                   <option key={esp} value={esp}>
                     {esp}
                   </option>

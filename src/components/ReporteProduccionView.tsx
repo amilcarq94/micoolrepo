@@ -11,11 +11,13 @@ import {
   VariedadItem,
   SalidaRegistrada,
   OrdenCarga,
-  VARIEDADES_DB_DEFAULT
+  VARIEDADES_DB_DEFAULT,
+  ReporteDiario
 } from '../types';
 import { CLIENTES_PRECARGADOS } from '../data/mockData';
 import { formatNumberArg, formatDateStr } from '../utils/formatters';
 import { isLoteOriginadoPorMovimiento } from '../utils/loteOriginHelper';
+import { ReportesEspecDashboard } from './ReportesEspecDashboard';
 import {
   Factory,
   Database,
@@ -47,6 +49,9 @@ export interface ReporteProduccionViewProps {
   ordenesCarga?: OrdenCarga[];
   plantaConfig?: PlantaConfig;
   clientes?: string[];
+  reportesDiarios?: ReporteDiario[];
+  currentUser?: { nombre: string; rol: string };
+  onGuardarReporte?: (reporte: Omit<ReporteDiario, 'id'>, extras?: any) => Promise<void> | void;
   onSelectLote?: (lote: Lote) => void;
   onNavigateToLotes?: () => void;
   onRefresh?: () => Promise<void> | void;
@@ -81,10 +86,16 @@ export const ReporteProduccionView: React.FC<ReporteProduccionViewProps> = ({
   salidas = [],
   plantaConfig,
   clientes: clientesProp = [],
+  reportesDiarios = [],
+  currentUser,
+  onGuardarReporte,
   onSelectLote,
   onNavigateToLotes,
   onRefresh
 }) => {
+  // Pestaña activa del módulo: 'espec' (Especificación Diaria & Existencias) | 'variedad' (Resumen Histórico por Variedad)
+  const [activeTabReporte, setActiveTabReporte] = useState<'espec' | 'variedad'>('espec');
+
   // 1. Estados de Filtros
   const [filterCliente, setFilterCliente] = useState<string>('');
   const [filterVariedad, setFilterVariedad] = useState<string>('');
@@ -155,7 +166,7 @@ export const ReporteProduccionView: React.FC<ReporteProduccionViewProps> = ({
 
   // Lista de tratamientos disponibles
   const tratamientosDisponibles = useMemo(() => {
-    const setTrat = new Set<string>(['Tratado', 'Sin Tratar']);
+    const setTrat = new Set<string>(['Curado', 'Sin Curar']);
     if (plantaConfig?.tratamientos) {
       plantaConfig.tratamientos.forEach(t => {
         if (t && t.trim()) setTrat.add(t.trim());
@@ -466,9 +477,9 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
         'Especie': r.especie,
         'Variedad': r.variedad,
         'Kg Producidos': r.kgProducidos,
-        'Kg Tratados': r.kgTratados,
-        'Kg Sin Tratar': r.kgSinTratar,
-        '% Tratado': `${r.porcentajeTratado}%`,
+        'Kg Curados': r.kgTratados,
+        'Kg Sin Curar': r.kgSinTratar,
+        '% Curado': `${r.porcentajeTratado}%`,
         'Cantidad Lotes': r.cantidadLotes
       }));
 
@@ -559,6 +570,45 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
         </div>
       </div>
 
+      {/* SELECTOR DE VISTA DEL MÓDULO */}
+      <div className="bg-white p-1.5 rounded-2xl border border-gray-200 shadow-xs flex flex-col sm:flex-row items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveTabReporte('espec')}
+          className={`flex-1 w-full py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+            activeTabReporte === 'espec'
+              ? 'bg-[#00603C] text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <Factory className="w-4 h-4" />
+          <span>Producción & Existencia (Especificación Oficial)</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTabReporte('variedad')}
+          className={`flex-1 w-full py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+            activeTabReporte === 'variedad'
+              ? 'bg-[#00603C] text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          <span>Resumen Acumulado por Variedad & Despachos (Clásica)</span>
+        </button>
+      </div>
+
+      {activeTabReporte === 'espec' ? (
+        <ReportesEspecDashboard
+          lotes={lotes}
+          reportesDiarios={reportesDiarios}
+          currentUser={currentUser || { nombre: 'Operador', rol: 'Planta' }}
+          plantaConfig={plantaConfig}
+          onGuardarReporte={onGuardarReporte || (() => {})}
+          onSelectLote={onSelectLote}
+        />
+      ) : (
+        <>
       {/* NOTIFICACIÓN TOAST DE ACTUALIZACIÓN DE DATOS */}
       {refreshToast && (
         <div className="p-3.5 bg-emerald-900 border border-emerald-400 text-emerald-100 rounded-2xl text-xs flex items-center justify-between shadow-lg animate-in fade-in duration-200">
@@ -633,7 +683,7 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group hover:border-[#00603C] transition">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-              % Tratado vs Sin Tratar
+              % Curado vs Sin Curar
             </span>
             <div className="p-2 bg-emerald-50 text-[#00603C] rounded-xl border border-emerald-200">
               <TrendingUp className="w-4 h-4" />
@@ -751,10 +801,10 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
               className="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00603C] font-semibold text-gray-800 text-xs"
             >
               <option value="todos">Todos los Tratamientos</option>
-              <option value="tratado">🟢 Solo Tratados (Curados)</option>
-              <option value="sin_tratar">⚪ Solo Sin Tratar (Original)</option>
+              <option value="tratado">🟢 Solo Curados</option>
+              <option value="sin_tratar">⚪ Solo Sin Curar</option>
               {tratamientosDisponibles
-                .filter(t => t !== 'Tratado' && t !== 'Sin Tratar')
+                .filter(t => t !== 'Curado' && t !== 'Sin Curar' && t !== 'Tratado' && t !== 'Sin Tratar')
                 .map(t => (
                   <option key={t} value={t}>{t}</option>
                 ))}
@@ -1021,19 +1071,19 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
                   </span>
                 </div>
                 <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
-                  <span className="text-[10px] text-[#00603C] font-bold uppercase block">Kilos Tratados</span>
+                  <span className="text-[10px] text-[#00603C] font-bold uppercase block">Kilos Curados</span>
                   <span className="font-mono text-base font-black text-[#00603C]">
                     {formatNumberArg(variedadDetalleSeleccionada.kgTratados, 0)} kg
                   </span>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-xl border border-gray-200">
-                  <span className="text-[10px] text-gray-500 font-bold uppercase block">Sin Tratar</span>
+                  <span className="text-[10px] text-gray-500 font-bold uppercase block">Sin Curar</span>
                   <span className="font-mono text-base font-bold text-gray-700">
                     {formatNumberArg(variedadDetalleSeleccionada.kgSinTratar, 0)} kg
                   </span>
                 </div>
                 <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
-                  <span className="text-[10px] text-[#C9922E] font-bold uppercase block">% Tratado</span>
+                  <span className="text-[10px] text-[#C9922E] font-bold uppercase block">% Curado</span>
                   <span className="font-mono text-base font-black text-[#C9922E]">
                     {variedadDetalleSeleccionada.porcentajeTratado}%
                   </span>
@@ -1059,7 +1109,7 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
                   <tbody className="divide-y divide-gray-100 font-medium">
                     {variedadDetalleSeleccionada.lotes.map((item, lIdx) => {
                       const l = item.lote;
-                      const tratsStr = Array.isArray(l.tratamiento) ? l.tratamiento.join(', ') : (l.tratamiento || 'Sin Tratar');
+                      const tratsStr = Array.isArray(l.tratamiento) ? l.tratamiento.join(', ') : (l.tratamiento || 'Sin Curar');
                       const ubi = l.ubicacionAcopio || (l.ala ? `Ala ${l.ala} · Sec ${l.sector || 1}` : 'Planta');
 
                       return (
@@ -1086,7 +1136,7 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
                               </span>
                             ) : (
                               <span className="text-gray-500 text-[11px] font-medium bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
-                                Sin Tratar
+                                Sin Curar
                               </span>
                             )}
                           </td>
@@ -1177,6 +1227,8 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

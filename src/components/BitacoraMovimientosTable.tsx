@@ -100,16 +100,6 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string>('');
   const [lastSavedTimestamp, setLastSavedTimestamp] = useState<string>('');
 
-  // Estado para modal de confirmación "Pasar a Realizado (Dar de Alta Bolsas)"
-  const [showConfirmRealizadoModal, setShowConfirmRealizadoModal] = useState<boolean>(false);
-  const [fechaRealizadoConfirm, setFechaRealizadoConfirm] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
-  const [pesoDeMilConfirm, setPesoDeMilConfirm] = useState<string>(() =>
-    lote.pesoDeMil !== undefined && lote.pesoDeMil !== null ? String(lote.pesoDeMil) : ''
-  );
-  const [isActivatingRealizado, setIsActivatingRealizado] = useState<boolean>(false);
-
   // Estados de filtros
   const [filterDireccion, setFilterDireccion] = useState<'' | 'Entrada' | 'Salida'>('');
   const [filterTipoMov, setFilterTipoMov] = useState<string>('');
@@ -631,78 +621,6 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
     const nuevoStockKg = Math.max(0, entradasK - salidasK + ajustesNetoK);
     const nuevoEstado: EstadoLoteType = nuevoStockBolsas === 0 ? 'Agotado' : 'Disponible';
     return { nuevoStockBolsas, nuevoStockKg, nuevoEstado };
-  };
-
-  // Función para confirmar y dar de alta bolsas al pasar a REALIZADO
-  const handleConfirmarRealizado = async () => {
-    setIsActivatingRealizado(true);
-    try {
-      const bolsas = lote.stockBolsas > 0 ? lote.stockBolsas : 1;
-      const kgB = lote.kgPorBolsa || 40;
-      const kgTot = lote.stockKg > 0 ? lote.stockKg : bolsas * kgB;
-      const fechaEf = fechaRealizadoConfirm || new Date().toISOString().split('T')[0];
-      const cleanedPeso = pesoDeMilConfirm.trim().replace(',', '.');
-      const numPeso = cleanedPeso !== '' && !isNaN(Number(cleanedPeso)) ? Number(cleanedPeso) : undefined;
-
-      const nuevoMov: MovimientoStock = {
-        id: `MOV-REAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        fecha: fechaEf,
-        tipo: 'Alta',
-        cantidadBolsas: bolsas,
-        kgPorBolsa: kgB,
-        cantidadKg: kgTot,
-        detalle: `Alta efectiva de bolsas (Pasado a Realizado el ${fechaEf})`,
-      };
-
-      const historialLimpio = (lote.historial || []).filter((m) => {
-        const idL = (m.id || '').toLowerCase();
-        const detL = (m.detalle || '').toLowerCase();
-        const tipoL = (m.tipo || '').toLowerCase();
-        return !(
-          idL.startsWith('mov-pre') ||
-          idL.startsWith('alta-precarga') ||
-          tipoL.includes('precarga') ||
-          detL.includes('precarga') ||
-          detL.includes('pre-carga') ||
-          detL.includes('carga inicial')
-        );
-      });
-
-      const nuevoHistorial = [nuevoMov, ...historialLimpio];
-
-      const loteRealizado: Lote = {
-        ...lote,
-        estadoRegistro: 'REALIZADO',
-        fechaIngreso: fechaEf,
-        fechaHoraProduccion: `${fechaEf}T${new Date().toTimeString().slice(0, 5)}`,
-        stockBolsas: bolsas,
-        kgPorBolsa: kgB,
-        stockKg: kgTot,
-        estado: bolsas > 0 ? 'Disponible' : 'Agotado',
-        pesoDeMil: numPeso !== undefined ? numPeso : lote.pesoDeMil,
-        historial: nuevoHistorial,
-        auditoria: [
-          {
-            id: `AUD-REAL-${Date.now()}`,
-            fechaHora: new Date().toISOString(),
-            tipo: 'Edición',
-            usuario: 'Operador Planta',
-            descripcion: `Lote pasado a REALIZADO: Alta efectiva de ${bolsas} bolsas (${kgTot} kg).`,
-          },
-          ...(lote.auditoria || []),
-        ],
-      };
-
-      if (onSaveLote) {
-        await onSaveLote(loteRealizado);
-      }
-      onUpdateLoteStock(lote.id, nuevoHistorial, bolsas, kgTot, 'Disponible');
-      setShowConfirmRealizadoModal(false);
-    } catch (e) {
-      console.error('Error al pasar a realizado:', e);
-    } finally {
-      setIsActivatingRealizado(false);
-    }
   };
 
   // Previsualización y balance dinámico en tiempo real del saldo resultante al editar el Alta
@@ -1334,17 +1252,6 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
                 <Edit3 className="w-3.5 h-3.5 text-[#00603C]" />
                 <span>Editar Alta</span>
               </button>
-              {lote.estadoRegistro === 'PRE-CARGA' && (
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmRealizadoModal(true)}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95 border border-emerald-500"
-                  title="Pasar a Realizado: Dar de alta bolsas y sumar a movimientos de Total Ingresado (Alta)"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
-                  <span>Pasar a Realizado</span>
-                </button>
-              )}
               <button
                 type="button"
                 onClick={handleAbrirNuevo}
@@ -1439,22 +1346,9 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
             </span>
           </div>
           {lote.estadoRegistro === 'PRE-CARGA' && (
-            <>
-              <p className="text-[10px] text-amber-700 font-medium mt-1">
-                Informativo: {formatNumberArg(lote.stockBolsas, 0)} b. en Pre-carga (se activan al pasar a REALIZADO)
-              </p>
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmRealizadoModal(true)}
-                  className="mt-2.5 w-full py-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 border border-emerald-500"
-                  title="Pasar a Realizado: Dar de alta bolsas y sumar a Total Ingresado (Alta)"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
-                  <span>Pasar a Realizado (Dar de Alta Bolsas)</span>
-                </button>
-              )}
-            </>
+            <p className="text-[10px] text-amber-700 font-medium mt-1">
+              Informativo: {formatNumberArg(lote.stockBolsas, 0)} b. en Pre-carga
+            </p>
           )}
         </div>
 
@@ -1506,7 +1400,7 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
           </div>
           {lote.estadoRegistro === 'PRE-CARGA' && (
             <p className="text-[10px] text-amber-600 font-medium mt-1">
-              Bolsas informativas (pendientes de activar al Pasar a Realizado)
+              Bolsas informativas en pre-carga
             </p>
           )}
         </div>
@@ -2170,103 +2064,6 @@ export const BitacoraMovimientosTable: React.FC<BitacoraMovimientosTableProps> =
           </div>
         </div>
       )}
-      {/* MODAL DE CONFIRMACIÓN DIRECTA "PASAR A REALIZADO" */}
-      {showConfirmRealizadoModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-200 animate-in fade-in zoom-in duration-200">
-            <div className="bg-emerald-800 text-white p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-300" />
-                <h4 className="font-serif text-sm font-bold uppercase tracking-wider">
-                  Pasar Lote a REALIZADO
-                </h4>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowConfirmRealizadoModal(false)}
-                className="text-white/80 hover:text-white p-1 rounded-lg text-lg font-bold cursor-pointer"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 text-xs">
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-emerald-950 space-y-2">
-                <p className="font-semibold text-emerald-900">
-                  ¿Desea activar y dar de alta las bolsas de este lote?
-                </p>
-                <div className="bg-white/95 p-3 rounded-lg border border-emerald-100 font-mono text-[11px] space-y-1.5 shadow-2xs">
-                  <div><strong>Lote:</strong> {lote.loteNro} ({lote.especie} - {lote.variedad})</div>
-                  <div><strong>Bolsas a dar de alta:</strong> <span className="text-emerald-700 font-bold font-mono">+{formatNumberArg(lote.stockBolsas, 0)} bolsas</span> ({formatNumberArg(lote.stockKg || lote.stockBolsas * (lote.kgPorBolsa || 40), 0)} kg)</div>
-                  <div><strong>Estado resultante:</strong> <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold">REALIZADO</span></div>
-                </div>
-                <p className="text-[11px] text-emerald-800 pt-1 leading-relaxed">
-                  Al confirmar, las bolsas se darán de alta formalmente en el lote y se sumarán de inmediato a los movimientos de <strong>Total Ingresado (Alta)</strong>.
-                </p>
-              </div>
-
-              {/* Selector de fecha efectiva */}
-              <div className="space-y-1.5">
-                <label className="block text-gray-700 font-bold uppercase tracking-wider text-[10px]">
-                  Fecha efectiva del alta / realización:
-                </label>
-                <input
-                  type="date"
-                  value={fechaRealizadoConfirm}
-                  onChange={(e) => setFechaRealizadoConfirm(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-mono font-bold focus:bg-white focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
-                />
-              </div>
-
-              {/* Peso de mil (cantidad determinada de gramos) */}
-              <div className="space-y-1.5">
-                <label className="block text-gray-700 font-bold uppercase tracking-wider text-[10px] flex items-center justify-between">
-                  <span>Peso de mil (g):</span>
-                  <span className="text-[10px] text-emerald-700 font-mono normal-case">Gramos / PMS</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="Ej: 165.4"
-                    value={pesoDeMilConfirm}
-                    onChange={(e) => setPesoDeMilConfirm(e.target.value)}
-                    className="w-full px-3 py-2 pr-8 bg-gray-50 border border-gray-300 rounded-xl text-xs font-mono font-bold focus:bg-white focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 pointer-events-none">
-                    g
-                  </span>
-                </div>
-                <span className="text-[10px] text-gray-500 block">
-                  Dato manual que refleja una cantidad determinada de gramos
-                </span>
-              </div>
-
-              {/* Botones de acción */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  disabled={isActivatingRealizado}
-                  onClick={() => setShowConfirmRealizadoModal(false)}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  disabled={isActivatingRealizado}
-                  onClick={handleConfirmarRealizado}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{isActivatingRealizado ? 'Dando de alta...' : 'Confirmar y Dar de Alta'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* MODAL: EDICIÓN DE ALTA DE LOTE Y GUARDADO EN BASE DE DATOS (CON CONFIRMACIÓN ESCRITA "editar alta") */}
       {showModalEditarAlta && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">

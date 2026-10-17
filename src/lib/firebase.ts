@@ -206,10 +206,13 @@ export async function registrarMovimientoTransaccion(
     
     // Si se agotó, el estado pasa a "Agotado" automáticamente, de lo contrario si tiene stock y estaba Agotado, pasa a Disponible
     let nuevoEstado = data.estado;
+    let nuevoEstadoEspec = data.estadoEspec;
     if (nuevoStockBolsas === 0) {
       nuevoEstado = 'Agotado';
-    } else if (data.estado === 'Agotado') {
+      nuevoEstadoEspec = 'agotado';
+    } else if (data.estado === 'Agotado' || data.estadoEspec === 'agotado') {
       nuevoEstado = 'Disponible';
+      nuevoEstadoEspec = 'clasificado';
     }
     
     // 1. Escribir el nuevo movimiento
@@ -219,7 +222,10 @@ export async function registrarMovimientoTransaccion(
     transaction.update(loteRef, {
       stockBolsas: nuevoStockBolsas,
       stockKgTotal: nuevoStockKgTotal,
-      estado: nuevoEstado
+      cantidadBolsas: nuevoStockBolsas,
+      kg: nuevoStockKgTotal,
+      estado: nuevoEstado,
+      estadoEspec: nuevoEstadoEspec
     });
   });
 }
@@ -229,7 +235,7 @@ export async function registrarMovimientoTransaccion(
  */
 export function mapFirestoreToLote(id: string, data: any): Lote {
   const fechaIngreso = data.fechaIngreso || new Date().toISOString().split('T')[0];
-  const campaniaId = data.campaniaId || getCampaniaIdFromDate(fechaIngreso);
+  const campaniaId = '2025-2026';
 
   return {
     id: id,
@@ -271,8 +277,18 @@ export function mapFirestoreToLote(id: string, data: any): Lote {
     tipoMovimiento: data.tipoMovimiento || '',
     fechaMovimiento: data.fechaMovimiento || '',
     fechaRealizacionMovimiento: data.fechaRealizacionMovimiento || '',
-    estadoMovimiento: data.estadoMovimiento || undefined,
-    preMovimientos: data.preMovimientos || []
+    preMovimientos: data.preMovimientos || [],
+    // Campos de especificación ampliada
+    codigo: data.codigo || data.numeroLote || '',
+    padreId: data.padreId !== undefined ? data.padreId : null,
+    cantidadBolsas: data.cantidadBolsas !== undefined ? Number(data.cantidadBolsas) : (data.stockBolsas !== undefined ? Number(data.stockBolsas) : 0),
+    kg: data.kg !== undefined ? Number(data.kg) : (data.stockKgTotal !== undefined ? Number(data.stockKgTotal) : Number(data.stockKg) || 0),
+    estadoAnterior: data.estadoAnterior || null,
+    fecha: data.fecha || data.fechaIngreso || fechaIngreso,
+    activo: data.activo !== undefined ? Boolean(data.activo) : true,
+    estadoEspec: data.estadoEspec || undefined,
+    caratulaId: data.caratulaId || undefined,
+    kgIniciales: data.kgIniciales !== undefined ? Number(data.kgIniciales) : undefined
   };
 }
 
@@ -353,7 +369,18 @@ export function mapLoteToFirestore(lote: Lote): any {
     fechaMovimiento: lote.fechaMovimiento || '',
     fechaRealizacionMovimiento: lote.fechaRealizacionMovimiento || '',
     estadoMovimiento: lote.estadoMovimiento || null,
-    preMovimientos: lote.preMovimientos || []
+    preMovimientos: lote.preMovimientos || [],
+    // Campos de especificación ampliada
+    codigo: lote.codigo || lote.loteNro || '',
+    padreId: lote.padreId !== undefined ? lote.padreId : null,
+    cantidadBolsas: lote.cantidadBolsas !== undefined ? Number(lote.cantidadBolsas) : (Number(lote.stockBolsas) || 0),
+    kg: lote.kg !== undefined ? Number(lote.kg) : (lote.stockKg !== undefined ? Number(lote.stockKg) : (Number(lote.stockBolsas) || 0) * (Number(lote.kgPorBolsa) || 800)),
+    estadoAnterior: lote.estadoAnterior !== undefined ? lote.estadoAnterior : null,
+    fecha: lote.fecha || fechaIngreso,
+    activo: lote.activo !== undefined ? Boolean(lote.activo) : true,
+    estadoEspec: lote.estadoEspec || null,
+    caratulaId: lote.caratulaId || null,
+    kgIniciales: lote.kgIniciales !== undefined ? Number(lote.kgIniciales) : null
   };
 
   return sanitizeForFirestore(raw);
@@ -619,6 +646,98 @@ export async function guardarPlantaConfigFirestore(
   }
 }
 
+/**
+ * Registra un movimiento oficial de lote en la colección /movimientos y en la subcolección del lote.
+ */
+export async function registrarMovimientoOficial(mov: {
+  loteId: string;
+  usuario: string;
+  tipo: string;
+  valorAnterior?: any;
+  valorNuevo?: any;
+  observaciones?: string;
+  fecha?: string;
+}): Promise<string> {
+  const movId = `MOV-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const fecha = mov.fecha || new Date().toISOString().split('T')[0];
+  const payload = sanitizeForFirestore({
+    id: movId,
+    loteId: mov.loteId,
+    fecha,
+    usuario: mov.usuario || 'Operador',
+    tipo: mov.tipo,
+    valorAnterior: mov.valorAnterior !== undefined ? mov.valorAnterior : null,
+    valorNuevo: mov.valorNuevo !== undefined ? mov.valorNuevo : null,
+    observaciones: mov.observaciones || ''
+  });
 
+  try {
+    // 1. Guardar en colección raíz 'movimientos'
+    await setDoc(doc(db, 'movimientos', movId), payload);
+    // 2. Guardar en subcolección 'movimientos' del lote
+    await setDoc(doc(collection(db, 'lotes', mov.loteId, 'movimientos'), movId), payload);
+  } catch (err) {
+    console.warn('Error al guardar movimiento en Firestore:', err);
+  }
+  return movId;
+}
 
+/**
+ * Guarda o actualiza un reporte diario en la colección /reportes_diarios.
+ */
+export async function guardarReporteDiarioFirestore(reporte: {
+  id?: string;
+  fecha: string;
+  tipo: 'produccion' | 'curado';
+  kg: number;
+  loteId: string;
+  usuario: string;
+  codigoLote?: string;
+  cliente?: string;
+  variedad?: string;
+  especie?: string;
+}): Promise<string> {
+  const repId = reporte.id || `REP-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const payload = sanitizeForFirestore({
+    id: repId,
+    fecha: reporte.fecha,
+    tipo: reporte.tipo,
+    kg: Number(reporte.kg) || 0,
+    loteId: reporte.loteId,
+    usuario: reporte.usuario || 'Operador',
+    codigoLote: reporte.codigoLote || '',
+    cliente: reporte.cliente || '',
+    variedad: reporte.variedad || '',
+    especie: reporte.especie || 'Soja'
+  });
 
+  try {
+    await setDoc(doc(db, 'reportes_diarios', repId), payload);
+  } catch (err) {
+    console.warn('Error al guardar reporte diario en Firestore:', err);
+  }
+  return repId;
+}
+
+/**
+ * Guarda bolsas y carátula en Firestore de forma atómica.
+ */
+export async function guardarCaratulaYBolsasFirestore(
+  caratula: any,
+  bolsas: any[]
+): Promise<void> {
+  try {
+    const batch = writeBatch(db);
+    const caratulaRef = doc(db, 'caratulas', caratula.id);
+    batch.set(caratulaRef, sanitizeForFirestore(caratula));
+
+    for (const b of bolsas) {
+      const bRef = doc(db, 'bolsas', b.id);
+      batch.set(bRef, sanitizeForFirestore(b));
+    }
+
+    await batch.commit();
+  } catch (err) {
+    console.warn('Error al guardar carátula y bolsas en Firestore:', err);
+  }
+}

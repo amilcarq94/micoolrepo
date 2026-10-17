@@ -312,7 +312,7 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
               onClick={onCerrar}
               className="self-start md:self-center px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition border border-white/20 cursor-pointer"
             >
-              Volver a Precarga
+              Volver a Generar Lote (Sin Clasificar)
             </button>
           )}
         </div>
@@ -634,20 +634,19 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
                   <Package className="w-4 h-4 text-[#00603C]" />
                   <span>Envase (kg por Bolsa)</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {[
-                    { kg: 800, label: '800 kg (Big Bag)' },
-                    { kg: 40, label: '40 kg (Bolsa)' },
-                    { kg: 25, label: '25 kg' },
-                    { kg: 50, label: '50 kg' },
+                    { kg: 800, label: 'x 800 kg (Big Bag)' },
+                    { kg: 25, label: 'x 25 kg' },
+                    { kg: 20, label: 'x 20 kg' },
                   ].map((env) => (
                     <button
                       key={env.kg}
                       type="button"
                       onClick={() => setPesoEnvaseKg(env.kg as CategoriaEnvaseKg)}
-                      className={`py-2 px-2 text-xs font-bold rounded-xl border transition text-center ${
+                      className={`py-2 px-2 text-xs font-bold rounded-xl border transition text-center cursor-pointer ${
                         pesoEnvaseKg === env.kg
-                          ? 'bg-[#00603C] text-white border-[#00603C] shadow-xs'
+                          ? 'bg-[#00603C] text-white border-[#00603C] shadow-xs ring-2 ring-emerald-300'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
@@ -705,31 +704,39 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
                 {/* Bolsas (BLS) Calculadas */}
                 <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
                   <span className="text-[10px] font-mono uppercase text-slate-400 tracking-wider block font-bold">
-                    Bolsas (BLS)
+                    Bolsas (BLS) Completas
                   </span>
                   <div className="font-serif text-3xl font-black text-white mt-1">
                     {calculoResultado.cantidadBolsasEnteras}
                   </div>
                   <span className="text-[10px] font-mono text-emerald-400 mt-1 block">
-                    {calculoResultado.cantidadBolsasDecimal.toFixed(2)} BLS exactas
+                    Solo bolsas completas
                   </span>
                 </div>
 
                 {/* Lotes Resultantes */}
                 <div className="bg-amber-400/10 p-4 rounded-2xl border border-amber-400/30 text-center">
                   <span className="text-[10px] font-mono uppercase text-amber-300 tracking-wider block font-bold">
-                    Lotes Resultantes
+                    Cantidad de Lotes (máx 28.000 kg)
                   </span>
                   <div className="font-serif text-3xl font-black text-amber-400 mt-1">
-                    {cargarConDecimal && calculoResultado.excedeLoteNatural
-                      ? calculoResultado.cantidadLotes1Decimal
-                      : Math.max(1, calculoResultado.cantidadLotesEnteros)}
+                    {calculoResultado.desgloseLotes.length}
                   </div>
                   <span className="text-[10px] font-mono text-amber-200 mt-1 block">
-                    {calculoResultado.desgloseLotes.length} lote(s) en desglose
+                    {calculoResultado.desgloseLotes.length} lote(s) proyectado(s)
                   </span>
                 </div>
               </div>
+
+              {/* Remanente no embolsable */}
+              {calculoResultado.kilosRemanentes > 0 && (
+                <div className="bg-amber-500/15 border border-amber-400/40 p-3 rounded-2xl flex items-center justify-between text-xs">
+                  <span className="text-amber-200 font-medium">Remanente no embolsable:</span>
+                  <span className="font-mono font-bold text-amber-300 text-sm">
+                    {formatKg(calculoResultado.kilosRemanentes)}
+                  </span>
+                </div>
+              )}
 
               {/* Desglose de Lotes */}
               <div className="bg-black/30 p-4 rounded-2xl border border-white/10 space-y-2">
@@ -791,7 +798,7 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
                     </div>
                   </div>
                   <p className="text-[10px] text-emerald-200/90 leading-relaxed">
-                    ✓ Al generar lotes, se copiarán automáticamente estos datos de <strong>Cliente</strong> y <strong>Variedad</strong> a la precarga.
+                    ✓ Al generar lotes, se copiarán automáticamente estos datos de <strong>Cliente</strong> y <strong>Variedad</strong>.
                   </p>
                 </div>
               ) : (
@@ -813,7 +820,7 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
                   >
                     <div className="flex items-center justify-center gap-2 text-xs sm:text-sm font-black uppercase tracking-wider">
                       <PackagePlus className="w-5 h-5 text-amber-300 shrink-0 group-hover:scale-110 transition-transform" />
-                      <span>Generar Lotes en Precargar</span>
+                      <span>Generar Lotes</span>
                       <ArrowRight className="w-4 h-4 text-amber-300 group-hover:translate-x-1.5 transition-transform shrink-0" />
                     </div>
 
@@ -830,7 +837,7 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
                   </button>
 
                   <p className="text-[10px] text-center text-slate-300/80 leading-tight">
-                    Copia la tanda calculada ({calculoResultado.desgloseLotes.length || 1} lotes, {formatKg(calculoResultado.kilosNetosKg)} netos) y asigna Cliente y Variedad del silo a la Precarga.
+                    Copia la tanda calculada ({calculoResultado.desgloseLotes.length || 1} lotes, {formatKg(calculoResultado.kilosNetosKg)} netos) y asigna Cliente y Variedad del silo para generar los lotes.
                   </p>
                 </div>
               )}

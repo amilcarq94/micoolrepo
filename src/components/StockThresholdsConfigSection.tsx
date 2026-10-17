@@ -48,8 +48,6 @@ export const StockThresholdsConfigSection: React.FC<StockThresholdsConfigSection
     const set = new Set([...especies, ...Object.keys(thresholds)]);
     if (set.size === 0) {
       set.add('Soja');
-      set.add('Trigo');
-      set.add('Arveja');
     }
     return Array.from(set);
   });
@@ -63,8 +61,6 @@ export const StockThresholdsConfigSection: React.FC<StockThresholdsConfigSection
     });
     if (Object.keys(initial).length === 0) {
       initial['Soja'] = 10000;
-      initial['Trigo'] = 8000;
-      initial['Arveja'] = 5000;
     }
     return initial;
   });

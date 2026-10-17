@@ -64,13 +64,13 @@ export const computeFichaLoteData = (lote: Lote): FichaLoteDataResult => {
 
   // 6. Tratamiento
   const tratamientoDisplay = (() => {
-    let t = 'Sin Tratar';
+    let t = 'Sin Curar';
     if (Array.isArray(lote.tratamiento) && lote.tratamiento.length > 0) {
       t = lote.tratamiento.join(', ');
     } else if (typeof lote.tratamiento === 'string' && lote.tratamiento) {
       t = lote.tratamiento;
     }
-    if (lote.producto && lote.producto !== 'Ninguno' && lote.producto !== 'Sin Tratar') {
+    if (lote.producto && lote.producto !== 'Ninguno' && lote.producto !== 'Sin Curar' && lote.producto !== 'Sin Tratar') {
       t += ` (${lote.producto})`;
     }
     return t;

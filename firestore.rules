@@ -140,5 +140,35 @@ service cloud.firestore {
     match /config/{docId} {
       allow read, write: if true;
     }
+
+    // 12. Colección de Movimientos (movimientos)
+    match /movimientos/{movId} {
+      allow read, write: if true;
+    }
+
+    // 13. Colección de Reportes Diarios (reportes_diarios)
+    match /reportes_diarios/{repId} {
+      allow read, write: if true;
+    }
+
+    // 14. Colección de Bolsas (bolsas)
+    match /bolsas/{bolsaId} {
+      allow read, write: if true;
+    }
+
+    // 15. Colección de Carátulas (caratulas)
+    match /caratulas/{caratulaId} {
+      allow read, write: if true;
+    }
+
+    // 16. Colección de Precargas (precargas)
+    match /precargas/{precargaId} {
+      allow read, write: if true;
+    }
+
+    // 17. Colección de Silos Fijos (silos)
+    match /silos/{siloId} {
+      allow read, write: if true;
+    }
   }
 }

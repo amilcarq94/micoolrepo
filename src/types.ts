@@ -7,7 +7,7 @@ export type EspecieType = 'Soja' | 'Trigo' | 'Arveja' | 'Sin especificar';
 
 export type TipoLoteType = 'Intermedio' | 'Final' | 'Procesado' | 'Semilla' | 'Descarte' | 'Bajo Consumo' | 'Mezcla' | 'Rechazo' | string;
 
-export type TratamientoType = 'Tratado' | 'Sin Tratar' | 'Curado Completo' | 'Fungicida' | 'Insecticida' | 'Inoculado' | 'Polímero' | string;
+export type TratamientoType = 'Curado' | 'Sin Curar' | 'Tratado' | 'Sin Tratar' | 'Curado Completo' | 'Fungicida' | 'Insecticida' | 'Inoculado' | 'Polímero' | string;
 
 export type CategoriaType = 'Fundadora' | 'PreBase' | 'Original' | 'Primu' | 'Pre básica' | string;
 
@@ -145,14 +145,7 @@ export const PLANTA_CONFIG_DEFAULT: PlantaConfig = {
     'Elementa Foods'
   ],
   especies: [
-    'Soja',
-    'Trigo',
-    'Arveja',
-    'Cebada',
-    'Maíz',
-    'Girasol',
-    'Centeno',
-    'Avena'
+    'Soja'
   ],
   variedades: Array.from(new Set(VARIEDADES_DB_DEFAULT.map(v => v.nombre))),
   variedadesDb: VARIEDADES_DB_DEFAULT,
@@ -177,8 +170,8 @@ export const PLANTA_CONFIG_DEFAULT: PlantaConfig = {
     'Comercial'
   ],
   tratamientos: [
-    'Sin Tratar',
-    'Tratado',
+    'Sin Curar',
+    'Curado',
     'Curado Completo',
     'Fungicida',
     'Insecticida',
@@ -208,7 +201,19 @@ export const SECTORES_BOLSON_OPCIONES = [
 export const CAPACIDAD_MAX_SILO = 180000; // 180.000 kg por silo
 export const UMBRAL_ALERTA_SILO = 150000; // Alerta desde 150.000 kg (83.3%)
 
-export type EstadoLoteType = 'Disponible' | 'Reservado' | 'Agotado' | 'A Consumo';
+export type EstadoLoteType =
+  | 'sin clasificar'
+  | 'clasificado'
+  | 'bloqueado'
+  | 'descartado'
+  | 'Sin Clasificar'
+  | 'Clasificado'
+  | 'Bloqueado'
+  | 'Descartado'
+  | 'Disponible'
+  | 'Reservado'
+  | 'Agotado'
+  | 'A Consumo';
 
 export type EstadoRegistroLote = 'PRE-CARGA' | 'REALIZADO' | 'EN_CURSO';
 
@@ -333,6 +338,136 @@ export interface Lote {
   tipoEnvase?: string; // ej: 'Bolsa x 20 kg', 'Bolsa x 25 kg', 'Bolsa x 40 kg', 'Big Bag x 800 kg'
   envase?: string;
   ordenProcesoId?: string;
+
+  // ═══ CAMPOS NUEVOS DE ESPECIFICACIÓN DE REGISTRO DE LOTES ═══
+  codigo?: string; // Código de lote (ej: 0153, 0153-A)
+  padreId?: string | null; // null si es de origen, id del lote padre si es hijo
+  cantidadBolsas?: number; // Total de bolsas
+  kg?: number; // Kilaje total (cantidadBolsas * kgPorBolsa)
+  estadoAnterior?: EstadoLoteType | EstadoRegistroLoteEspec | string | null; // Para desbloqueo reversible
+  fecha?: string; // YYYY-MM-DD
+  activo?: boolean; // Booleano de actividad
+  estadoEspec?: EstadoRegistroLoteEspec; // Estado según especificación nueva
+  caratulaId?: string; // ID de carátula emitida
+  kgIniciales?: number; // Kilaje inicial al momento de confirmación / alta
+  bolsas?: BolsaRegistro[]; // Relación con bolsas físicas individuales del lote
+}
+
+export type EnvaseEspecificacion = 'x 20 kg' | 'x 25 kg' | 'x 40 kg' | 'x 800 kg';
+
+export type CategoriaEspecificacion = 'preba' | 'original' | 'primu';
+
+export type TipoLoteEspecificacion = 'intermedio' | 'final';
+
+export type EstadoRegistroLoteEspec =
+  | 'sin clasificar'
+  | 'clasificado'
+  | 'bloqueado'
+  | 'descartado'
+  | 'precarga'
+  | 'en proceso'
+  | 'agotado'
+  | 'desdoblado';
+
+export type TratamientoEspecificacion = 'curado' | 'sin curar' | 'crudo';
+
+export type TipoMovimientoEspecificacion =
+  | 'alta'
+  | 'desdoblamiento'
+  | 'curado'
+  | 'cambio_estado'
+  | 'cambio_envase'
+  | 'cambio_categoria'
+  | 'cambio_tipo'
+  | 'bloqueo'
+  | 'desbloqueo'
+  | 'anulacion';
+
+export interface MovimientoRegistro {
+  id: string;
+  loteId: string;
+  fecha: string;
+  usuario: string;
+  tipo: TipoMovimientoEspecificacion;
+  valorAnterior?: string | number | null;
+  valorNuevo?: string | number | null;
+  observaciones?: string;
+  // Campos de trazabilidad / contraasiento
+  contraasientoId?: string;
+  esContraasiento?: boolean;
+}
+
+export interface ReporteDiario {
+  id: string;
+  fecha: string; // YYYY-MM-DD
+  tipo: 'produccion' | 'curado';
+  kg: number;
+  bolsas?: number;
+  loteId: string;
+  usuario: string;
+  codigoLote?: string;
+  cliente?: string;
+  variedad?: string;
+  especie?: string;
+  producto?: string; // Principio activo o curasemilla utilizado
+}
+
+export interface SiloRegistro {
+  id: string;
+  nombre: string;
+}
+
+export const SILOS_REGISTROS_FIJOS: SiloRegistro[] = [
+  { id: 'silo-1', nombre: 'Silo 1' },
+  { id: 'silo-2', nombre: 'Silo 2' },
+  { id: 'silo-3', nombre: 'Silo 3' },
+  { id: 'silo-4', nombre: 'Silo 4' },
+  { id: 'silo-5', nombre: 'Silo 5' },
+  { id: 'silo-6', nombre: 'Silo 6' },
+];
+
+export interface PrecargaRegistro {
+  id?: string;
+  siloId: string;
+  kgTomados: number;
+  mermaPct: number;
+  kgNetos: number;
+  envase: EnvaseEspecificacion;
+  cantidadBolsas: number;
+  cantidadLotes: number;
+  remanenteNoEmbolsableKg?: number;
+  fecha?: string;
+}
+
+export type EstadoBolsa = 'activa' | 'despachada' | 'reasignada' | 'reenvasada' | EstadoRegistroLoteEspec;
+
+export interface BolsaRegistro {
+  id: string; // {codigoLote}-{nn}/{total}, ej: 0153-07/35
+  loteId: string;
+  numero: number;
+  totalBolsas: number;
+  kg: number; // 20, 25, 40 u 800
+  envase?: EnvaseEspecificacion | string; // 'x 20 kg', 'x 25 kg', 'x 40 kg', 'x 800 kg'
+  tipo?: TipoLoteEspecificacion | string; // 'intermedio' | 'final'
+  tratamiento?: TratamientoEspecificacion | string; // 'curado' | 'sin curar'
+  productoCurado?: string;
+  categoria?: CategoriaEspecificacion | string; // 'preba' | 'original' | 'primu'
+  estado: EstadoBolsa | string;
+  despachada?: boolean;
+  bolsaOrigenId?: string | null;
+  caratulaId: string;
+}
+
+export interface CaratulaRegistro {
+  id: string;
+  loteId: string;
+  fechaEmision: string; // YYYY-MM-DD HH:mm o ISO
+  numeroLote?: string;
+  cliente?: string;
+  variedad?: string;
+  especie?: string;
+  categoria?: string;
+  kgIniciales?: number;
 }
 
 export interface PreMovimientoLote {

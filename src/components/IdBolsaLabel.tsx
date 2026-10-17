@@ -377,8 +377,11 @@ export const IdBolsaLabel: React.FC<IdBolsaLabelProps> = ({
         >
           QR TRAZABILIDAD
         </div>
-        <div className="text-[6pt] font-mono font-black text-black leading-none mt-0.5 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-300">
-          Bolsa {bolsaNumStr}{totalBolsasSeguro > 0 ? `/${bolsaTotalStr}` : ''}
+        <div 
+          className="text-[5.5pt] font-mono font-black text-black leading-none mt-0.5 bg-gray-100 px-1 py-0.5 rounded border border-gray-300 truncate max-w-full text-center"
+          title={`${(lote.codigo || lote.loteNro || lote.id || 'LOTE').trim().replace(/^LOTE\s*[:-]?\s*/i, '')}-${bolsaNumStr}/${bolsaTotalStr}`}
+        >
+          {`${(lote.codigo || lote.loteNro || lote.id || 'LOTE').trim().replace(/^LOTE\s*[:-]?\s*/i, '')}-${bolsaNumStr}/${bolsaTotalStr}`}
         </div>
       </div>
     </div>

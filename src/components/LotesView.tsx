@@ -23,6 +23,8 @@ import { PaginationControls } from './PaginationControls';
 import { SiloId, BolsonCampo } from '../types';
 import { LotesUnifiedDashboard } from './LotesUnifiedDashboard';
 import { ConfirmationDialog } from './ConfirmationDialog';
+import { generarCaratulaParaLote, generarBolsasParaLote, normalizarEstado } from '../utils/loteEspecUtils';
+import { guardarCaratulaYBolsasFirestore, registrarMovimientoOficial } from '../lib/firebase';
 
 /**
  * Determina de forma unificada si un lote posee tratamiento químico aplicado
@@ -1119,18 +1121,28 @@ export const LotesView: React.FC<LotesViewProps> = ({
   }, [lotes, plantaConfig, clientes]);
 
   const especiesDisponibles = useMemo(() => {
-    const fromContext = lotesContextoCliente.map(l => l.especie).filter(Boolean) as string[];
+    const dbEspecies = (plantaConfig?.especies && plantaConfig.especies.length > 0)
+      ? plantaConfig.especies
+      : (especies && especies.length > 0 ? especies : ['Soja']);
+    const dbEspeciesNormalized = new Set(dbEspecies.map(e => e.trim().toLowerCase()));
+
+    const fromContext = lotesContextoCliente
+      .map(l => l.especie)
+      .filter((e): e is NonNullable<typeof e> => Boolean(e && dbEspeciesNormalized.has(e.trim().toLowerCase())));
+
     if (fromContext.length > 0) {
       return Array.from(new Set(fromContext)).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     }
-    const base = plantaConfig?.especies || especies || ['Soja', 'Trigo', 'Arveja', 'Cebada', 'Maíz', 'Girasol'];
-    const fromLotes = lotes.map(l => l.especie).filter(Boolean) as string[];
-    return Array.from(new Set([...base, ...fromLotes])).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  }, [lotesContextoCliente, lotes, plantaConfig, especies]);
+    return dbEspecies.slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [lotesContextoCliente, plantaConfig, especies]);
 
   const variedadesDisponibles = useMemo(() => {
+    const dbVariedadesList = (plantaConfig?.variedadesDb && plantaConfig.variedadesDb.length > 0)
+      ? plantaConfig.variedadesDb.map(v => v.nombre.trim())
+      : (plantaConfig?.variedades || []);
+    const dbVariedadesSet = new Set(dbVariedadesList.map(v => v.toLowerCase()));
+
     if (filterClientes.length > 0) {
-      const fromContext = lotesContextoCliente.map(l => l.variedad).filter(Boolean) as string[];
       const dbList = plantaConfig?.variedadesDb || [];
       const fromDb = dbList.filter(v => {
         const normVCli = normalizeCliente(v.cliente);
@@ -1138,15 +1150,23 @@ export const LotesView: React.FC<LotesViewProps> = ({
           const normFc = normalizeCliente(fc);
           return normFc === normVCli || fc.trim().toLowerCase() === (v.cliente || '').trim().toLowerCase();
         });
-      }).map(v => v.nombre).filter(Boolean);
+      }).map(v => v.nombre.trim()).filter(Boolean);
 
-      const combined = Array.from(new Set([...fromContext, ...fromDb]));
+      const fromContext = lotesContextoCliente
+        .map(l => l.variedad)
+        .filter((v): v is string => Boolean(v && dbVariedadesSet.has(v.trim().toLowerCase())));
+
+      const combined = Array.from(new Set([...fromDb, ...fromContext])).filter(v => dbVariedadesSet.has(v.toLowerCase()));
       return combined.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     }
-    const base = plantaConfig?.variedades || [];
-    const fromLotes = lotes.map(l => l.variedad).filter(Boolean) as string[];
-    return Array.from(new Set([...base, ...fromLotes])).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  }, [filterClientes, lotesContextoCliente, lotes, plantaConfig]);
+
+    const fromContext = lotesContextoCliente
+      .map(l => l.variedad)
+      .filter((v): v is string => Boolean(v && dbVariedadesSet.has(v.trim().toLowerCase())));
+
+    const combined = Array.from(new Set([...dbVariedadesList, ...fromContext])).filter(v => dbVariedadesSet.has(v.toLowerCase()));
+    return combined.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [filterClientes, lotesContextoCliente, plantaConfig]);
 
   // Al cambiar cliente o especie, depurar variedades seleccionadas que ya no correspondan a las opciones disponibles
   useEffect(() => {
@@ -1202,16 +1222,17 @@ export const LotesView: React.FC<LotesViewProps> = ({
     return Array.from(new Set([...base, ...fromLotes])).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [lotesContextoCliente, plantaConfig]);
 
-  const estadosDisponibles = useMemo(() => ['Disponible', 'Reservado', 'A Consumo', 'Agotado'], []);
+  const estadosDisponibles = useMemo(() => ['sin clasificar', 'clasificado', 'bloqueado', 'descartado'], []);
 
   // Lógica de Filtrado Múltiple
   const filteredLotes = useMemo(() => {
     return lotes.filter(l => {
-      // 0. Filtro Estado de Registro (Todos / Realizado / Precarga)
-      if (filterEstadoRegistro === 'REALIZADO' && l.estadoRegistro === 'PRE-CARGA') {
+      // 0. Filtro Estado de Registro (Todos / Realizado / Sin Clasificar)
+      const esSinClasificar = normalizarEstado(l.estadoEspec || l.estado, l.estadoRegistro) === 'sin clasificar' || l.estadoRegistro === 'PRE-CARGA';
+      if (filterEstadoRegistro === 'REALIZADO' && esSinClasificar) {
         return false;
       }
-      if (filterEstadoRegistro === 'PRE-CARGA' && l.estadoRegistro !== 'PRE-CARGA') {
+      if (filterEstadoRegistro === 'PRE-CARGA' && !esSinClasificar) {
         return false;
       }
 
@@ -1512,15 +1533,24 @@ export const LotesView: React.FC<LotesViewProps> = ({
     return 'bg-slate-100 text-slate-800 border-slate-300';
   };
 
-  const getEstadoBadgeStyle = (estado: EstadoLoteType) => {
-    switch (estado) {
-      case 'Disponible':
+  const getEstadoBadgeStyle = (estado: string) => {
+    const norm = String(estado || '').toLowerCase().trim();
+    switch (norm) {
+      case 'clasificado':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      case 'sin clasificar':
+        return 'bg-amber-100 text-amber-900 border-amber-300';
+      case 'bloqueado':
+        return 'bg-red-100 text-red-800 border-red-300';
+      case 'descartado':
+        return 'bg-slate-200 text-slate-800 border-slate-400';
+      case 'disponible':
         return 'bg-[#E3EFE7] text-[#00603C] border-[#00603C]';
-      case 'Reservado':
+      case 'reservado':
         return 'bg-[#F6EFDC] text-[#C9922E] border-[#C9922E]';
-      case 'A Consumo':
+      case 'a consumo':
         return 'bg-purple-100 text-purple-900 border-purple-400';
-      case 'Agotado':
+      case 'agotado':
         return 'bg-[#A0522D]/10 text-[#A0522D] border-[#A0522D]';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300';
@@ -1871,11 +1901,11 @@ export const LotesView: React.FC<LotesViewProps> = ({
       {/* PANEL CONSOLA DE INFORMACIÓN (INFO CONSOLE) PERSISTENTE EN LA PARTE SUPERIOR */}
       {(() => {
         const totalBolsasRealizadas = filteredLotes
-          .filter(l => (l.estadoRegistro || 'REALIZADO') === 'REALIZADO' && l.estadoRegistro !== 'PRE-CARGA')
+          .filter(l => (l.estadoRegistro || 'REALIZADO') === 'REALIZADO' && l.estadoRegistro !== 'PRE-CARGA' && normalizarEstado(l.estadoEspec || l.estado, l.estadoRegistro) !== 'sin clasificar')
           .reduce((acc, l) => acc + (Number(l.stockBolsas) || 0), 0);
 
-        const totalBolsasPrecarga = filteredLotes
-          .filter(l => l.estadoRegistro === 'PRE-CARGA')
+        const totalBolsasSinClasificar = filteredLotes
+          .filter(l => l.estadoRegistro === 'PRE-CARGA' || normalizarEstado(l.estadoEspec || l.estado, l.estadoRegistro) === 'sin clasificar')
           .reduce((acc, l) => acc + (Number(l.stockBolsas) || 0), 0);
         
         const totalBolsasFiltradas = filteredLotes
@@ -1996,8 +2026,8 @@ export const LotesView: React.FC<LotesViewProps> = ({
                 </div>
                 <div className="mt-1.5 pt-1.5 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-300">
                   <span>Realizadas: <strong className="text-white">{formatNumberArg(totalBolsasRealizadas, 0)}</strong></span>
-                  {totalBolsasPrecarga > 0 && (
-                    <span className="text-amber-300 font-medium">Precarga: {formatNumberArg(totalBolsasPrecarga, 0)}</span>
+                  {totalBolsasSinClasificar > 0 && (
+                    <span className="text-amber-300 font-medium">Sin Clasificar: {formatNumberArg(totalBolsasSinClasificar, 0)}</span>
                   )}
                 </div>
               </div>
@@ -2117,7 +2147,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
               <span>Filtros de Búsqueda</span>
             </div>
 
-            {/* Selector de Estado de Registro (Todos / Realizado / Precarga) */}
+            {/* Selector de Estado de Registro (Todos / Realizado / Sin Clasificar) */}
             <div className="flex items-center bg-[#E3EFE7]/40 p-1 rounded-xl border border-gray-200 text-xs font-sans">
               <button
                 type="button"
@@ -2141,11 +2171,11 @@ export const LotesView: React.FC<LotesViewProps> = ({
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Realizado ({lotes.filter(l => (l.estadoRegistro || 'REALIZADO') === 'REALIZADO' && l.estadoRegistro !== 'PRE-CARGA').length})
+                Realizado ({lotes.filter(l => (l.estadoRegistro || 'REALIZADO') === 'REALIZADO' && l.estadoRegistro !== 'PRE-CARGA' && normalizarEstado(l.estadoEspec || l.estado, l.estadoRegistro) !== 'sin clasificar').length})
               </button>
               <button
                 type="button"
-                id="filter-estado-precarga"
+                id="filter-estado-sin-clasificar"
                 onClick={() => setFilterEstadoRegistro('PRE-CARGA')}
                 className={`px-3 py-1.5 rounded-lg font-extrabold transition cursor-pointer ${
                   filterEstadoRegistro === 'PRE-CARGA'
@@ -2153,7 +2183,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Precarga ({lotes.filter(l => l.estadoRegistro === 'PRE-CARGA').length})
+                Sin Clasificar ({lotes.filter(l => normalizarEstado(l.estadoEspec || l.estado, l.estadoRegistro) === 'sin clasificar' || l.estadoRegistro === 'PRE-CARGA').length})
               </button>
             </div>
 
@@ -2458,7 +2488,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                 {selectedLoteIds.length} {selectedLoteIds.length === 1 ? 'LOTE SELECCIONADO' : 'LOTES SELECCIONADOS'}
               </span>
               <span className="text-xs text-slate-300 hidden sm:inline">
-                Acciones grupales para lotes seleccionados (Realizados o Precarga):
+                Acciones grupales para lotes seleccionados (Realizados o Sin Clasificar):
               </span>
             </div>
 
@@ -2774,31 +2804,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                   <Trash2 className="w-4.5 h-4.5" />
                 </button>
 
-                <div className="flex gap-1.5">
-                  {l.estadoRegistro === 'PRE-CARGA' && (
-                    (l.esMovimiento || l.tipoMovimiento || l.loteOrigen || (l.loteNro && l.loteNro.toUpperCase().includes('MOV'))) ? (
-                      <button
-                        type="button"
-                        onClick={() => setLoteToMovRealizado(l)}
-                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-xs flex items-center gap-1 font-bold cursor-pointer border border-blue-500"
-                        title="MOV REALIZADO (Fijar manualmente el día en el que se realizó efectivamente el movimiento)"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                        <span>MOV REALIZADO</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setLoteToProcess(l)}
-                        className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition text-xs flex items-center gap-1 font-bold cursor-pointer"
-                        title="Pasar a Realizado (Ingresar silos y bolsones de origen)"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
-                        <span>Realizar</span>
-                      </button>
-                    )
-                  )}
-
+                <div className="flex gap-1.5 flex-wrap">
                   {!l.tratamiento.includes('Tratado') && l.stockBolsas > 0 && (
                     <button
                       onClick={() => setLoteToTratar(l)}
@@ -3169,7 +3175,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                       title="Ordenar por Categoría / Tipo / Tratamiento"
                     >
                       <div className="inline-flex items-center gap-1.5">
-                        <span>Clasificación & Tratamiento</span>
+                        <span>Categoría & Tratamiento</span>
                         {sortField === 'categoria' || sortField === 'tratamiento' ? (
                           sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-300 stroke-[2.5]" />
                         ) : (
@@ -3815,32 +3821,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
 
                     {/* 12. Acción */}
                     <td className="py-2 px-2.5 text-center whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {/* Botón Pasar a Realizado (intacto para PRE-CARGA) */}
-                        {l.estadoRegistro === 'PRE-CARGA' && (
-                          (l.esMovimiento || l.tipoMovimiento || l.loteOrigen || (l.loteNro && l.loteNro.toUpperCase().includes('MOV'))) ? (
-                            <button
-                              type="button"
-                              onClick={() => setLoteToMovRealizado(l)}
-                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-black flex items-center gap-1 shadow-xs transition cursor-pointer border border-blue-500 uppercase tracking-wider shrink-0"
-                              title="MOV REALIZADO: Fijar manualmente el día en el que se realizó efectivamente el movimiento"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5 text-white stroke-[2.5]" />
-                              <span>MOV REALIZADO</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setLoteToProcess(l)}
-                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs transition cursor-pointer shrink-0"
-                              title="Pasar a Realizado (Ingresar silos, bolsones y sectores de origen)"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
-                              <span>Pasar a Realizado</span>
-                            </button>
-                          )
-                        )}
-
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
                         {/* Botón Editor de Lote (Modificar manualmente cantidad de bolsas de alta, tipo, categoría, nombre) */}
                         <button
                           type="button"
@@ -4609,10 +4590,10 @@ export const LotesView: React.FC<LotesViewProps> = ({
                   onChange={(e) => setInlineEditData(prev => ({ ...prev, estado: e.target.value as EstadoLoteType }))}
                   className="w-full px-3 py-2 text-xs font-black text-slate-800 bg-white border-2 border-slate-300 focus:border-amber-400 focus:ring-2 focus:ring-emerald-600 rounded-xl outline-none shadow-xs cursor-pointer"
                 >
-                  <option value="Disponible">Disponible</option>
-                  <option value="Reservado">Reservado</option>
-                  <option value="Agotado">Agotado</option>
-                  <option value="A Consumo">A Consumo</option>
+                  <option value="sin clasificar">Sin clasificar</option>
+                  <option value="clasificado">Clasificado</option>
+                  <option value="bloqueado">Bloqueado</option>
+                  <option value="descartado">Descartado</option>
                 </select>
               </div>
 

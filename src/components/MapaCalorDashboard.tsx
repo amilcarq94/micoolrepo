@@ -1874,10 +1874,10 @@ export const MapaCalorDashboard: React.FC<MapaCalorDashboardProps> = ({
                     onChange={(e) => setEditFormData((prev) => ({ ...prev, estado: e.target.value }))}
                     className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-gray-800 focus:ring-2 focus:ring-[#00603C] outline-hidden"
                   >
-                    <option value="Disponible">Disponible</option>
-                    <option value="Reservado">Reservado</option>
-                    <option value="Agotado">Agotado</option>
-                    <option value="A Consumo">A Consumo</option>
+                    <option value="sin clasificar">Sin clasificar</option>
+                    <option value="clasificado">Clasificado</option>
+                    <option value="bloqueado">Bloqueado</option>
+                    <option value="descartado">Descartado</option>
                   </select>
                 </div>
 

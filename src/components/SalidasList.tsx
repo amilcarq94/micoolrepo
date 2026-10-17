@@ -46,6 +46,8 @@ import {
   Eye,
   Trash2,
   AlertTriangle,
+  CheckSquare,
+  PackageCheck,
 } from 'lucide-react';
 import { exportWithHtml2Pdf } from '../utils/exportPdf';
 import { ConfirmationDialog } from './ConfirmationDialog';
@@ -405,7 +407,7 @@ export const SalidasList: React.FC<SalidasListProps> = ({
   }, [salidas, lotes]);
 
   const tratamientosOptions = useMemo(() => {
-    const set = new Set<string>(['Tratado', 'Sin Tratar']);
+    const set = new Set<string>(['Curado', 'Sin Curar']);
     lotes.forEach((l) => {
       if (Array.isArray(l.tratamiento)) {
         l.tratamiento.forEach((t) => t && set.add(t.trim()));
@@ -998,6 +1000,17 @@ export const SalidasList: React.FC<SalidasListProps> = ({
   const selectedRows = useMemo(() => {
     return sortedRows.filter((r) => selectedRowIds.has(r.id) && !deletedIds.has(r.id));
   }, [sortedRows, selectedRowIds, deletedIds]);
+
+  // Totales de bolsas y kilos seleccionados mediante el check
+  const selectedTotals = useMemo(() => {
+    const totalBolsas = selectedRows.reduce((acc, curr) => acc + (curr.cantidadBolsas || 0), 0);
+    const totalKg = selectedRows.reduce((acc, curr) => acc + (curr.totalKg || 0), 0);
+    return { totalBolsas, totalKg, count: selectedRows.length };
+  }, [selectedRows]);
+
+  const porcentajeSeleccionBolsas = summaryTotals.totalBolsas > 0
+    ? ((selectedTotals.totalBolsas / summaryTotals.totalBolsas) * 100).toFixed(1)
+    : '0';
 
   const isAllVisibleSelected =
     sortedRows.length > 0 && sortedRows.every((r) => selectedRowIds.has(r.id));
@@ -1819,25 +1832,165 @@ export const SalidasList: React.FC<SalidasListProps> = ({
         </div>
       </div>
 
+      {/* VISOR DE BOLSAS: SEGÚN FILTRO VS. SELECCIONADAS DEL CHECK */}
+      <div className="bg-white p-5 rounded-2xl border-2 border-emerald-600/30 shadow-xs space-y-4 animate-in fade-in">
+        {/* Cabecera del Visor */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-gray-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="bg-[#00603C] text-white text-[10px] font-black uppercase px-2.5 py-0.5 rounded-md tracking-wider">
+                VISOR DE BOLSAS
+              </span>
+              <h4 className="font-serif text-base font-bold text-[#1A1A1A]">
+                Historial de Salidas: Bolsas según Filtro &amp; Selección (Check)
+              </h4>
+            </div>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Control en tiempo real de la cantidad de bolsas filtradas y cantidad de bolsas seleccionadas mediante casillas de verificación.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Botón rápido para marcar / desmarcar todos los checks del filtro */}
+            <button
+              type="button"
+              onClick={toggleSelectAllVisible}
+              disabled={sortedRows.length === 0}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed ${
+                isAllVisibleSelected
+                  ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                  : 'bg-emerald-50 text-[#00603C] border-emerald-300 hover:bg-emerald-100'
+              }`}
+              title={isAllVisibleSelected ? "Desmarcar todos los registros del filtro actual" : "Marcar con check todos los registros del filtro actual"}
+            >
+              <CheckSquare className="w-3.5 h-3.5 text-[#00603C]" />
+              <span>{isAllVisibleSelected ? 'Desmarcar todos los checks' : 'Marcar todos con el check'}</span>
+            </button>
+
+            {selectedRows.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-600 hover:text-red-700 bg-gray-50 hover:bg-red-50 border border-gray-200 hover:border-red-200 transition cursor-pointer"
+              >
+                Limpiar selección ({selectedRows.length})
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Tarjetas KPI del Visor */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Tarjeta 1: Cantidad de Bolsas según Filtro */}
+          <div className="bg-gradient-to-br from-slate-50 via-white to-emerald-50/20 p-4 rounded-xl border border-slate-200 shadow-2xs relative overflow-hidden">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-[#00603C]" />
+                Bolsas según Filtro
+              </span>
+              <span className="text-[10px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                {summaryTotals.count} {summaryTotals.count === 1 ? 'registro' : 'registros'}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-2xl lg:text-3xl font-black text-[#1A1A1A]">
+                {formatNumberArg(summaryTotals.totalBolsas, 0)}
+              </span>
+              <span className="text-xs font-bold text-slate-600">bolsas totales</span>
+            </div>
+            <div className="mt-2 pt-2 border-t border-slate-200/70 flex items-center justify-between text-[11px] text-slate-600">
+              <span>Peso Total Filtrado:</span>
+              <strong className="font-mono text-[#00603C] font-bold">{formatNumberArg(summaryTotals.totalKg, 0)} kg</strong>
+            </div>
+            <div className="mt-1 text-[10px] text-gray-500">
+              {activeFiltersCount > 0 ? `${activeFiltersCount} filtro(s) activo(s)` : 'Mostrando todo el historial'}
+            </div>
+          </div>
+
+          {/* Tarjeta 2: Cantidad de Bolsas Seleccionadas del Check */}
+          <div className={`p-4 rounded-xl border shadow-2xs relative overflow-hidden transition ${
+            selectedTotals.count > 0
+              ? 'bg-gradient-to-br from-emerald-50 via-emerald-100/40 to-white border-emerald-400 ring-2 ring-emerald-400/25'
+              : 'bg-white border-dashed border-gray-300'
+          }`}>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#00603C] flex items-center gap-1.5">
+                <CheckSquare className="w-3.5 h-3.5 text-[#00603C]" />
+                Bolsas Seleccionadas del Check
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                selectedTotals.count > 0
+                  ? 'bg-[#00603C] text-white shadow-2xs'
+                  : 'bg-gray-100 text-gray-500'
+              }`}>
+                {selectedTotals.count} de {summaryTotals.count} checks
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className={`font-mono text-2xl lg:text-3xl font-black ${
+                selectedTotals.count > 0 ? 'text-[#00603C]' : 'text-gray-400'
+              }`}>
+                {formatNumberArg(selectedTotals.totalBolsas, 0)}
+              </span>
+              <span className="text-xs font-bold text-gray-600">bolsas seleccionadas</span>
+            </div>
+            <div className="mt-2 pt-2 border-t border-emerald-200/70 flex items-center justify-between text-[11px] text-gray-600">
+              <span>Peso Seleccionado:</span>
+              <strong className="font-mono text-[#00603C] font-bold">{formatNumberArg(selectedTotals.totalKg, 0)} kg</strong>
+            </div>
+            <div className="mt-1 text-[10px] text-gray-500">
+              {selectedTotals.count > 0 ? 'Marcadas mediante casillas de verificación' : 'Sin casillas marcadas actualmente'}
+            </div>
+          </div>
+
+          {/* Tarjeta 3: Comparativa & Saldo Remanente */}
+          <div className="bg-gradient-to-br from-white to-[#F6EFDC]/60 p-4 rounded-xl border border-[#C9922E]/30 shadow-2xs">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                <PackageCheck className="w-3.5 h-3.5 text-[#C9922E]" />
+                Proporción Seleccionada
+              </span>
+              <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
+                {porcentajeSeleccionBolsas}% del filtro
+              </span>
+            </div>
+            {/* Barra de progreso */}
+            <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden my-2 shadow-inner">
+              <div
+                className="bg-[#00603C] h-2.5 rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, Number(porcentajeSeleccionBolsas)))}%` }}
+              />
+            </div>
+            <div className="mt-2 pt-1 border-t border-amber-200/50 flex items-center justify-between text-[11px] text-gray-600">
+              <span>Bolsas sin seleccionar:</span>
+              <strong className="font-mono text-gray-800 font-bold">
+                {formatNumberArg(Math.max(0, summaryTotals.totalBolsas - selectedTotals.totalBolsas), 0)} b.
+              </strong>
+            </div>
+            <div className="mt-1 text-[10px] text-gray-500 flex justify-between">
+              <span>Kilos sin seleccionar:</span>
+              <span className="font-mono font-semibold text-gray-700">
+                {formatNumberArg(Math.max(0, summaryTotals.totalKg - selectedTotals.totalKg), 0)} kg
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* BARRA DE RESUMEN Y CONTROLES DE ORDENAMIENTO */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-gray-600 font-medium">
-          <span className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs">
-            Mostrando <strong className="text-gray-900">{summaryTotals.count}</strong> registros
+          <span className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs flex items-center gap-1.5">
+            <Filter className="w-3 h-3 text-[#00603C]" />
+            <span>Filtro: <strong className="text-gray-900 font-mono">{formatNumberArg(summaryTotals.totalBolsas, 0)}</strong> b. ({summaryTotals.count} reg. / {formatNumberArg(summaryTotals.totalKg, 0)} kg)</span>
           </span>
-          {selectedRows.length > 0 && (
-            <span className="bg-emerald-100 text-[#00603C] px-3 py-1.5 rounded-lg border border-emerald-300 font-bold flex items-center gap-1.5 shadow-2xs animate-in fade-in duration-150">
-              <span className="w-2 h-2 rounded-full bg-[#00603C] animate-pulse" />
-              {selectedRows.length} seleccionado{selectedRows.length > 1 ? 's' : ''}
-            </span>
-          )}
-          <span className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs">
-            Bolsas:{' '}
-            <strong className="text-gray-900 font-mono">{formatNumberArg(summaryTotals.totalBolsas, 0)}</strong>
-          </span>
-          <span className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs">
-            Total Kg:{' '}
-            <strong className="text-[#00603C] font-mono">{formatNumberArg(summaryTotals.totalKg, 0)} kg</strong>
+          <span className={`px-3 py-1.5 rounded-lg border shadow-2xs flex items-center gap-1.5 font-bold transition ${
+            selectedTotals.count > 0
+              ? 'bg-emerald-100 text-[#00603C] border-emerald-300'
+              : 'bg-white text-gray-500 border-gray-200'
+          }`}>
+            <CheckSquare className="w-3 h-3 text-[#00603C]" />
+            <span>Check: <strong className="font-mono">{formatNumberArg(selectedTotals.totalBolsas, 0)}</strong> b. ({selectedTotals.count} sel. / {formatNumberArg(selectedTotals.totalKg, 0)} kg)</span>
           </span>
         </div>
 

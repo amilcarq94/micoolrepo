@@ -268,7 +268,7 @@ export const BulkEditLotesModal: React.FC<BulkEditLotesModalProps> = ({
                     onChange={() => handleToggle('estado')}
                     className="w-4 h-4 text-[#00603C] rounded focus:ring-[#00603C]"
                   />
-                  <span>Estado de Stock (Disponible / Reservado / Agotado / A Consumo)</span>
+                  <span>Estado de Lote (Sin clasificar / Clasificado / Bloqueado / Descartado)</span>
                 </label>
                 <span className="text-[10px] font-bold text-slate-400">
                   {fieldToggles.estado ? 'SE MODIFICARÁ' : 'Sin cambios'}
@@ -282,10 +282,10 @@ export const BulkEditLotesModal: React.FC<BulkEditLotesModalProps> = ({
                     onChange={(e) => setEstado(e.target.value as EstadoLoteType)}
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
                   >
-                    <option value="Disponible">Disponible</option>
-                    <option value="Reservado">Reservado</option>
-                    <option value="Agotado">Agotado</option>
-                    <option value="A Consumo">A Consumo</option>
+                    <option value="sin clasificar">Sin clasificar</option>
+                    <option value="clasificado">Clasificado</option>
+                    <option value="bloqueado">Bloqueado</option>
+                    <option value="descartado">Descartado</option>
                   </select>
                 </div>
               )}

@@ -393,7 +393,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
       const tratamientoFinal = requiereTratamiento
         ? ['Tratado']
         : tipoMovimiento === 'intermedio_a_final'
-        ? ['Sin Tratar']
+        ? ['Sin Curar']
         : lote.tratamiento;
 
       const nuevoTipo =
@@ -532,7 +532,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
         tipo: 'Creación',
         usuario: currentUser.nombre,
         descripcion: `Lote ${nombreLoteDesdoblado} generado por desdoblamiento desde ${lote.loteNro}, manteniendo mismo origen. Ubicación: ${ubiFinalNuevoLote || 'Sin asignar'}.`,
-        detalles: `Alta: ${bolsasResultantesMovidas} bolsas (${formatKg(kgTotalesAMover)} kg) en envase ${nuevoEnvaseLabel}. Tipo: ${nuevoTipo}. Tratamiento: ${requiereTratamiento ? `Tratado (${productoFinal})` : 'Sin Tratar'}.`,
+        detalles: `Alta: ${bolsasResultantesMovidas} bolsas (${formatKg(kgTotalesAMover)} kg) en envase ${nuevoEnvaseLabel}. Tipo: ${nuevoTipo}. Tratamiento: ${requiereTratamiento ? `Curado (${productoFinal})` : 'Sin Curar'}.`,
       };
 
       const nuevoLoteGenerado: Lote = {
@@ -646,7 +646,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
             </span>
             <span className="text-slate-500 font-medium ml-1">Tratamiento:</span>
             <span className="font-bold text-slate-800 bg-white px-2 py-0.5 rounded-md border border-slate-200">
-              {Array.isArray(lote.tratamiento) ? lote.tratamiento.join(', ') : lote.tratamiento || 'Sin Tratar'}
+              {Array.isArray(lote.tratamiento) ? lote.tratamiento.join(', ') : lote.tratamiento || 'Sin Curar'}
             </span>
             <span className="text-slate-500 font-medium ml-1">Envase origen:</span>
             <span className="font-bold text-emerald-900 bg-emerald-100/70 px-2 py-0.5 rounded-md border border-emerald-300">
@@ -773,7 +773,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-snug">
-                    Aplica curasemilla químico a bolsas que ya eran producto Final sin tratar.
+                    Aplica curasemilla químico a bolsas que ya eran producto Final sin curar.
                   </p>
                 </div>
               </button>
@@ -1245,7 +1245,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                   {esTotalidad ? 'Cualidades Finales Aplicadas:' : `Lote Desdoblado Separado (${nombreNuevoLote}):`}
                 </div>
                 <div className="font-semibold text-emerald-400">
-                  {bolsasResultantesMovidas} bolsas ({formatKg(kgTotalesAMover)} kg) · {nuevoEnvaseLabel} · {requiereTratamiento ? `Curado (${productoTratamiento})` : 'Sin Tratar'}
+                  {bolsasResultantesMovidas} bolsas ({formatKg(kgTotalesAMover)} kg) · {nuevoEnvaseLabel} · {requiereTratamiento ? `Curado (${productoTratamiento})` : 'Sin Curar'}
                 </div>
                 {!esTotalidad && (
                   <div className="text-[10px] text-amber-300 mt-0.5">

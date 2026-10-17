@@ -100,7 +100,7 @@ export const DashboardAnalitico: React.FC<DashboardAnaliticoProps> = ({ lotes })
     return Array.from(set).filter(Boolean).sort();
   }, [lotes]);
 
-  const tratamientosOptions = ['Tratado', 'Sin Tratar'];
+  const tratamientosOptions = ['Curado', 'Sin Curar'];
 
   // Resetear Variedad a Todos si la seleccionada ya no existe en la especie elegida
   React.useEffect(() => {
@@ -133,7 +133,11 @@ export const DashboardAnalitico: React.FC<DashboardAnaliticoProps> = ({ lotes })
       
       // El tratamiento en Lote es un array (tratamiento: TratamientoType[])
       const matchTratamiento = filterTratamiento === 'Todos' || 
-        (l.tratamiento && l.tratamiento.includes(filterTratamiento as TratamientoType));
+        (filterTratamiento === 'Curado'
+          ? (l.tratamiento && (l.tratamiento.includes('Curado') || l.tratamiento.includes('Tratado')))
+          : filterTratamiento === 'Sin Curar'
+          ? (!l.tratamiento || l.tratamiento.length === 0 || l.tratamiento.includes('Sin Curar') || l.tratamiento.includes('Sin Tratar'))
+          : (l.tratamiento && l.tratamiento.includes(filterTratamiento as TratamientoType)));
 
       return matchCliente && matchEspecie && matchVariedad && matchTipo && matchCategoria && matchTratamiento;
     });
@@ -226,7 +230,7 @@ export const DashboardAnalitico: React.FC<DashboardAnaliticoProps> = ({ lotes })
       'VARIEDAD': l.variedad,
       'TIPO DE LOTE': l.tipo,
       'CATEGORÍA': l.categoria,
-      'TRATAMIENTO': l.tratamiento && l.tratamiento.length > 0 ? l.tratamiento.join(' + ') : 'Sin Tratar',
+      'TRATAMIENTO': l.tratamiento && l.tratamiento.length > 0 ? l.tratamiento.join(' + ') : 'Sin Curar',
       'PRODUCTO TRATAMIENTO': l.producto || 'Ninguno',
       'ALA ACOPIO': l.ala ? `ALA ${l.ala}` : 'Sin Asignar',
       'SECTOR ACOPIO': l.sector ? `SECTOR ${l.sector}` : 'Sin Asignar',
@@ -359,7 +363,7 @@ export const DashboardAnalitico: React.FC<DashboardAnaliticoProps> = ({ lotes })
       l.variedad,
       l.tipo,
       l.categoria,
-      l.tratamiento && l.tratamiento.length > 0 ? l.tratamiento.join(' + ') : 'Sin Tratar',
+      l.tratamiento && l.tratamiento.length > 0 ? l.tratamiento.join(' + ') : 'Sin Curar',
       l.producto || 'Ninguno',
       l.ala ? `ALA ${l.ala}` : 'Sin Asignar',
       l.sector ? `SECTOR ${l.sector}` : 'Sin Asignar',
@@ -517,7 +521,7 @@ export const DashboardAnalitico: React.FC<DashboardAnaliticoProps> = ({ lotes })
             >
               <option value="Todos">🧪 Todos los Tratamientos</option>
               {tratamientosOptions.map(tr => (
-                <option key={tr} value={tr}>{tr === 'Tratado' ? 'Tratado (Curado)' : 'Sin Tratar (Original)'}</option>
+                <option key={tr} value={tr}>{tr === 'Curado' ? 'Curado' : 'Sin Curar'}</option>
               ))}
             </select>
           </div>
@@ -786,7 +790,7 @@ export const DashboardAnalitico: React.FC<DashboardAnaliticoProps> = ({ lotes })
                         <span className="text-[10px] font-semibold text-gray-700 bg-amber-50 border border-amber-200/50 px-2 py-0.5 rounded">
                           {l.tratamiento && l.tratamiento.length > 0
                             ? l.tratamiento.join(' + ')
-                            : 'Sin Tratar'}
+                            : 'Sin Curar'}
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-right font-bold text-gray-900">

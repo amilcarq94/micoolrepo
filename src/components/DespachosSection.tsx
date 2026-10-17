@@ -15,6 +15,7 @@ import {
   ClipboardList,
   UserCheck,
   Lock,
+  Unlock,
   UploadCloud,
   Check,
   AlertTriangle,
@@ -48,6 +49,7 @@ import {
   ArrowRight,
   ArrowDownUp,
   CheckCircle2,
+  CheckSquare,
   Mail,
   ExternalLink,
   Layers,
@@ -105,6 +107,7 @@ export interface LoteCargaSlotItem {
   loteId: string;
   bolsas: number;
   searchTerm: string;
+  congelado?: boolean;
 }
 
 export const getLoteUbicacion = (loteObj?: Lote | null, fallbackUbicacion?: string): string => {
@@ -204,8 +207,9 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   // Lotes agregados al dashboard de "Lote de Origen & Bolsas a Cargar"
   // Precarga por defecto de 35 bolsas (28.000 kg) por lote
   const [lotesCarga, setLotesCarga] = useState<LoteCargaSlotItem[]>([
-    { id: 'slot-1', loteId: '', bolsas: 35, searchTerm: '' }
+    { id: 'slot-1', loteId: '', bolsas: 35, searchTerm: '', congelado: false }
   ]);
+  const [freezeNotificationMsg, setFreezeNotificationMsg] = useState<string>('');
 
   // Lista dinámica de Despachantes
   const [despachantesList, setDespachantesList] = useState<string[]>(() => getListaDespachantes());
@@ -433,7 +437,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
 
     // 2. Restablecer lotes slots y datos manuales de carga (precarga por defecto de 35 bolsas / 28.000 kg)
     setLotesCarga([
-      { id: `slot-${Date.now()}-1`, loteId: '', bolsas: 35, searchTerm: '' }
+      { id: `slot-${Date.now()}-1`, loteId: '', bolsas: 35, searchTerm: '', congelado: false }
     ]);
     setGenRemitoCliente('');
     setGenCargaCliente('');
@@ -654,7 +658,8 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
           id: `slot-precarga-${Date.now()}-${idx + 1}`,
           loteId: found ? found.id : lm.numeroLote,
           bolsas: lm.cantidadBolsas || 35,
-          searchTerm: lm.numeroLote || ''
+          searchTerm: lm.numeroLote || '',
+          congelado: true
         };
       });
       setLotesCarga(newSlots);
@@ -668,7 +673,8 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
         id: `slot-precarga-${Date.now()}-1`,
         loteId: found ? found.id : p.numeroLote,
         bolsas: p.cantidadBolsas || 35,
-        searchTerm: p.numeroLote || ''
+        searchTerm: p.numeroLote || '',
+        congelado: false
       }]);
     }
 
@@ -925,31 +931,23 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     }
   };
 
-  // Auto-seleccionar primer lote disponible para slot 0 si no tiene lote o el que tiene ya no es candidato
+  // Auto-seleccionar primer lote disponible para slot 0 solo si no tiene lote asignado y NO está congelado
   useEffect(() => {
     if (candidateLotes.length > 0) {
       setLotesCarga(prev => {
         const slot0 = prev[0];
-        const isSlot0Valid = candidateLotes.some(c => c.id === slot0?.loteId);
-        if (!isSlot0Valid) {
-          const next = [...prev];
-          next[0] = {
-            ...slot0,
-            loteId: candidateLotes[0].id,
-            bolsas: slot0?.bolsas > 0 ? slot0.bolsas : Math.min(35, candidateLotes[0].stockBolsas)
-          };
-          return next;
-        }
-        return prev;
-      });
-    } else {
-      setLotesCarga(prev => {
-        if (prev[0]?.loteId) {
-          const next = [...prev];
-          next[0] = { ...next[0], loteId: '' };
-          return next;
-        }
-        return prev;
+        if (!slot0) return prev;
+        // Si el slot ya está congelado o el usuario ya seleccionó un lote válido, nunca sobrescribir
+        if (slot0.congelado || slot0.loteId) return prev;
+
+        const next = [...prev];
+        next[0] = {
+          ...slot0,
+          loteId: candidateLotes[0].id,
+          bolsas: slot0.bolsas > 0 ? slot0.bolsas : Math.min(35, candidateLotes[0].stockBolsas),
+          congelado: false
+        };
+        return next;
       });
     }
   }, [candidateLotes]);
@@ -972,19 +970,91 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     }
   };
 
+  // Congelar o descongelar manualmente un lote y su cantidad de bolsas
+  const handleToggleFreezeLoteSlot = (slotIndex: number) => {
+    setLotesCarga(prev => {
+      const slot = prev[slotIndex];
+      if (!slot) return prev;
+
+      if (!slot.congelado) {
+        // Congelar: Validar que tenga lote y cantidad de bolsas válida
+        if (!slot.loteId) {
+          setGenError(`Debe seleccionar un lote en el Lote #${slotIndex + 1} antes de congelar.`);
+          return prev;
+        }
+        if (!slot.bolsas || slot.bolsas <= 0) {
+          setGenError(`Debe indicar una cantidad válida de bolsas (mayor a 0) en el Lote #${slotIndex + 1} antes de congelar.`);
+          return prev;
+        }
+        const l = lotes.find(item => item.id === slot.loteId);
+        if (l && slot.bolsas > l.stockBolsas) {
+          setGenError(`La cantidad indicada (${slot.bolsas} b.) para el Lote #${slotIndex + 1} supera el stock disponible (${l.stockBolsas} b.). Corrija antes de congelar.`);
+          return prev;
+        }
+        setGenError('');
+        const next = [...prev];
+        next[slotIndex] = { ...slot, congelado: true };
+        const lNro = l?.loteNro || slot.loteId;
+        setFreezeNotificationMsg(`🔒 Lote ${lNro} congelado (${slot.bolsas} bolsas aseguradas).`);
+        setTimeout(() => setFreezeNotificationMsg(''), 4000);
+        return next;
+      } else {
+        // Descongelar para modificar
+        const next = [...prev];
+        next[slotIndex] = { ...slot, congelado: false };
+        setFreezeNotificationMsg(`🔓 Lote #${slotIndex + 1} descongelado. Puede editar el lote y la cantidad de bolsas.`);
+        setTimeout(() => setFreezeNotificationMsg(''), 4000);
+        return next;
+      }
+    });
+  };
+
+  // Congelar lote y bolsas actuales antes de acceder a la carga múltiple del siguiente lote
   const handleAddLoteSlot = () => {
-    const newId = `slot-${Date.now()}-${lotesCarga.length + 1}`;
-    const unselected = candidateLotes.find(c => !lotesCarga.some(s => s.loteId === c.id));
+    // 1. Validar que los lotes existentes antes de pasar al siguiente lote tengan lote seleccionado y bolsas > 0
+    for (let i = 0; i < lotesCarga.length; i++) {
+      const slot = lotesCarga[i];
+      if (!slot.loteId) {
+        setGenError(`Para acceder a la carga múltiple de lotes, primero seleccione el lote de origen en el Lote #${i + 1}.`);
+        return;
+      }
+      if (!slot.bolsas || slot.bolsas <= 0) {
+        setGenError(`Debe indicar una cantidad válida de bolsas (mayor a 0) en el Lote #${i + 1} antes de pasar al siguiente lote.`);
+        return;
+      }
+      const l = lotes.find(item => item.id === slot.loteId);
+      if (l && slot.bolsas > l.stockBolsas) {
+        setGenError(`La cantidad solicitada para el Lote #${i + 1} (${slot.bolsas} b.) supera el stock disponible (${l.stockBolsas} b.). Corrija la cantidad antes de congelar.`);
+        return;
+      }
+    }
+
+    setGenError('');
+
+    // 2. Congelar el lote y cantidad de bolsas seleccionadas antes de pasar al siguiente lote
+    const updatedPrev = lotesCarga.map(s => ({
+      ...s,
+      congelado: true
+    }));
+
+    // 3. Buscar lote candidato que no esté ya asignado en los slots previos
+    const unselected = candidateLotes.find(c => !updatedPrev.some(s => s.loteId === c.id));
     const chosen = unselected || candidateLotes[0];
-    setLotesCarga(prev => [
-      ...prev,
+
+    const newId = `slot-${Date.now()}-${updatedPrev.length + 1}`;
+    setLotesCarga([
+      ...updatedPrev,
       {
         id: newId,
         loteId: chosen?.id || '',
         bolsas: chosen ? Math.min(35, chosen.stockBolsas) : 35,
-        searchTerm: ''
+        searchTerm: '',
+        congelado: false
       }
     ]);
+
+    setFreezeNotificationMsg(`✓ Lote previo congelado exitosamente. Ahora puede seleccionar y configurar el siguiente lote para la carga múltiple.`);
+    setTimeout(() => setFreezeNotificationMsg(''), 4500);
   };
 
   const handleRemoveLoteSlot = (slotIndex: number) => {
@@ -999,6 +1069,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   ) => {
     setLotesCarga(prev => prev.map((slot, idx) => {
       if (idx !== slotIndex) return slot;
+      if (slot.congelado) return slot; // Protegido contra modificaciones si está congelado
       if (field === 'loteId') {
         const targetLote = candidateLotes.find(c => c.id === value) || lotes.find(l => l.id === value);
         const defBolsas = slot.bolsas > 0 ? slot.bolsas : (targetLote ? Math.min(35, targetLote.stockBolsas) : 35);
@@ -1112,7 +1183,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       kgTotales: totalKgSeleccionados,
       tipo: primerLote.tipo,
       categoria: primerLote.categoria,
-      tratamiento: primerLote.tratamiento[0] || 'Sin Tratar',
+      tratamiento: primerLote.tratamiento[0] || 'Sin Curar',
       despachante: genDespachante,
       estado: 'Disponible',
       lotesOrigen: lotesOrigen,
@@ -1485,6 +1556,12 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     return filteredOrdenes.filter(o => selectedOrdenIds.has(o.id));
   }, [filteredOrdenes, selectedOrdenIds]);
 
+  const selectedOrdenesTotals = useMemo(() => {
+    const totalBolsas = selectedOrdenes.reduce((acc, curr) => acc + (curr.cantidadBolsas || 0), 0);
+    const totalKg = selectedOrdenes.reduce((acc, curr) => acc + (curr.kgTotales || 0), 0);
+    return { totalBolsas, totalKg, count: selectedOrdenes.length };
+  }, [selectedOrdenes]);
+
   const isAllVisibleSelected =
     filteredOrdenes.length > 0 && filteredOrdenes.every(o => selectedOrdenIds.has(o.id));
   const isSomeVisibleSelected =
@@ -1519,6 +1596,10 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
       pendientesCount
     };
   }, [filteredOrdenes]);
+
+  const porcentajeSeleccionOrdenes = summaryTotals.totalBolsas > 0
+    ? ((selectedOrdenesTotals.totalBolsas / summaryTotals.totalBolsas) * 100).toFixed(1)
+    : '0';
 
   const handleConfirmarEliminarOrdenes = async () => {
     if (!ordenesAEliminar || ordenesAEliminar.length === 0) return;
@@ -2298,6 +2379,12 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2.5 flex-wrap">
+                      {freezeNotificationMsg && (
+                        <span className="text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1 rounded-lg flex items-center gap-1.5 animate-in fade-in shadow-2xs">
+                          <Lock className="w-3.5 h-3.5 text-emerald-700" />
+                          {freezeNotificationMsg}
+                        </span>
+                      )}
                       {lastUpdatedLotesMsg && (
                         <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
                           <CheckCircle className="w-3.5 h-3.5 text-[#00603C]" />
@@ -2317,22 +2404,21 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                         <span>{isUpdatingLotes ? 'Actualizando...' : 'Actualizar datos'}</span>
                       </button>
 
-                      {/* Botón '+' para agregar más lotes */}
+                      {/* Botón '+' para agregar más lotes / Carga múltiple */}
                       <button
                         type="button"
                         onClick={handleAddLoteSlot}
-                        disabled={candidateLotes.length === 0}
-                        className="px-4 py-2 bg-emerald-50 hover:bg-[#00603C] text-[#00603C] hover:text-white border border-emerald-300 hover:border-[#00603C] rounded-xl font-bold text-xs flex items-center gap-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
-                        title="Agregar otro lote de origen a esta misma orden"
+                        className="px-4 py-2 bg-emerald-50 hover:bg-[#00603C] text-[#00603C] hover:text-white border border-emerald-300 hover:border-[#00603C] rounded-xl font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-2xs"
+                        title="Congelar lote actual y habilitar el siguiente lote para carga múltiple"
                       >
                         <Plus className="w-4 h-4" />
-                        <span>+ Agregar Lote de Origen</span>
+                        <span>+ Carga Múltiple de Lotes</span>
                       </button>
                     </div>
                   </div>
 
-                  {/* Estado si no hay lotes candidatos */}
-                  {candidateLotes.length === 0 ? (
+                  {/* Estado si no hay lotes candidatos y ningún slot asignado */}
+                  {candidateLotes.length === 0 && !lotesCarga.some(s => s.loteId) ? (
                     <div className="p-6 bg-amber-50/70 border border-amber-200 rounded-xl text-center space-y-2">
                       <AlertTriangle className="w-6 h-6 text-amber-600 mx-auto" />
                       <p className="text-xs font-bold text-amber-900">
@@ -2354,7 +2440,9 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                           <div
                             key={slot.id}
                             className={`p-4 rounded-xl border transition ${
-                              isOverStock
+                              slot.congelado
+                                ? 'bg-emerald-50/40 border-emerald-300 ring-1 ring-emerald-200'
+                                : isOverStock
                                 ? 'bg-red-50/50 border-red-300'
                                 : selectedLote
                                 ? 'bg-gray-50/80 border-gray-200 hover:border-emerald-300'
@@ -2362,10 +2450,22 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                             }`}
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-gray-200/70">
-                              <div className="flex items-center gap-2">
-                                <span className="bg-[#00603C] text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${
+                                  slot.congelado ? 'bg-emerald-700' : 'bg-[#00603C]'
+                                }`}>
                                   Lote #{slotIdx + 1}
                                 </span>
+                                {slot.congelado ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                                    <Lock className="w-3 h-3 text-emerald-700" />
+                                    Lote y Bolsas Congelados
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-gray-500 italic">
+                                    (En configuración)
+                                  </span>
+                                )}
                                 {selectedLote && (
                                   <span className="text-xs font-semibold text-gray-700">
                                     Lote <strong className="text-[#00603C]">{selectedLote.loteNro}</strong> ({selectedLote.variedad || selectedLote.especie})
@@ -2373,18 +2473,44 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                 )}
                               </div>
 
-                              {/* Botón quitar slot si hay más de 1 */}
-                              {lotesCarga.length > 1 && (
+                              <div className="flex items-center gap-2">
+                                {/* Botón Congelar Selección / Descongelar */}
                                 <button
                                   type="button"
-                                  onClick={() => handleRemoveLoteSlot(slotIdx)}
-                                  className="px-2 py-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer border border-transparent hover:border-red-200"
-                                  title="Quitar este lote"
+                                  onClick={() => handleToggleFreezeLoteSlot(slotIdx)}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border shadow-2xs ${
+                                    slot.congelado
+                                      ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                                      : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                  }`}
+                                  title={slot.congelado ? 'Descongelar lote para modificar datos' : 'Congelar lote y cantidad de bolsas seleccionadas'}
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  <span>Quitar</span>
+                                  {slot.congelado ? (
+                                    <>
+                                      <Unlock className="w-3.5 h-3.5 text-amber-600" />
+                                      <span>Descongelar para Modificar</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Lock className="w-3.5 h-3.5 text-emerald-700" />
+                                      <span>Congelar Lote y Bolsas</span>
+                                    </>
+                                  )}
                                 </button>
-                              )}
+
+                                {/* Botón quitar slot si hay más de 1 */}
+                                {lotesCarga.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveLoteSlot(slotIdx)}
+                                    className="px-2 py-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer border border-transparent hover:border-red-200"
+                                    title="Quitar este lote"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Quitar</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 text-xs items-end">
@@ -2395,11 +2521,22 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                 </label>
                                 <select
                                   value={slot.loteId}
+                                  disabled={slot.congelado}
                                   onChange={(e) => handleUpdateLoteSlot(slotIdx, 'loteId', e.target.value)}
-                                  className="w-full h-10 px-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00603C] font-semibold text-xs"
+                                  className={`w-full h-10 px-3 border rounded-lg focus:outline-none font-semibold text-xs transition ${
+                                    slot.congelado
+                                      ? 'bg-gray-100 border-gray-300 text-gray-700 cursor-not-allowed opacity-90'
+                                      : 'bg-white border-gray-300 focus:ring-2 focus:ring-[#00603C]'
+                                  }`}
                                   required
                                 >
                                   <option value="" disabled>-- Seleccionar Lote Disponible --</option>
+                                  {/* Asegurar que el lote seleccionado permanezca disponible si cambian los filtros */}
+                                  {selectedLote && !candidateLotes.some(c => c.id === selectedLote.id) && (
+                                    <option key={selectedLote.id} value={selectedLote.id}>
+                                      Lote {selectedLote.loteNro} — {selectedLote.especie} {selectedLote.variedad ? `(${selectedLote.variedad})` : ''} | Ubic: {getLoteUbicacion(selectedLote)} | Stock: {selectedLote.stockBolsas} b. ({selectedLote.kgPorBolsa} kg/b) [Seleccionado]
+                                    </option>
+                                  )}
                                   {candidateLotes.map(lote => (
                                     <option key={lote.id} value={lote.id}>
                                       Lote {lote.loteNro} — {lote.especie} {lote.variedad ? `(${lote.variedad})` : ''} | Ubic: {getLoteUbicacion(lote)} | Stock: {lote.stockBolsas} b. ({lote.kgPorBolsa} kg/b)
@@ -2438,32 +2575,39 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                     min="1"
                                     max={selectedLote ? selectedLote.stockBolsas : undefined}
                                     value={slot.bolsas || ''}
+                                    disabled={slot.congelado}
                                     onChange={(e) => handleUpdateLoteSlot(slotIdx, 'bolsas', parseInt(e.target.value, 10) || 0)}
-                                    className={`w-full h-10 px-3 bg-white border rounded-lg focus:outline-none focus:ring-2 font-mono font-bold text-sm ${
-                                      isOverStock
+                                    className={`w-full h-10 px-3 border rounded-lg focus:outline-none font-mono font-bold text-sm ${
+                                      slot.congelado
+                                        ? 'bg-gray-100 border-gray-300 text-gray-700 cursor-not-allowed opacity-90'
+                                        : isOverStock
                                         ? 'border-red-400 focus:ring-red-400 text-red-700 bg-red-50'
-                                        : 'border-gray-300 focus:ring-[#00603C] text-gray-900'
+                                        : 'border-gray-300 focus:ring-[#00603C] text-gray-900 bg-white'
                                     }`}
                                     placeholder="35"
                                     required
                                   />
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateLoteSlot(slotIdx, 'bolsas', 35)}
-                                    className="px-2 h-10 bg-emerald-50 hover:bg-emerald-100 text-[#00603C] text-[10px] font-bold rounded-lg border border-emerald-200 transition cursor-pointer shrink-0"
-                                    title="Precargar valor por defecto: 35 bolsas (28.000 kg)"
-                                  >
-                                    35 b.
-                                  </button>
-                                  {selectedLote && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateLoteSlot(slotIdx, 'bolsas', selectedLote.stockBolsas)}
-                                      className="px-2 h-10 bg-gray-100 hover:bg-emerald-100 text-gray-700 hover:text-[#00603C] text-[10px] font-bold rounded-lg border border-gray-200 transition cursor-pointer shrink-0"
-                                      title="Cargar stock completo disponible"
-                                    >
-                                      Máx
-                                    </button>
+                                  {!slot.congelado && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateLoteSlot(slotIdx, 'bolsas', 35)}
+                                        className="px-2 h-10 bg-emerald-50 hover:bg-emerald-100 text-[#00603C] text-[10px] font-bold rounded-lg border border-emerald-200 transition cursor-pointer shrink-0"
+                                        title="Precargar valor por defecto: 35 bolsas (28.000 kg)"
+                                      >
+                                        35 b.
+                                      </button>
+                                      {selectedLote && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdateLoteSlot(slotIdx, 'bolsas', selectedLote.stockBolsas)}
+                                          className="px-2 h-10 bg-gray-100 hover:bg-emerald-100 text-gray-700 hover:text-[#00603C] text-[10px] font-bold rounded-lg border border-gray-200 transition cursor-pointer shrink-0"
+                                          title="Cargar stock completo disponible"
+                                        >
+                                          Máx
+                                        </button>
+                                      )}
+                                    </>
                                   )}
                                 </div>
                                 <span className="text-[10px] text-gray-400 mt-1 block">
@@ -2500,11 +2644,10 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                       <button
                         type="button"
                         onClick={handleAddLoteSlot}
-                        disabled={candidateLotes.length === 0}
-                        className="w-full py-2.5 px-4 rounded-xl border-2 border-dashed border-emerald-300 hover:border-[#00603C] bg-emerald-50/40 hover:bg-emerald-50 text-[#00603C] font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs"
+                        className="w-full py-3 px-4 rounded-xl border-2 border-dashed border-emerald-400 hover:border-[#00603C] bg-emerald-50/60 hover:bg-emerald-100/70 text-[#00603C] font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-2xs"
                       >
                         <Plus className="w-4 h-4" />
-                        <span>+ Agregar otro Lote de Origen (que responda a los filtros vinculados)</span>
+                        <span>+ Congelar Selección y Acceder a Carga Múltiple de Lotes (Siguiente Lote)</span>
                       </button>
                     </div>
                   )}
@@ -3582,27 +3725,165 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
               </div>
             </div>
 
+            {/* VISOR DE BOLSAS: SEGÚN FILTRO VS. SELECCIONADAS DEL CHECK */}
+            <div className="bg-white p-5 rounded-2xl border-2 border-emerald-600/30 shadow-xs space-y-4 animate-in fade-in">
+              {/* Cabecera del Visor */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-gray-100">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-[#00603C] text-white text-[10px] font-black uppercase px-2.5 py-0.5 rounded-md tracking-wider">
+                      VISOR DE BOLSAS
+                    </span>
+                    <h4 className="font-serif text-base font-bold text-[#1A1A1A]">
+                      Órdenes de Carga: Bolsas según Filtro &amp; Selección (Check)
+                    </h4>
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    Control en tiempo real de la cantidad de bolsas filtradas y cantidad de bolsas seleccionadas mediante casillas de verificación.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Botón rápido para marcar / desmarcar todos los checks del filtro */}
+                  <button
+                    type="button"
+                    onClick={toggleSelectAllVisible}
+                    disabled={filteredOrdenes.length === 0}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isAllVisibleSelected
+                        ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                        : 'bg-emerald-50 text-[#00603C] border-emerald-300 hover:bg-emerald-100'
+                    }`}
+                    title={isAllVisibleSelected ? "Desmarcar todos los registros del filtro actual" : "Marcar con check todos los registros del filtro actual"}
+                  >
+                    <CheckSquare className="w-3.5 h-3.5 text-[#00603C]" />
+                    <span>{isAllVisibleSelected ? 'Desmarcar todos los checks' : 'Marcar todos con el check'}</span>
+                  </button>
+
+                  {selectedOrdenes.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearSelection}
+                      className="px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-600 hover:text-red-700 bg-gray-50 hover:bg-red-50 border border-gray-200 hover:border-red-200 transition cursor-pointer"
+                    >
+                      Limpiar selección ({selectedOrdenes.length})
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Tarjetas KPI del Visor */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Tarjeta 1: Cantidad de Bolsas según Filtro */}
+                <div className="bg-gradient-to-br from-slate-50 via-white to-emerald-50/20 p-4 rounded-xl border border-slate-200 shadow-2xs relative overflow-hidden">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Filter className="w-3.5 h-3.5 text-[#00603C]" />
+                      Bolsas según Filtro
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                      {summaryTotals.count} {summaryTotals.count === 1 ? 'orden' : 'órdenes'}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-2xl lg:text-3xl font-black text-[#1A1A1A]">
+                      {formatNumberArg(summaryTotals.totalBolsas, 0)}
+                    </span>
+                    <span className="text-xs font-bold text-slate-600">bolsas totales</span>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-slate-200/70 flex items-center justify-between text-[11px] text-slate-600">
+                    <span>Peso Total Filtrado:</span>
+                    <strong className="font-mono text-[#00603C] font-bold">{formatNumberArg(summaryTotals.totalKg, 0)} kg</strong>
+                  </div>
+                  <div className="mt-1 text-[10px] text-gray-500">
+                    Despachadas: {summaryTotals.despachadosCount} · Pendientes: {summaryTotals.pendientesCount}
+                  </div>
+                </div>
+
+                {/* Tarjeta 2: Cantidad de Bolsas Seleccionadas del Check */}
+                <div className={`p-4 rounded-xl border shadow-2xs relative overflow-hidden transition ${
+                  selectedOrdenesTotals.count > 0
+                    ? 'bg-gradient-to-br from-emerald-50 via-emerald-100/40 to-white border-emerald-400 ring-2 ring-emerald-400/25'
+                    : 'bg-white border-dashed border-gray-300'
+                }`}>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#00603C] flex items-center gap-1.5">
+                      <CheckSquare className="w-3.5 h-3.5 text-[#00603C]" />
+                      Bolsas Seleccionadas del Check
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                      selectedOrdenesTotals.count > 0
+                        ? 'bg-[#00603C] text-white shadow-2xs'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {selectedOrdenesTotals.count} de {summaryTotals.count} checks
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className={`font-mono text-2xl lg:text-3xl font-black ${
+                      selectedOrdenesTotals.count > 0 ? 'text-[#00603C]' : 'text-gray-400'
+                    }`}>
+                      {formatNumberArg(selectedOrdenesTotals.totalBolsas, 0)}
+                    </span>
+                    <span className="text-xs font-bold text-gray-600">bolsas seleccionadas</span>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-emerald-200/70 flex items-center justify-between text-[11px] text-gray-600">
+                    <span>Peso Seleccionado:</span>
+                    <strong className="font-mono text-[#00603C] font-bold">{formatNumberArg(selectedOrdenesTotals.totalKg, 0)} kg</strong>
+                  </div>
+                  <div className="mt-1 text-[10px] text-gray-500">
+                    {selectedOrdenesTotals.count > 0 ? 'Marcadas mediante casillas de verificación' : 'Sin casillas marcadas actualmente'}
+                  </div>
+                </div>
+
+                {/* Tarjeta 3: Comparativa & Saldo Remanente */}
+                <div className="bg-gradient-to-br from-white to-[#F6EFDC]/60 p-4 rounded-xl border border-[#C9922E]/30 shadow-2xs">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                      <PackageCheck className="w-3.5 h-3.5 text-[#C9922E]" />
+                      Proporción Seleccionada
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
+                      {porcentajeSeleccionOrdenes}% del filtro
+                    </span>
+                  </div>
+                  {/* Barra de progreso */}
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden my-2 shadow-inner">
+                    <div
+                      className="bg-[#00603C] h-2.5 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.max(0, Number(porcentajeSeleccionOrdenes)))}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 pt-1 border-t border-amber-200/50 flex items-center justify-between text-[11px] text-gray-600">
+                    <span>Bolsas sin seleccionar:</span>
+                    <strong className="font-mono text-gray-800 font-bold">
+                      {formatNumberArg(Math.max(0, summaryTotals.totalBolsas - selectedOrdenesTotals.totalBolsas), 0)} b.
+                    </strong>
+                  </div>
+                  <div className="mt-1 text-[10px] text-gray-500 flex justify-between">
+                    <span>Kilos sin seleccionar:</span>
+                    <span className="font-mono font-semibold text-gray-700">
+                      {formatNumberArg(Math.max(0, summaryTotals.totalKg - selectedOrdenesTotals.totalKg), 0)} kg
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* BARRA DE RESUMEN Y CONTROLES DE DESPACHOS */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-gray-600 font-medium">
-                <span className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs">
-                  Mostrando <strong className="text-gray-900">{summaryTotals.count}</strong> despachos
+                <span className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs flex items-center gap-1.5">
+                  <Filter className="w-3 h-3 text-[#00603C]" />
+                  <span>Filtro: <strong className="text-gray-900 font-mono">{formatNumberArg(summaryTotals.totalBolsas, 0)}</strong> b. ({summaryTotals.count} desp. / {formatNumberArg(summaryTotals.totalKg, 0)} kg)</span>
                 </span>
-                {selectedOrdenes.length > 0 && (
-                  <span className="bg-emerald-100 text-[#00603C] px-3 py-1.5 rounded-lg border border-emerald-300 font-bold flex items-center gap-1.5 shadow-2xs animate-in fade-in duration-150">
-                    <span className="w-2 h-2 rounded-full bg-[#00603C] animate-pulse" />
-                    {selectedOrdenes.length} seleccionado{selectedOrdenes.length > 1 ? 's' : ''}
-                  </span>
-                )}
-                <span className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs">
-                  Bolsas:{' '}
-                  <strong className="text-gray-900 font-mono">{formatNumberArg(summaryTotals.totalBolsas, 0)}</strong>
-                </span>
-                <span className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs">
-                  Total Kilos:{' '}
-                  <strong className="text-[#00603C] font-mono font-bold">
-                    {formatNumberArg(summaryTotals.totalKg, 0)} kg
-                  </strong>
+                <span className={`px-3 py-1.5 rounded-lg border shadow-2xs flex items-center gap-1.5 font-bold transition ${
+                  selectedOrdenesTotals.count > 0
+                    ? 'bg-emerald-100 text-[#00603C] border-emerald-300'
+                    : 'bg-white text-gray-500 border-gray-200'
+                }`}>
+                  <CheckSquare className="w-3 h-3 text-[#00603C]" />
+                  <span>Check: <strong className="font-mono">{formatNumberArg(selectedOrdenesTotals.totalBolsas, 0)}</strong> b. ({selectedOrdenesTotals.count} sel. / {formatNumberArg(selectedOrdenesTotals.totalKg, 0)} kg)</span>
                 </span>
                 <span className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs text-[11px]">
                   Despachados:{' '}

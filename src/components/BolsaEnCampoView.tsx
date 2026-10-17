@@ -83,7 +83,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
   bolsones = [],
   movimientosSilo = [],
   clientes = ['San Diego Semillas', 'Eco Rural', 'Pampa', 'Stine', 'Elementa Foods'],
-  especies = ['Soja', 'Trigo', 'Arveja']
+  especies = ['Soja']
 }) => {
   // Búsqueda y Filtros Avanzados
   const [searchTerm, setSearchTerm] = useState('');
@@ -1649,7 +1649,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
                     type="text"
                     value={formVariedad}
                     onChange={(e) => setFormVariedad(e.target.value)}
-                    placeholder="ej: DM 46i20, CASUARINA"
+                    placeholder="ej: DM40E25, P42A84SE"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
                   />
                 </div>

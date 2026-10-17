@@ -675,7 +675,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <div className="text-[11px] text-gray-500 flex items-center gap-1.5">
                         <span>Tipo: <strong className="text-gray-700 font-semibold">{lote.tipo}</strong></span>
                         <span>•</span>
-                        <span>Tratamiento: <strong className="text-gray-700 font-semibold">{lote.tratamiento.join(', ') || 'Sin Tratar'}</strong></span>
+                        <span>Tratamiento: <strong className="text-gray-700 font-semibold">{lote.tratamiento.join(', ') || 'Sin Curar'}</strong></span>
                       </div>
                     </div>
 

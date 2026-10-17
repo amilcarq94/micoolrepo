@@ -245,7 +245,7 @@ export const LotesUnifiedDashboard: React.FC<LotesUnifiedDashboardProps> = ({
           ? lote.tratamiento.join(', ')
           : lote.producto && !['Ninguno', 'Sin Tratamiento', 'FINAL', 'INTERMEDIO', ''].includes(lote.producto)
           ? lote.producto
-          : 'Sin Tratar';
+          : 'Sin Curar';
       add(mapTratamiento, tratStr, tratStr);
 
       // Estado

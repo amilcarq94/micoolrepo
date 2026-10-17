@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Lote, TipoLoteType, CategoriaType, TratamientoType, LoteLimitsConfig, MovimientoStock, SiloId, MovimientoSilo, PlantaConfig, EspecieType, getVariedadesVisibles, getVariedadesPorEspecie } from '../types';
+import { Lote, TipoLoteType, CategoriaType, TratamientoType, LoteLimitsConfig, MovimientoStock, SiloId, MovimientoSilo, PlantaConfig, EspecieType, getVariedadesVisibles, getVariedadesPorEspecie, VARIEDADES_DB_DEFAULT } from '../types';
 import { formatKg } from '../utils/formatters';
 import { validateLoteLimits, getLoteLimits } from '../utils/loteLimits';
 import { getCampaniaIdFromDate } from '../utils/campanias';
@@ -19,6 +19,8 @@ import {
   CorrelatividadClienteInfo
 } from '../utils/loteCorrelativo';
 import { VisorCorrelatividadLote } from './VisorCorrelatividadLote';
+import { generarCaratulaParaLote, generarBolsasParaLote } from '../utils/loteEspecUtils';
+import { guardarCaratulaYBolsasFirestore } from '../lib/firebase';
 import {
   PackagePlus,
   CheckCircle2,
@@ -40,7 +42,7 @@ import {
 } from 'lucide-react';
 
 const TIPOS_LOTE: TipoLoteType[] = ['Intermedio', 'Final'];
-const CATEGORIAS: CategoriaType[] = ['Pre básica', 'Original', 'Primu'];
+const CATEGORIAS: CategoriaType[] = ['Preba', 'Original', 'Primu'];
 
 export interface LoteDraftItem {
   id: string;
@@ -68,7 +70,7 @@ interface GenerarLoteViewProps {
 export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
   lotes = [],
   clientes = ['San Diego Semillas', 'Eco Rural', 'Pampa', 'Stine', 'Elementa Foods'],
-  especies = ['Soja', 'Trigo', 'Maíz', 'Cebada', 'Girasol', 'Sorgo', 'Garbanzo', 'Arveja'],
+  especies = ['Soja'],
   plantaConfig,
   loteLimits,
   siloStocks = {
@@ -133,14 +135,13 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
     return list;
   }, [clientes, cliente]);
 
-  // Lista de opciones de especies incluyendo la especie asignada
+  // Lista de opciones de especies estrictamente desde la Base de Datos
   const especiesOpciones = useMemo(() => {
-    const list = [...especies];
-    if (especie && especie.trim() !== '' && !list.some(e => e.toLowerCase() === especie.trim().toLowerCase())) {
-      list.push(especie.trim());
-    }
-    return list;
-  }, [especies, especie]);
+    const dbEspecies = (plantaConfig?.especies && plantaConfig.especies.length > 0)
+      ? plantaConfig.especies
+      : (especies && especies.length > 0 ? especies : ['Soja']);
+    return [...dbEspecies];
+  }, [plantaConfig, especies]);
 
   // Lista de variedades estrictamente disponibles desde la Base de Datos o asignadas desde Silo
   const variedadesDisponibles = useMemo(() => {
@@ -158,10 +159,10 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
       } else if (plantaConfig?.variedades && plantaConfig.variedades.length > 0) {
         list = [...plantaConfig.variedades];
       } else {
-        list = ['DM 46R18', 'CASUARINA', 'P46A03', 'BIO 4.50', 'STINE 4000', 'BAGUETTE 601'];
+        list = Array.from(new Set(VARIEDADES_DB_DEFAULT.map(v => v.nombre.trim())));
       }
     }
-    // Si la variedad actual proviene de un silo o selección directa y no está en la lista, incluirla
+    // Si la variedad actual proviene de un silo o selección directa y está registrada en Data Bases, incluirla
     if (variedad && variedad.trim() !== '' && !list.some(v => v.toLowerCase() === variedad.trim().toLowerCase())) {
       list = [variedad.trim(), ...list];
     }
@@ -316,8 +317,8 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
   };
 
   // Submit guardar todos los lotes
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent, confirmarASinClasificar = true) => {
+    if (e) e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -388,7 +389,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             cantidadBolsas: addBolsas,
             kgPorBolsa: Number(draft.kgPorBolsa),
             cantidadKg: addKg,
-            detalle: `Precarga de stock`
+            detalle: confirmarASinClasificar ? 'Alta confirmada en Sin Clasificar' : `Precarga de stock`
           };
 
           loteToSave = {
@@ -396,11 +397,13 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             stockBolsas: totalBolsasAcumuladas,
             stockKg: totalKgAcumulados,
             estado: 'Disponible',
+            estadoRegistro: confirmarASinClasificar ? 'REALIZADO' : existingLote.estadoRegistro,
+            estadoEspec: confirmarASinClasificar ? 'sin clasificar' : existingLote.estadoEspec,
             especie: especie as EspecieType,
             variedad: variedad.trim() || existingLote.variedad,
             tipo: draft.tipo,
             categoria: draft.categoria,
-            tratamiento: ['Sin Tratar'], // TRATAMIENTO POR DEFECTO SIN TRATAR
+            tratamiento: ['Sin Curar'], // TRATAMIENTO POR DEFECTO SIN CURAR
             producto: 'Ninguno',
             ala: ala || existingLote.ala,
             sector: sector || existingLote.sector,
@@ -408,6 +411,14 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             observaciones: observaciones.trim() || existingLote.observaciones,
             historial: [nuevoMov, ...(existingLote.historial || [])]
           };
+
+          if (confirmarASinClasificar && !loteToSave.caratulaId) {
+            const caratulaId = `CARAT-${loteToSave.id}-${Date.now()}`;
+            loteToSave.caratulaId = caratulaId;
+            const caratulaDoc = generarCaratulaParaLote(loteToSave, new Date().toISOString());
+            const nuevasBolsas = generarBolsasParaLote(loteToSave, caratulaId);
+            await guardarCaratulaYBolsasFirestore(caratulaDoc, nuevasBolsas);
+          }
         } else {
           // Alta nuevo
           const uniqueDocId = calculatedId;
@@ -418,8 +429,10 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             cantidadBolsas: Number(draft.stockBolsas),
             kgPorBolsa: Number(draft.kgPorBolsa),
             cantidadKg: stockKgCalculado,
-            detalle: `Alta inicial en Precarga`
+            detalle: confirmarASinClasificar ? 'Alta oficial con carátula e IDs de bolsa' : `Alta inicial en Precarga`
           };
+
+          const caratulaId = confirmarASinClasificar ? `CARAT-${uniqueDocId}-${Date.now()}` : undefined;
 
           loteToSave = {
             id: uniqueDocId,
@@ -429,13 +442,13 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             variedad: variedad.trim(),
             tipo: draft.tipo,
             categoria: draft.categoria,
-            tratamiento: ['Sin Tratar'], // TRATAMIENTO POR DEFECTO SIN TRATAR
+            tratamiento: ['Sin Curar'], // TRATAMIENTO POR DEFECTO SIN CURAR
             producto: 'Ninguno',
             stockBolsas: Number(draft.stockBolsas),
             kgPorBolsa: Number(draft.kgPorBolsa),
             stockKg: stockKgCalculado,
             estado: 'Disponible',
-            estadoRegistro: 'PRE-CARGA',
+            estadoRegistro: confirmarASinClasificar ? 'REALIZADO' : 'PRE-CARGA',
             silosOrigen: siloOrigenDetectado
               ? [{ siloId: siloOrigenDetectado as SiloId, kgExtraidos: stockKgCalculado }]
               : [],
@@ -449,14 +462,32 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             sector,
             ubicacionAcopio: ubicacionStr,
             observaciones: observaciones.trim(),
-            historial: [nuevoMov]
+            historial: [nuevoMov],
+            // Campos de la especificación
+            codigo: normNro,
+            padreId: null,
+            cantidadBolsas: Number(draft.stockBolsas),
+            kg: stockKgCalculado,
+            kgIniciales: stockKgCalculado,
+            envase: `x ${draft.kgPorBolsa} kg`,
+            estadoEspec: confirmarASinClasificar ? 'sin clasificar' : 'precarga',
+            activo: true,
+            fecha: fechaActual,
+            siloOrigen: siloOrigenDetectado || undefined,
+            caratulaId
           };
+
+          if (confirmarASinClasificar && caratulaId) {
+            const caratulaDoc = generarCaratulaParaLote(loteToSave, new Date().toISOString());
+            const nuevasBolsas = generarBolsasParaLote(loteToSave, caratulaId);
+            await guardarCaratulaYBolsasFirestore(caratulaDoc, nuevasBolsas);
+          }
         }
 
         await onSaveLote(loteToSave);
       }
 
-      setSuccessMsg(`¡${draftLotes.length} Lote(s) guardado(s) exitosamente en PRE-CARGA!`);
+      setSuccessMsg(`¡${draftLotes.length} Lote(s) generado(s) exitosamente!`);
 
       // Redirigir de regreso a la lista de lotes después de guardar
       setTimeout(() => {
@@ -464,7 +495,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
       }, 900);
 
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Error al guardar los lotes en Precarga.');
+      setErrorMsg(err?.message || 'Error al generar los lotes.');
     } finally {
       setIsSaving(false);
     }
@@ -538,7 +569,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
       ? ` con datos de ${config.silosOrigenNombres || 'Silo'} (Cliente: "${config.cliente}", Variedad: "${config.variedad || 'N/A'}")`
       : '';
     setSuccessMsg(
-      `¡Lotes generados en precarga! Se pregeneraron ${newDrafts.length} lote(s) (${newDrafts.reduce((a, c) => a + c.stockBolsas, 0)} bolsas en total)${origenDetalle}.`
+      `¡Lotes generados listos para guardar! Se pregeneraron ${newDrafts.length} lote(s) (${newDrafts.reduce((a, c) => a + c.stockBolsas, 0)} bolsas en total)${origenDetalle}.`
     );
   };
 
@@ -570,7 +601,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
               <span className="text-xs font-mono font-bold tracking-widest text-amber-300 uppercase bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/20">
                 {activeSubModule === 'calculo-bolsas'
                   ? 'Módulo de Ingeniería'
-                  : 'Sección: Precarga de Producción'}
+                  : 'Sección: Generar Lote (Sin Clasificar)'}
               </span>
               <span className="text-[10px] font-bold text-emerald-200 bg-emerald-800/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
                 AgroAbacus Suite
@@ -578,12 +609,12 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             </div>
             <h2 className="font-serif text-2xl md:text-3xl font-bold mt-1">
               {activeSubModule === 'precarga-produccion'
-                ? 'Precarga de Producción'
+                ? 'Generar Lote'
                 : 'Dashboard: Cálculo de Bolsas'}
             </h2>
             <p className="text-xs text-emerald-100 max-w-2xl mt-1">
               {activeSubModule === 'precarga-produccion'
-                ? 'Alta rápida individual o múltiple de lotes de producción (reemplaza a precarga de lotes). Precargado con 35 bolsas x 800 kg y tratamiento Sin tratar por defecto.'
+                ? 'Alta directa de lotes de producción para ingreso a existencia con identificación individual.'
                 : 'Estimación matemática según stock en silos con kilos cargados manualmente, % merma y envases (25, 40, 800 kg).'}
             </p>
           </div>
@@ -608,7 +639,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             ) : (
               <>
                 <FileText className="w-4 h-4 text-emerald-950" />
-                <span>Ir a Precarga de Producción</span>
+                <span>Ir a Generar Lote (Sin Clasificar)</span>
               </>
             )}
           </button>
@@ -638,16 +669,16 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
         <>
           {/* Indicadores fijos */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex items-center gap-3 shadow-2xs">
-              <div className="p-2.5 bg-amber-100 rounded-xl text-amber-800 shrink-0">
-                <Clock className="w-5 h-5" />
+            <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 flex items-center gap-3 shadow-2xs">
+              <div className="p-2.5 bg-emerald-100 rounded-xl text-emerald-800 shrink-0">
+                <CheckCircle2 className="w-5 h-5 text-emerald-700" />
               </div>
               <div>
-                <span className="text-[10px] font-extrabold text-amber-900 uppercase tracking-wider block">
+                <span className="text-[10px] font-extrabold text-emerald-900 uppercase tracking-wider block">
                   Estado de Registro
                 </span>
-                <span className="text-xs font-bold text-amber-950">
-                  PRE-CARGA (Mantiene libre de silos/bolsones)
+                <span className="text-xs font-bold text-emerald-950">
+                  ALTA DIRECTA DE LOTE EN EXISTENCIA
                 </span>
               </div>
             </div>
@@ -658,7 +689,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
               </div>
               <div>
                 <span className="text-[10px] font-extrabold text-emerald-900 uppercase tracking-wider block">
-                  Valores Precargados
+                  Valores a Dar de Alta
                 </span>
                 <span className="text-xs font-bold text-emerald-950">
                   {draftLotes[0]?.stockBolsas || 35} bolsas x {draftLotes[0]?.kgPorBolsa || 800} kg = {formatKg((draftLotes[0]?.stockBolsas || 35) * (draftLotes[0]?.kgPorBolsa || 800))}
@@ -675,7 +706,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
                   Tratamiento Químico Fijo
                 </span>
                 <span className="text-xs font-bold text-slate-900">
-                  Sin Tratar (Por defecto)
+                  Sin Curar (Por defecto)
                 </span>
               </div>
             </div>
@@ -990,19 +1021,20 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
                       />
                     </div>
 
-                    {/* Kg por Bolsa */}
+                    {/* Envase */}
                     <div>
                       <label className="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">
-                        Kg / Bolsa *
+                        Envase *
                       </label>
-                      <input
-                        type="number"
-                        min="1"
+                      <select
                         value={item.kgPorBolsa}
                         onChange={(e) => handleUpdateDraftLote(item.id, 'kgPorBolsa', Number(e.target.value))}
                         className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-[#00603C]"
-                        required
-                      />
+                      >
+                        <option value={800}>x 800 kg (Big Bag)</option>
+                        <option value={25}>x 25 kg (Bolsa)</option>
+                        <option value={20}>x 20 kg (Bolsa)</option>
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -1044,7 +1076,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
         <div className="bg-gradient-to-r from-emerald-900 to-slate-900 text-white p-4 rounded-xl flex items-center justify-between gap-4">
           <div>
             <span className="text-[10px] font-mono uppercase tracking-widest text-amber-300 block">
-              Resumen Total a Precargar
+              Resumen Total a Generar
             </span>
             <span className="text-sm font-bold text-white">
               {draftLotes.length} Lote{draftLotes.length !== 1 ? 's' : ''} — {totalBolsasBatch} Bolsas en total
@@ -1068,20 +1100,25 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
             <span>Volver sin guardar</span>
           </button>
 
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 bg-[#00603C] hover:bg-[#254731] text-white rounded-xl text-xs font-extrabold uppercase tracking-wider shadow-lg transition disabled:opacity-50 cursor-pointer"
-          >
-            <Check className="w-4 h-4 text-amber-300" />
-            <span>
-              {isSaving
-                ? 'Guardando lotes...'
-                : draftLotes.length === 1
-                  ? 'Guardar Lote en PRE-CARGA'
-                  : `Guardar ${draftLotes.length} Lotes en PRE-CARGA`}
-            </span>
-          </button>
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+            <button
+              type="button"
+              id="btn-generar-lote-confirmar"
+              disabled={isSaving}
+              onClick={() => handleSubmit(undefined, true)}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition disabled:opacity-50 cursor-pointer border border-emerald-400 active:scale-95"
+              title="Generar lote: ingresa el lote en existencia"
+            >
+              <CheckCircle2 className="w-5 h-5 text-emerald-200" />
+              <span>
+                {isSaving
+                  ? 'Guardando...'
+                  : draftLotes.length === 1
+                    ? 'Generar Lote'
+                    : `Generar ${draftLotes.length} lotes`}
+              </span>
+            </button>
+          </div>
         </div>
 
       </form>

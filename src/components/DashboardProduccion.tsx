@@ -663,16 +663,16 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
         }
       }
 
-      // 6. Tratamientos y detección si es Tratado
       const trats = Array.isArray(lote.tratamiento)
         ? lote.tratamiento
-        : [lote.tratamiento || 'Sin Tratar'];
+        : [lote.tratamiento || 'Sin Curar'];
       const tratamientoStr = trats.join(', ');
 
       const isTratado = trats.some((t) => {
         const tLower = String(t).trim().toLowerCase();
         return (
           tLower !== 'sin tratar' &&
+          tLower !== 'sin curar' &&
           tLower !== '' &&
           (tLower.includes('tratad') ||
             tLower.includes('curad') ||
@@ -1220,7 +1220,7 @@ export const DashboardProduccion: React.FC<DashboardProduccionProps> = ({
     const map = new Map<string, { nombre: string; kgProducidos: number; kgStock: number; lotes: number }>();
     selectedRecords.forEach((r) => {
       r.tratamientos.forEach((t) => {
-        const nombreTrat = t.trim() || 'Sin Tratar';
+        const nombreTrat = t.trim().toLowerCase() === 'sin tratar' ? 'Sin Curar' : (t.trim() || 'Sin Curar');
         const existing = map.get(nombreTrat) || {
           nombre: nombreTrat,
           kgProducidos: 0,

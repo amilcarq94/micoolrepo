@@ -45,7 +45,7 @@ export const EditarMovimientoSiloModal: React.FC<EditarMovimientoSiloModalProps>
   onClose,
   onSave,
   clientes = [],
-  especies = ['Soja', 'Trigo', 'Maíz', 'Arveja', 'Cebada', 'Girasol'],
+  especies = ['Soja'],
   bolsones = [],
   plantaConfig,
 }) => {
@@ -392,7 +392,7 @@ export const EditarMovimientoSiloModal: React.FC<EditarMovimientoSiloModalProps>
                   onChange={(e) => setEspecie(e.target.value)}
                   className="w-full px-3 py-2 bg-white rounded-lg border border-slate-300 font-medium text-slate-800 text-xs focus:ring-2 focus:ring-[#00603C] focus:border-transparent outline-hidden cursor-pointer"
                 >
-                  {especies.map((esp) => (
+                  {(plantaConfig?.especies && plantaConfig.especies.length > 0 ? plantaConfig.especies : especies).map((esp) => (
                     <option key={esp} value={esp}>
                       {esp}
                     </option>
@@ -410,7 +410,7 @@ export const EditarMovimientoSiloModal: React.FC<EditarMovimientoSiloModalProps>
                   list="silo-edit-variedades"
                   value={variedad}
                   onChange={(e) => setVariedad(e.target.value)}
-                  placeholder="Ej: DM 46R18, DM 40R21..."
+                  placeholder="Ej: DM40E25, P42A84SE, DM38E26..."
                   className="w-full px-3 py-2 bg-white rounded-lg border border-slate-300 font-medium text-slate-800 text-xs focus:ring-2 focus:ring-[#00603C] focus:border-transparent outline-hidden"
                 />
                 <datalist id="silo-edit-variedades">

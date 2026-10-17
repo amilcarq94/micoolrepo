@@ -5,7 +5,7 @@
 
 import { SiloId, MovimientoSilo } from '../types';
 
-export type CategoriaEnvaseKg = 25 | 40 | 50 | 800;
+export type CategoriaEnvaseKg = 20 | 25 | 40 | 50 | 800;
 
 export interface CalculoBolsasInput {
   silosSeleccionados?: (SiloId | 'TODOS')[];

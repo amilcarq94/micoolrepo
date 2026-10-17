@@ -410,7 +410,7 @@ export const CargaMultipleCamionesForm: React.FC<CargaMultipleCamionesFormProps>
             </label>
             <input
               type="text"
-              placeholder="ej: P46A03, CASUARINA..."
+              placeholder="ej: DM40E25, P42A84SE, DM38E26..."
               value={variedad}
               onChange={(e) => setVariedad(e.target.value)}
               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-medium text-slate-900 uppercase"

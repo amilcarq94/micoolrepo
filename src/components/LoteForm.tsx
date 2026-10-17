@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Lote, EspecieType, TipoLoteType, TratamientoType, EstadoLoteType, EstadoRegistroLote, CategoriaType, SiloId, SiloExtraccion, MovimientoSilo, BolsonCampo, LoteLimitsConfig, MovimientoStock, PlantaConfig } from '../types';
+import { Lote, EspecieType, TipoLoteType, TratamientoType, EstadoLoteType, EstadoRegistroLote, CategoriaType, SiloId, SiloExtraccion, MovimientoSilo, BolsonCampo, LoteLimitsConfig, MovimientoStock, PlantaConfig, VARIEDADES_DB_DEFAULT } from '../types';
 import { generateLoteId, formatKg } from '../utils/formatters';
 import { getCampaniaIdFromDate } from '../utils/campanias';
 import { validateLoteLimits, getLoteLimits } from '../utils/loteLimits';
@@ -50,13 +50,16 @@ export const LoteForm: React.FC<LoteFormProps> = ({
   const especiesList = useMemo(() => {
     return plantaConfig?.especies && plantaConfig.especies.length > 0
       ? plantaConfig.especies
-      : (especies && especies.length > 0 ? especies : ['Soja', 'Trigo', 'Arveja', 'Cebada', 'Maíz', 'Girasol']);
+      : (especies && especies.length > 0 ? especies : ['Soja']);
   }, [plantaConfig, especies]);
 
   const variedadesList = useMemo(() => {
+    if (plantaConfig?.variedadesDb && plantaConfig.variedadesDb.length > 0) {
+      return Array.from(new Set(plantaConfig.variedadesDb.map(v => v.nombre.trim()))).sort();
+    }
     return plantaConfig?.variedades && plantaConfig.variedades.length > 0
       ? plantaConfig.variedades
-      : [];
+      : Array.from(new Set(VARIEDADES_DB_DEFAULT.map(v => v.nombre.trim()))).sort();
   }, [plantaConfig]);
 
   const tiposList = useMemo(() => {
@@ -77,7 +80,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
   const tratamientosList = useMemo(() => {
     return plantaConfig?.tratamientos && plantaConfig.tratamientos.length > 0
       ? plantaConfig.tratamientos
-      : ['Sin Tratar', 'Tratado'];
+      : ['Sin Curar', 'Curado'];
   }, [plantaConfig]);
 
   // Estados del Formulario
@@ -89,13 +92,13 @@ export const LoteForm: React.FC<LoteFormProps> = ({
   const [variedad, setVariedad] = useState('');
   const [tipo, setTipo] = useState<TipoLoteType>('Final');
   const [categoria, setCategoria] = useState<CategoriaType>('Original');
-  const [tratamientos, setTratamientos] = useState<TratamientoType[]>(['Sin Tratar']);
+  const [tratamientos, setTratamientos] = useState<TratamientoType[]>(['Sin Curar']);
   const [producto, setProducto] = useState('Ninguno');
   const [stockBolsas, setStockBolsas] = useState<number>(20);
   const [kgPorBolsa, setKgPorBolsa] = useState<number>(activeLimits.kgPorBolsaDefault || 800);
   const [stockKg, setStockKg] = useState<number>(16000);
   const [fechaIngreso, setFechaIngreso] = useState(() => new Date().toISOString().split('T')[0]);
-  const [estado, setEstado] = useState<EstadoLoteType>('Disponible');
+  const [estado, setEstado] = useState<EstadoLoteType>('sin clasificar');
   const [estadoRegistro, setEstadoRegistro] = useState<EstadoRegistroLote>('REALIZADO');
   const [fechaHoraProduccion, setFechaHoraProduccion] = useState<string>(() => getTodayDateStr());
   const [observaciones, setObservaciones] = useState('');
@@ -300,8 +303,8 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       setVariedad(loteAEditar.variedad);
       setTipo(loteAEditar.tipo);
       setCategoria(loteAEditar.categoria || 'Original');
-      setTratamientos(loteAEditar.tratamiento || ['Sin Tratar']);
-      if (!loteAEditar.tratamiento || loteAEditar.tratamiento.includes('Sin Tratar')) {
+      setTratamientos(loteAEditar.tratamiento || ['Sin Curar']);
+      if (!loteAEditar.tratamiento || loteAEditar.tratamiento.includes('Sin Curar') || loteAEditar.tratamiento.includes('Sin Tratar')) {
         setProducto('Ninguno');
       } else {
         setProducto(loteAEditar.producto || 'Ninguno');
@@ -375,11 +378,11 @@ export const LoteForm: React.FC<LoteFormProps> = ({
 
   // Manejo de tratamientos seleccionables múltiples
   const toggleTratamiento = (trat: TratamientoType) => {
-    if (trat === 'Sin Tratar') {
-      setTratamientos(['Sin Tratar']);
+    if (trat === 'Sin Curar' || trat === 'Sin Tratar') {
+      setTratamientos(['Sin Curar']);
       setProducto('Ninguno');
     } else {
-      let actualizado = [...tratamientos].filter(t => t !== 'Sin Tratar');
+      let actualizado = [...tratamientos].filter(t => t !== 'Sin Curar' && t !== 'Sin Tratar');
       if (actualizado.includes(trat)) {
         actualizado = actualizado.filter(t => t !== trat);
       } else {
@@ -387,7 +390,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       }
       
       if (actualizado.length === 0) {
-        actualizado.push('Sin Tratar');
+        actualizado.push('Sin Curar');
         setProducto('Ninguno');
       }
       setTratamientos(actualizado);
@@ -485,7 +488,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
         tipo,
         categoria,
         tratamiento: tratamientos,
-        producto: tratamientos.includes('Sin Tratar') ? 'Ninguno' : (producto.trim() || 'Ninguno'),
+        producto: (tratamientos.includes('Sin Curar') || tratamientos.includes('Sin Tratar')) ? 'Ninguno' : (producto.trim() || 'Ninguno'),
         fechaIngreso,
         fechaHoraProduccion: estadoRegistro === 'REALIZADO' ? (fechaHoraProduccion.trim() || undefined) : existingLoteRepetido.fechaHoraProduccion,
         observaciones: observaciones.trim() || existingLoteRepetido.observaciones,
@@ -521,7 +524,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       tipo,
       categoria,
       tratamiento: tratamientos,
-      producto: tratamientos.includes('Sin Tratar') ? 'Ninguno' : (producto.trim() || 'Ninguno'),
+      producto: (tratamientos.includes('Sin Curar') || tratamientos.includes('Sin Tratar')) ? 'Ninguno' : (producto.trim() || 'Ninguno'),
       stockBolsas: Number(stockBolsas),
       kgPorBolsa: Number(kgPorBolsa),
       stockKg,
@@ -895,7 +898,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-2 flex items-center justify-between">
               <span>Producto Aplicado</span>
-              {tratamientos.includes('Sin Tratar') && (
+              {(tratamientos.includes('Sin Curar') || tratamientos.includes('Sin Tratar')) && (
                 <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded border border-emerald-300">
                   Por defecto: "Ninguno"
                 </span>
@@ -903,19 +906,19 @@ export const LoteForm: React.FC<LoteFormProps> = ({
             </label>
             <input
               type="text"
-              value={tratamientos.includes('Sin Tratar') ? 'Ninguno' : producto}
+              value={(tratamientos.includes('Sin Curar') || tratamientos.includes('Sin Tratar')) ? 'Ninguno' : producto}
               onChange={(e) => setProducto(e.target.value)}
-              disabled={tratamientos.includes('Sin Tratar')}
+              disabled={tratamientos.includes('Sin Curar') || tratamientos.includes('Sin Tratar')}
               className="w-full px-4 py-2.5 bg-white text-gray-800 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] disabled:bg-slate-100 disabled:text-slate-600 disabled:font-bold"
-              placeholder={tratamientos.includes('Sin Tratar') ? 'Ninguno' : 'Ej: Cruiser, Vitavax, Rizobio...'}
+              placeholder={(tratamientos.includes('Sin Curar') || tratamientos.includes('Sin Tratar')) ? 'Ninguno' : 'Ej: Cruiser, Vitavax, Rizobio...'}
             />
           </div>
 
-          {/* Fecha de Tratamiento (Si está Tratado) */}
-          {tratamientos.includes('Tratado') && (
+          {/* Fecha de Tratamiento (Si está Curado o Tratado) */}
+          {(tratamientos.includes('Curado') || tratamientos.includes('Tratado')) && (
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-2 flex items-center justify-between">
-                <span>Fecha de Tratamiento</span>
+                <span>Fecha de Curado / Tratamiento</span>
                 <span className="text-[10px] font-bold text-[#00603C] bg-[#E3EFE7] px-2 py-0.5 rounded">
                   Requerido
                 </span>
@@ -932,18 +935,17 @@ export const LoteForm: React.FC<LoteFormProps> = ({
           {/* Estado de Lote */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-2">
-              Estado Inicial
+              Estado de Lote
             </label>
             <select
               value={estado}
               onChange={(e) => setEstado(e.target.value as EstadoLoteType)}
-              disabled={stockBolsas === 0}
-              className="w-full px-4 py-2.5 bg-white text-gray-800 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C] disabled:bg-gray-50"
+              className="w-full px-4 py-2.5 bg-white text-gray-800 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00603C]"
             >
-              <option value="Disponible">Disponible (Verde)</option>
-              <option value="Reservado">Reservado (Dorado)</option>
-              <option value="A Consumo">A Consumo (Púrpura)</option>
-              <option value="Agotado">Agotado (Terracota)</option>
+              <option value="sin clasificar">Sin clasificar</option>
+              <option value="clasificado">Clasificado</option>
+              <option value="bloqueado">Bloqueado</option>
+              <option value="descartado">Descartado</option>
             </select>
           </div>
 

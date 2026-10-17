@@ -76,8 +76,8 @@ const CATALOG_DEFINITIONS: CatalogMeta[] = [
     borderColor: 'border-emerald-500/30',
     accentBadge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
     description: 'Granos y cultivos principales recepcionados y procesados en planta y silos.',
-    placeholder: 'Ej: Soja, Trigo, Arveja, Maíz, Cebada...',
-    examples: ['Soja', 'Trigo', 'Arveja', 'Cebada', 'Maíz', 'Girasol']
+    placeholder: 'Ej: Soja...',
+    examples: ['Soja']
   },
   {
     key: 'variedades',
@@ -89,8 +89,8 @@ const CATALOG_DEFINITIONS: CatalogMeta[] = [
     borderColor: 'border-purple-500/30',
     accentBadge: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
     description: 'Cultivares y variedades genéticas que alimentan los filtros de trazabilidad y calidad.',
-    placeholder: 'Ej: CASUARINA, DM TIPA, BALLTRAP, ACA 360...',
-    examples: ['CASUARINA', 'CATALPA', 'ARAUCARIA', 'PEHUEN', 'DM TIPA', 'BALLTRAP']
+    placeholder: 'Ej: DM40E25, P42A84SE, DM38E26...',
+    examples: ['DM40E25', 'DM40E25E', 'DM46E25', 'DM38E26', 'P42A84SE', '43EE53']
   },
   {
     key: 'tipos',
@@ -128,8 +128,8 @@ const CATALOG_DEFINITIONS: CatalogMeta[] = [
     borderColor: 'border-rose-500/30',
     accentBadge: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
     description: 'Tratamientos químicos, fungicidas, inoculantes o curados aplicados a los lotes.',
-    placeholder: 'Ej: Sin Tratar, Tratado, Rizoderma, Signum 420...',
-    examples: ['Sin Tratar', 'Tratado', 'Curado Completo', 'Fungicida', 'Inoculado']
+    placeholder: 'Ej: Sin Curar, Curado, Rizoderma, Signum 420...',
+    examples: ['Sin Curar', 'Curado', 'Curado Completo', 'Fungicida', 'Inoculado']
   }
 ];
 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Lote,
   MovimientoStock,
@@ -11,12 +11,30 @@ import {
   OrdenCarga,
   AuditLogEntry,
   PlantaConfig,
+  BolsaRegistro,
 } from '../types';
 import { formatNumberArg } from '../utils/formatters';
 import { db, mapLoteToFirestore, sanitizeForFirestore, mapMovimientoStockToFirestore } from '../lib/firebase';
-import { collection, doc, writeBatch } from 'firebase/firestore';
+import { collection, doc, writeBatch, updateDoc } from 'firebase/firestore';
 import { MovimientoLoteModal, MovimientoLoteResult } from './MovimientoLoteModal';
 import { EditarMovimientoModal, EditarMovimientoResult } from './EditarMovimientoModal';
+import { DesdoblarLoteModal, HijoDesdobleDraft } from './DesdoblarLoteModal';
+import { AccionesLoteModal, AccionLoteResult } from './AccionesLoteModal';
+import { VisorBolsasLote } from './VisorBolsasLote';
+import {
+  normalizarEstado,
+  normalizarTratamiento,
+  normalizarEnvase,
+  normalizarCategoria,
+  normalizarTipo,
+  generarBolsasParaLote,
+  generarCaratulaParaLote,
+  puedeOperarLote,
+  getKilajeEnvase,
+  getBolsasDeLote,
+  calcularResumenLoteDesdeBolsas,
+} from '../utils/loteEspecUtils';
+import { registrarMovimientoOficial, guardarCaratulaYBolsasFirestore } from '../lib/firebase';
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -51,8 +69,19 @@ import {
   Scale,
   CornerDownRight,
   ExternalLink,
+  Scissors,
+  SlidersHorizontal,
+  Lock,
+  Unlock,
+  QrCode,
+  Printer,
+  GitFork,
+  FileText,
+  Eye,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { IdBolsaLabel } from './IdBolsaLabel';
+import { QrTrazabilidadLote, getPublicLoteTraceUrl } from './QrTrazabilidadLote';
 
 // Formato de registro unificado para la tabla del Panel de Lote
 export interface PanelLoteMovimientoRow {
@@ -173,6 +202,84 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
   // 3. Estado de División del Panel (Capacidad de dividir panel por desdoblamiento)
   const [isPanelDivided, setIsPanelDivided] = useState<boolean>(false);
   const [criterioDivision, setCriterioDivision] = useState<'tratamiento' | 'tipo' | 'categoria'>('tratamiento');
+
+  // Modales de la nueva especificación
+  const [showDesdoblarModal, setShowDesdoblarModal] = useState<boolean>(false);
+  const [showAccionesModal, setShowAccionesModal] = useState<boolean>(false);
+  const [accionesInitialTab, setAccionesInitialTab] = useState<'estado' | 'tratamiento' | 'envase' | 'categoria' | 'tipo' | 'bloqueo'>('estado');
+  const [panelSubTab, setPanelSubTab] = useState<'movimientos' | 'genealogia' | 'bolsas'>('movimientos');
+  const [selectedBolsaParaVer, setSelectedBolsaParaVer] = useState<any | null>(null);
+
+  // Listado oficial de bolsas asociadas al lote (modelo de datos centrado en la bolsa)
+  const [bolsasLote, setBolsasLote] = useState<BolsaRegistro[]>(() => getBolsasDeLote(lote));
+
+  useEffect(() => {
+    setBolsasLote(getBolsasDeLote(lote));
+  }, [lote.id, lote.bolsas, lote.stockBolsas, lote.cantidadBolsas, lote.envase]);
+
+  // Resumen del lote calculado dinámicamente desde sus bolsas
+  const resumenDesdeBolsas = useMemo(() => {
+    return calcularResumenLoteDesdeBolsas(bolsasLote, lote);
+  }, [bolsasLote, lote]);
+
+  const listaBolsasLote = bolsasLote;
+
+  // Actualización en vivo de bolsas desde el visor
+  const handleActualizarBolsasDesdeVisor = async (nuevasBolsas: BolsaRegistro[], descripcionMov: string) => {
+    setBolsasLote(nuevasBolsas);
+    const nuevoResumen = calcularResumenLoteDesdeBolsas(nuevasBolsas, lote);
+    const caratulaDoc = generarCaratulaParaLote(lote);
+
+    const loteActualizado: Lote = {
+      ...lote,
+      bolsas: nuevasBolsas,
+      kg: nuevoResumen.kgTotales,
+      stockKg: nuevoResumen.stockKg,
+      stockBolsas: nuevoResumen.stockBolsas,
+      cantidadBolsas: nuevoResumen.totalBolsas,
+      estado: nuevoResumen.estado as any,
+      categoria: nuevoResumen.categoria as any,
+      tipo: nuevoResumen.tipo as any,
+      tratamiento:
+        nuevoResumen.desglose.tratamientos.curado === nuevoResumen.totalBolsas && nuevoResumen.totalBolsas > 0
+          ? ['Curado']
+          : nuevoResumen.desglose.tratamientos.curado > 0
+          ? ['Curado', 'Sin Curar']
+          : ['Sin Curar'],
+    };
+
+    try {
+      await guardarCaratulaYBolsasFirestore(caratulaDoc, nuevasBolsas);
+      const loteRef = doc(db, 'lotes', lote.id);
+      await updateDoc(loteRef, sanitizeForFirestore(loteActualizado) as any);
+    } catch (e) {
+      console.warn('Error sincronizando bolsas con Firestore:', e);
+    }
+
+    if (onBatchUpdateLotes) {
+      await onBatchUpdateLotes([loteActualizado]);
+    } else if (onSaveLote) {
+      await onSaveLote(loteActualizado);
+    }
+    onUpdateLoteStock(lote.id, lote.historial, nuevoResumen.stockBolsas, nuevoResumen.stockKg, nuevoResumen.estado as any, descripcionMov);
+  };
+
+  // Árbol genealógico: Padre, Hermanos e Hijos
+  const lotePadre = useMemo(() => {
+    if (!lote.padreId && !lote.loteOrigen) return null;
+    return allLotes.find(l =>
+      l.id === lote.padreId ||
+      (lote.loteOrigen && (l.loteNro === lote.loteOrigen || l.codigo === lote.loteOrigen || l.id === lote.loteOrigen))
+    ) || null;
+  }, [allLotes, lote]);
+
+  const lotesHijos = useMemo(() => {
+    const normCodigo = (lote.codigo || lote.loteNro || lote.id).trim().toLowerCase();
+    return allLotes.filter(l =>
+      (l.padreId && l.padreId === lote.id) ||
+      (l.loteOrigen && l.loteOrigen.trim().toLowerCase() === normCodigo && l.id !== lote.id)
+    );
+  }, [allLotes, lote]);
 
   // 4. Estados de Filtros de la Tabla
   const [filterDireccion, setFilterDireccion] = useState<'' | 'Ingresos' | 'Movimientos' | 'Salidas'>('');
@@ -630,6 +737,251 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
     }
   };
 
+  // Handler para Desdoblamiento Recursivo (Especificación Sección 5)
+  const handleConfirmDesdobleEspec = async (hijosDraft: HijoDesdobleDraft[]) => {
+    try {
+      const fechaHoy = new Date().toISOString().split('T')[0];
+      const usuarioNombre = currentUser?.nombre || 'Operador';
+      const kgPadre = Number(lote.kg) || Number(lote.stockKg) || ((Number(lote.cantidadBolsas) || Number(lote.stockBolsas) || 0) * getKilajeEnvase(lote.envase || lote.kgPorBolsa));
+
+      // 1. Marcar lote padre como "desdoblado" y deja de contar stock
+      const lotePadreActualizado: Lote = {
+        ...lote,
+        estadoEspec: 'desdoblado',
+        estado: 'Agotado', // Deja de contar stock en existencia
+        stockBolsas: 0,
+        stockKg: 0,
+        cantidadBolsas: 0,
+        kg: 0,
+        activo: true
+      };
+
+      // Registrar movimiento de desdoblamiento en el padre
+      const movPadreId = await registrarMovimientoOficial({
+        loteId: lote.id,
+        usuario: usuarioNombre,
+        tipo: 'desdoblamiento',
+        valorAnterior: lote.estadoEspec || lote.estado,
+        valorNuevo: 'desdoblado',
+        observaciones: `Desdoblado en ${hijosDraft.length} hijos: ${hijosDraft.map(h => h.codigoCompleto).join(', ')}`,
+        fecha: fechaHoy
+      });
+
+      // 1. Bolsas del padre: pasan a 'reasignada' manteniendo trazabilidad
+      const bolsasPadre = generarBolsasParaLote(lote, lote.caratulaId || `CARAT-${lote.id}`);
+      const bolsasPadreReasignadas = bolsasPadre.map(b => ({
+        ...b,
+        estado: 'reasignada' as const,
+      }));
+
+      // 2. Generar lotes hijos con IDs nuevos, caratulas nuevas e IDs de bolsa nuevos vinculados a bolsaOrigenId
+      const nuevosLotesHijos: Lote[] = [];
+      const bolsasTotalesAGuardar: any[] = [...bolsasPadreReasignadas];
+      const caratulasTotalesAGuardar: any[] = [];
+
+      let offsetBolsasPadre = 0;
+      for (const h of hijosDraft) {
+        const hijoId = `${lote.cliente}_${h.codigoCompleto}`.replace(/\s+/g, '_');
+        const kgEnvaseHijo = getKilajeEnvase(h.envase);
+        const kgTotalesHijo = h.cantidadBolsas * kgEnvaseHijo;
+
+        const caratulaId = `CARAT-${hijoId}-${Date.now()}`;
+        const caratulaDoc = {
+          id: caratulaId,
+          loteId: hijoId,
+          fechaEmision: new Date().toISOString(),
+          numeroLote: h.codigoCompleto,
+          cliente: lote.cliente,
+          variedad: lote.variedad,
+          especie: lote.especie,
+          categoria: h.categoria,
+          kgIniciales: kgTotalesHijo
+        };
+        caratulasTotalesAGuardar.push(caratulaDoc);
+
+        const bolsasOrigenIdsHijo = bolsasPadre
+          .slice(offsetBolsasPadre, offsetBolsasPadre + h.cantidadBolsas)
+          .map(b => b.id);
+        offsetBolsasPadre += h.cantidadBolsas;
+
+        const bolsasHijo = generarBolsasParaLote(
+          {
+            id: hijoId,
+            codigo: h.codigoCompleto,
+            loteNro: h.codigoCompleto,
+            cantidadBolsas: h.cantidadBolsas,
+            stockBolsas: h.cantidadBolsas,
+            envase: h.envase,
+            kgPorBolsa: kgEnvaseHijo,
+            caratulaId
+          },
+          caratulaId,
+          bolsasOrigenIdsHijo
+        );
+        bolsasTotalesAGuardar.push(...bolsasHijo);
+
+        const nuevoLoteHijo: Lote = {
+          id: hijoId,
+          loteNro: h.codigoCompleto,
+          codigo: h.codigoCompleto,
+          padreId: lote.id, // Vínculo recursivo al padre
+          siloOrigen: lote.siloOrigen || lote.silosOrigen?.[0]?.siloId || undefined,
+          especie: lote.especie,
+          variedad: lote.variedad,
+          cliente: lote.cliente,
+          kg: kgTotalesHijo,
+          kgIniciales: kgTotalesHijo,
+          envase: h.envase,
+          cantidadBolsas: h.cantidadBolsas,
+          stockBolsas: h.cantidadBolsas,
+          kgPorBolsa: kgEnvaseHijo,
+          stockKg: kgTotalesHijo,
+          categoria: (h.categoria === 'preba' ? 'Preba' : (h.categoria === 'original' ? 'Original' : 'Primu')) as any,
+          tipo: (h.tipo === 'intermedio' ? 'Intermedio' : 'Final') as any,
+          estado: 'Disponible',
+          estadoEspec: h.estado,
+          estadoRegistro: 'REALIZADO',
+          tratamiento: [h.tratamiento === 'curado' ? 'Curado' : 'Sin Curar'],
+          producto: h.tratamiento === 'curado' ? 'Tratamiento Químico' : 'Ninguno',
+          fecha: fechaHoy,
+          fechaIngreso: fechaHoy,
+          activo: true,
+          caratulaId,
+          historial: [
+            {
+              id: `MOV-ALTA-HIJO-${Date.now()}-${h.codigoCompleto}`,
+              fecha: fechaHoy,
+              tipo: 'Entrada manual',
+              cantidadBolsas: h.cantidadBolsas,
+              kgPorBolsa: kgEnvaseHijo,
+              cantidadKg: kgTotalesHijo,
+              detalle: `Alta por desdoblamiento de lote padre #${lote.codigo || lote.loteNro}`
+            }
+          ]
+        };
+
+        nuevosLotesHijos.push(nuevoLoteHijo);
+      }
+
+      // Persistir carátulas y bolsas
+      for (let i = 0; i < caratulasTotalesAGuardar.length; i++) {
+        const car = caratulasTotalesAGuardar[i];
+        const bolsasDeEstaCaratula = bolsasTotalesAGuardar.filter(b => b.caratulaId === car.id);
+        await guardarCaratulaYBolsasFirestore(car, bolsasDeEstaCaratula);
+      }
+
+      // Actualizar en lote padre e hijos
+      const todosLosLotesActualizados = [lotePadreActualizado, ...nuevosLotesHijos];
+      if (onBatchUpdateLotes) {
+        await onBatchUpdateLotes(todosLosLotesActualizados);
+      } else if (onSaveLote) {
+        for (const l of todosLosLotesActualizados) {
+          await onSaveLote(l);
+        }
+      }
+
+      setSaveSuccessMsg(`¡Lote #${lote.codigo || lote.loteNro} desdoblado exitosamente en ${nuevosLotesHijos.length} hijos!`);
+      setShowDesdoblarModal(false);
+      setTimeout(() => setSaveSuccessMsg(''), 5000);
+    } catch (err: any) {
+      console.error('Error desdoblando lote:', err);
+      alert(err.message || 'Error al ejecutar desdoblamiento.');
+    }
+  };
+
+  // Handler para Acciones Cualitativas (cambio de estado, curado, envase, categoría, tipo, bloqueo)
+  const handleConfirmAccionEspec = async (result: AccionLoteResult) => {
+    try {
+      const fechaHoy = new Date().toISOString().split('T')[0];
+      const usuarioNombre = currentUser?.nombre || 'Operador';
+      const { tipoAccion, valorAnterior, valorNuevo, observaciones, loteActualizado } = result;
+
+      // 1. Si cambió el envase, pasar bolsas anteriores a 'reenvasada' y generar IDs nuevos
+      if (tipoAccion === 'cambio_envase') {
+        const caratulaId = loteActualizado.caratulaId || `CARAT-${loteActualizado.id}-${Date.now()}`;
+        const bolsasAnteriores = generarBolsasParaLote(lote, lote.caratulaId || caratulaId);
+        const bolsasReenvasadas = bolsasAnteriores.map(b => ({
+          ...b,
+          estado: 'reenvasada' as const,
+        }));
+        const nuevasBolsas = generarBolsasParaLote(loteActualizado, caratulaId);
+        await guardarCaratulaYBolsasFirestore(
+          generarCaratulaParaLote(loteActualizado),
+          [...bolsasReenvasadas, ...nuevasBolsas]
+        );
+      }
+
+      // 2. Registrar movimiento con fecha y usuario (Regla 1: Nunca editar directamente sin movimiento)
+      await registrarMovimientoOficial({
+        loteId: loteActualizado.id,
+        usuario: usuarioNombre,
+        tipo: tipoAccion,
+        valorAnterior,
+        valorNuevo,
+        observaciones,
+        fecha: fechaHoy
+      });
+
+      // 3. Guardar lote actualizado
+      if (onBatchUpdateLotes) {
+        await onBatchUpdateLotes([loteActualizado]);
+      } else if (onSaveLote) {
+        await onSaveLote(loteActualizado);
+      }
+
+      setSaveSuccessMsg(`¡Acción "${tipoAccion}" aplicada con éxito sobre Lote #${loteActualizado.codigo || loteActualizado.loteNro}!`);
+      setShowAccionesModal(false);
+      setTimeout(() => setSaveSuccessMsg(''), 5000);
+    } catch (err: any) {
+      console.error('Error aplicando acción sobre lote:', err);
+      alert(err.message || 'Error al guardar acción.');
+    }
+  };
+
+  // Handler para Confirmar Existencia Física: de "precarga" a "sin clasificar"
+  const handleConfirmarExistenciaFisica = async () => {
+    try {
+      const fechaHoy = new Date().toISOString().split('T')[0];
+      const usuarioNombre = currentUser?.nombre || 'Operador';
+      const caratulaId = lote.caratulaId || `CARAT-${lote.id}-${Date.now()}`;
+      const caratulaDoc = generarCaratulaParaLote(lote, new Date().toISOString());
+      const nuevasBolsas = generarBolsasParaLote(lote, caratulaId);
+
+      await guardarCaratulaYBolsasFirestore(caratulaDoc, nuevasBolsas);
+
+      await registrarMovimientoOficial({
+        loteId: lote.id,
+        usuario: usuarioNombre,
+        tipo: 'cambio_estado',
+        valorAnterior: lote.estadoEspec || 'precarga',
+        valorNuevo: 'sin clasificar',
+        observaciones: 'Confirmación física de existencia del lote. Entra en existencia con IDs de bolsa.',
+        fecha: fechaHoy,
+      });
+
+      const loteActualizado: Lote = {
+        ...lote,
+        estadoEspec: 'sin clasificar',
+        estadoRegistro: 'REALIZADO',
+        estado: 'Disponible',
+        caratulaId,
+        activo: true,
+      };
+
+      if (onBatchUpdateLotes) {
+        await onBatchUpdateLotes([loteActualizado]);
+      } else if (onSaveLote) {
+        await onSaveLote(loteActualizado);
+      }
+
+      setSaveSuccessMsg(`¡Lote #${lote.codigo || lote.loteNro} confirmado físicamente! Entró en existencia y se generaron ${nuevasBolsas.length} bolsas.`);
+      setTimeout(() => setSaveSuccessMsg(''), 5000);
+    } catch (err: any) {
+      console.error('Error confirmando existencia física:', err);
+      alert(err.message || 'Error al confirmar lote.');
+    }
+  };
+
   // Abrir Modal "Editar Movimiento" para una línea de movimiento realizado
   const handleAbrirEditarMovimiento = (row: PanelLoteMovimientoRow) => {
     // 1. Si el lote actual es el originado por movimiento
@@ -987,7 +1339,7 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
         auditoria: [auditEntry, ...(lote.auditoria || [])],
       };
 
-      // Guardar en Firestore Batch y borrar movimiento de subcolección si aplica
+      // Guardar en Firestore Batch y registrar contraasiento oficial de anulación
       const batch = writeBatch(db);
       const loteRef = doc(db, 'lotes', lote.id);
       batch.set(loteRef, mapLoteToFirestore(loteActualizado));
@@ -996,6 +1348,17 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
         batch.delete(movRef);
       }
       await batch.commit();
+
+      // Registrar movimiento de anulación (contraasiento)
+      await registrarMovimientoOficial({
+        loteId: lote.id,
+        usuario: currentUser?.nombre || 'Operador',
+        tipo: 'anulacion',
+        valorAnterior: recordId,
+        valorNuevo: null,
+        observaciones: `Contraasiento por anulación de movimiento ${recordId} (${deletingRow.esIngreso ? 'Ingreso' : deletingRow.salidaTipo})`,
+        fecha: new Date().toISOString().split('T')[0]
+      });
 
       if (onSaveLote) {
         await onSaveLote(loteActualizado);
@@ -1121,18 +1484,61 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
 
         {/* BOTONERA DE ACCIÓN UBICADA POR DEBAJO DEL TÍTULO */}
         <div className="flex flex-wrap items-center gap-2.5 pt-0.5">
-          {/* 1. Botón "Movimiento de Lote" (trasladado desde la tabla de lotes al panel de lote) */}
+
+
+          {/* Botón "Desdoblar Lote" */}
           {!readOnly && (
             <button
               type="button"
-              id={`panel-btn-movimiento-${lote.id}`}
-              onClick={() => setShowMovimientoModal(true)}
-              className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 hover:from-indigo-700 hover:to-indigo-900 text-white text-xs font-black rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer active:scale-95 border border-indigo-400"
-              title="Registrar Movimiento de Lote: Intermedio a Final, Int a Final Tratado, Final a Final Tratado o Cambio de Envase"
+              id={`panel-btn-desdoblar-${lote.id}`}
+              onClick={() => {
+                const op = puedeOperarLote(lote);
+                if (!op.permitido) {
+                  alert(op.motivo);
+                  return;
+                }
+                setShowDesdoblarModal(true);
+              }}
+              disabled={!puedeOperarLote(lote).permitido}
+              className="px-3.5 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95 border border-purple-500"
+              title={puedeOperarLote(lote).permitido ? "Desdoblar lote en N hijos con bolsas completas" : puedeOperarLote(lote).motivo}
             >
-              <ArrowRightLeft className="w-4 h-4 text-amber-300 stroke-[2.5]" />
-              <span>Movimiento de Lote</span>
+              <Scissors className="w-4 h-4 text-purple-200" />
+              <span>Desdoblar Lote</span>
             </button>
+          )}
+
+          {/* Botón Bloquear / Desbloquear */}
+          {!readOnly && (
+            normalizarEstado(lote.estadoEspec || lote.estado, lote.estadoRegistro) === 'bloqueado' ? (
+              <button
+                type="button"
+                id={`panel-btn-desbloquear-${lote.id}`}
+                onClick={() => {
+                  setAccionesInitialTab('bloqueo');
+                  setShowAccionesModal(true);
+                }}
+                className="px-3.5 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer active:scale-95 border border-amber-300"
+                title="Lote BLOQUEADO. Clic para desbloquear y retornar al estado anterior."
+              >
+                <Unlock className="w-4 h-4 text-slate-950" />
+                <span>Desbloquear</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                id={`panel-btn-bloquear-${lote.id}`}
+                onClick={() => {
+                  setAccionesInitialTab('bloqueo');
+                  setShowAccionesModal(true);
+                }}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-slate-200 text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer border border-slate-600"
+                title="Bloquear lote: impide despacho, curado y desdoblamiento hasta desbloquear."
+              >
+                <Lock className="w-4 h-4 text-amber-300" />
+                <span>Bloquear</span>
+              </button>
+            )
           )}
 
           {/* 2. Botón "+ Registrar Movimiento" */}
@@ -1247,7 +1653,7 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
             {metrics.altaTratadosKg > 0 && (
               <div className="mt-2 pt-1.5 border-t border-emerald-800/60 flex items-center justify-between text-[10px]">
                 <span className="text-purple-300 font-bold flex items-center gap-1">
-                  <FlaskConical className="w-3 h-3 text-purple-300" /> Tratado en Alta:
+                  <FlaskConical className="w-3 h-3 text-purple-300" /> Curado en Alta:
                 </span>
                 <span className="font-mono font-black text-purple-200">
                   {formatNumberArg(metrics.altaTratadosKg, 0)} kg
@@ -1374,7 +1780,7 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
                   </span>
                   <h5 className="font-serif text-sm font-bold text-gray-900 mt-1">
                     {criterioDivision === 'tratamiento'
-                      ? `Fracción: ${Array.isArray(lote.tratamiento) ? lote.tratamiento.join(', ') : lote.tratamiento || 'Sin Tratar'}`
+                      ? `Fracción: ${Array.isArray(lote.tratamiento) ? lote.tratamiento.join(', ') : lote.tratamiento || 'Sin Curar'}`
                       : criterioDivision === 'tipo'
                       ? `Fracción: ${lote.tipo}`
                       : `Categoría: ${lote.categoria}`}
@@ -1398,7 +1804,7 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
                 <div>
                   <span className="text-[9px] uppercase font-bold text-gray-400 block">Tratamiento</span>
                   <span className="font-semibold text-gray-800 truncate block">
-                    {Array.isArray(lote.tratamiento) ? lote.tratamiento.join(', ') : lote.tratamiento || 'Sin Tratar'}
+                    {Array.isArray(lote.tratamiento) ? lote.tratamiento.join(', ') : lote.tratamiento || 'Sin Curar'}
                   </span>
                 </div>
                 <div>
@@ -1424,7 +1830,7 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
                       </span>
                       <h5 className="font-serif text-sm font-bold text-indigo-950 mt-1">
                         {criterioDivision === 'tratamiento'
-                          ? `Fracción: ${Array.isArray(loteDesdobladoActivo.tratamiento) ? loteDesdobladoActivo.tratamiento.join(', ') : loteDesdobladoActivo.tratamiento || 'Tratado'}`
+                          ? `Fracción: ${Array.isArray(loteDesdobladoActivo.tratamiento) ? loteDesdobladoActivo.tratamiento.join(', ') : loteDesdobladoActivo.tratamiento || 'Curado'}`
                           : criterioDivision === 'tipo'
                           ? `Fracción: ${loteDesdobladoActivo.tipo}`
                           : `Categoría: ${loteDesdobladoActivo.categoria}`}
@@ -1450,7 +1856,7 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
                       <span className="font-semibold text-indigo-900 font-bold truncate block">
                         {Array.isArray(loteDesdobladoActivo.tratamiento)
                           ? loteDesdobladoActivo.tratamiento.join(', ')
-                          : loteDesdobladoActivo.tratamiento || 'Tratado'}
+                          : loteDesdobladoActivo.tratamiento || 'Curado'}
                       </span>
                     </div>
                     <div>
@@ -1505,20 +1911,69 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
         </div>
       )}
 
-      {/* BARRA DE FILTROS Y BÚSQUEDA DE LA TABLA */}
-      <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-gray-100 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Selector de Dirección / Tipo */}
-          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg text-xs font-bold">
-            <button
-              type="button"
-              onClick={() => setFilterDireccion('')}
-              className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
-                filterDireccion === '' ? 'bg-[#00603C] text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Todos ({rowsMovimientos.length})
-            </button>
+      {/* NAVEGACIÓN DE SUB-PESTAÑAS DEL DETALLE DE LOTE (ESPECIFICACIÓN OFICIAL SECCIÓN 8) */}
+      <div className="bg-white p-2 rounded-2xl border border-gray-200 shadow-xs flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          id="btn-subtab-movimientos"
+          onClick={() => setPanelSubTab('movimientos')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            panelSubTab === 'movimientos'
+              ? 'bg-[#00603C] text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>Historial de Movimientos ({rowsFiltradas.length})</span>
+        </button>
+
+        <button
+          type="button"
+          id="btn-subtab-genealogia"
+          onClick={() => setPanelSubTab('genealogia')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            panelSubTab === 'genealogia'
+              ? 'bg-[#00603C] text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <GitFork className="w-4 h-4" />
+          <span>Árbol de Genealogía {lotesHijos.length > 0 || lotePadre ? `(${lotesHijos.length + (lotePadre ? 1 : 0)})` : ''}</span>
+        </button>
+
+        <button
+          type="button"
+          id="btn-subtab-bolsas"
+          onClick={() => setPanelSubTab('bolsas')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            panelSubTab === 'bolsas'
+              ? 'bg-[#00603C] text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <Package className="w-4 h-4" />
+          <span>Bolsas y QR ({listaBolsasLote.length})</span>
+        </button>
+
+      </div>
+
+      {/* PESTAÑA 1: HISTORIAL DE MOVIMIENTOS */}
+      {panelSubTab === 'movimientos' && (
+        <>
+          {/* BARRA DE FILTROS Y BÚSQUEDA DE LA TABLA */}
+          <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-gray-100 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Selector de Dirección / Tipo */}
+              <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setFilterDireccion('')}
+                  className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+                    filterDireccion === '' ? 'bg-[#00603C] text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Todos ({rowsMovimientos.length})
+                </button>
             <button
               type="button"
               onClick={() => setFilterDireccion('Ingresos')}
@@ -1679,7 +2134,7 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
                             {row.esTratado && (
                               <span className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-900 border border-purple-300 shadow-2xs">
                                 <FlaskConical className="w-3 h-3 text-purple-700 shrink-0" />
-                                <span>Alta Tratado: {formatNumberArg(row.kgTratados || row.ingresoKg, 0)} kg</span>
+                                <span>Alta Curado: {formatNumberArg(row.kgTratados || row.ingresoKg, 0)} kg</span>
                               </span>
                             )}
                           </div>
@@ -1834,6 +2289,281 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
           </table>
         </div>
       </div>
+      </>
+      )}
+
+      {/* PESTAÑA 2: ÁRBOL DE GENEALOGÍA (ESPECIFICACIÓN OFICIAL SECCIÓN 8) */}
+      {panelSubTab === 'genealogia' && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-6">
+          <div className="border-b border-gray-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#00603C]">
+                Árbol Genealógico de Trazabilidad
+              </span>
+              <h4 className="font-serif text-lg font-bold text-gray-900 mt-0.5">
+                Genealogía Recursiva del Lote #{lote.codigo || lote.loteNro}
+              </h4>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Estructura de parentesco basada en padreId. Refleja divisiones sucesivas y trazabilidad histórica.
+              </p>
+            </div>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => {
+                  const op = puedeOperarLote(lote);
+                  if (!op.permitido) {
+                    alert(op.motivo);
+                    return;
+                  }
+                  setShowDesdoblarModal(true);
+                }}
+                disabled={!puedeOperarLote(lote).permitido}
+                className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Scissors className="w-4 h-4" />
+                <span>Desdoblar este lote</span>
+              </button>
+            )}
+          </div>
+
+          {/* 1. Lote Padre Ancestral */}
+          {lotePadre ? (
+            <div className="space-y-2">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                Lote de Origen (Padre Ancestral)
+              </span>
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-slate-900 text-sm">
+                      Lote #{lotePadre.codigo || lotePadre.loteNro}
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-900">
+                      Padre
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-800">
+                      {normalizarEstado(lotePadre.estadoEspec || lotePadre.estado, lotePadre.estadoRegistro)}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-600 block mt-1">
+                    {lotePadre.cliente} · {lotePadre.variedad} ({lotePadre.especie}) · {normalizarEnvase(lotePadre.envase || lotePadre.kgPorBolsa)}
+                  </span>
+                </div>
+                {onSelectLote && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectLote(lotePadre)}
+                    className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Ver Padre</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <div className="flex justify-center py-1">
+                <ChevronRight className="w-5 h-5 text-gray-400 rotate-90" />
+              </div>
+            </div>
+          ) : (
+            <div className="bg-emerald-50 border border-emerald-200/80 p-3 rounded-xl text-xs text-emerald-900 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Este lote es de <strong>origen inicial</strong> (padreId: null). No proviene de un desdoble.</span>
+            </div>
+          )}
+
+          {/* 2. Lote Actual */}
+          <div className="space-y-2">
+            <span className="text-[10px] font-bold text-[#00603C] uppercase tracking-wider block">
+              Lote Actual ({lote.id})
+            </span>
+            <div className="bg-emerald-50/60 border-2 border-[#00603C] p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono font-black text-emerald-950 text-base">
+                    Lote #{lote.codigo || lote.loteNro}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-[#00603C] text-white">
+                    Lote Actual
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    normalizarEstado(lote.estadoEspec || lote.estado, lote.estadoRegistro) === 'bloqueado'
+                      ? 'bg-rose-100 text-rose-900'
+                      : normalizarEstado(lote.estadoEspec || lote.estado, lote.estadoRegistro) === 'desdoblado'
+                      ? 'bg-purple-100 text-purple-900'
+                      : normalizarEstado(lote.estadoEspec || lote.estado, lote.estadoRegistro) === 'agotado'
+                      ? 'bg-gray-200 text-gray-800'
+                      : 'bg-emerald-100 text-emerald-900'
+                  }`}>
+                    {normalizarEstado(lote.estadoEspec || lote.estado, lote.estadoRegistro).toUpperCase()}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    normalizarTratamiento(lote.tratamiento) === 'curado'
+                      ? 'bg-purple-100 text-purple-900'
+                      : 'bg-amber-100 text-amber-900'
+                  }`}>
+                    {normalizarTratamiento(lote.tratamiento).toUpperCase()}
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-200 text-slate-800">
+                    {normalizarEnvase(lote.envase || lote.kgPorBolsa)}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-600 mt-1.5 flex flex-wrap items-center gap-3">
+                  <span>Stock Actual: <strong>{lote.stockBolsas} bolsas</strong> ({formatNumberArg(lote.stockKg, 0)} kg)</span>
+                  <span>Categoría: <strong>{normalizarCategoria(lote.categoria).toUpperCase()}</strong></span>
+                  <span>Tipo: <strong>{normalizarTipo(lote.tipo).toUpperCase()}</strong></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Lotes Hijos (si existen) */}
+          {lotesHijos.length > 0 ? (
+            <div className="space-y-3 pt-2">
+              <div className="flex justify-center py-1">
+                <ChevronRight className="w-5 h-5 text-gray-400 rotate-90" />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-purple-900 uppercase tracking-wider block">
+                  Lotes Hijos Resultantes ({lotesHijos.length} sub-lotes)
+                </span>
+                <span className="text-xs font-mono text-gray-500">
+                  Total transferido: {formatNumberArg(lotesHijos.reduce((acc, h) => acc + (Number(h.stockKg) || 0), 0), 0)} kg
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {lotesHijos.map(hijo => (
+                  <div
+                    key={hijo.id}
+                    className="p-3.5 bg-purple-50/50 border border-purple-200 rounded-xl space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-bold text-sm text-purple-950">
+                        #{hijo.codigo || hijo.loteNro}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-200 text-purple-900">
+                        {normalizarTratamiento(hijo.tratamiento).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-[10px] text-gray-500 block">Bolsas / Kg:</span>
+                        <span className="font-mono font-bold text-gray-800">
+                          {hijo.stockBolsas} b. ({formatNumberArg(hijo.stockKg, 0)} kg)
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-gray-500 block">Envase:</span>
+                        <span className="font-mono font-bold text-gray-800">
+                          {normalizarEnvase(hijo.envase || hijo.kgPorBolsa)}
+                        </span>
+                      </div>
+                    </div>
+                    {onSelectLote && (
+                      <button
+                        type="button"
+                        onClick={() => onSelectLote(hijo)}
+                        className="w-full mt-2 py-1.5 bg-white border border-purple-300 hover:bg-purple-100 text-purple-900 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <span>Abrir este lote hijo</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl text-xs text-gray-600 text-center space-y-2">
+              <p>Este lote no ha sido desdoblado en lotes hijos.</p>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => setShowDesdoblarModal(true)}
+                  disabled={!puedeOperarLote(lote).permitido}
+                  className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 disabled:opacity-40 text-white rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Scissors className="w-3.5 h-3.5" />
+                  <span>Desdoblar en Lotes Hijos</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PESTAÑA 3: BOLSAS Y CÓDIGOS QR (VISOR DE BOLSAS EN FORMATO TABLA CON MOVIMIENTO) */}
+      {panelSubTab === 'bolsas' && (
+        <VisorBolsasLote
+          lote={lote}
+          bolsas={bolsasLote}
+          readOnly={readOnly}
+          currentUser={currentUser}
+          onUpdateBolsas={handleActualizarBolsasDesdeVisor}
+          onVerQr={(b) => setSelectedBolsaParaVer(b)}
+        />
+      )}
+
+
+
+      {/* MODAL PREVIEW DE ETIQUETA QR DE BOLSA */}
+      {selectedBolsaParaVer && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-xl w-full p-6 space-y-4 border border-gray-100">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#00603C] block font-bold">
+                  Etiqueta Oficial de Bolsa con QR
+                </span>
+                <h4 className="font-mono text-lg font-bold text-gray-900">
+                  Bolsa #{selectedBolsaParaVer.id}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedBolsaParaVer(null)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-xl hover:bg-gray-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-2 border border-gray-200 rounded-2xl bg-slate-50 flex justify-center overflow-x-auto">
+              <IdBolsaLabel
+                lote={lote}
+                bagNumber={selectedBolsaParaVer.numero}
+                totalBags={selectedBolsaParaVer.totalBolsas}
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <div className="text-xs text-gray-500">
+                <span>Estado: <strong>{selectedBolsaParaVer.estado}</strong></span>
+                {selectedBolsaParaVer.bolsaOrigenId && (
+                  <span className="ml-3 font-mono">Origen: {selectedBolsaParaVer.bolsaOrigenId}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedBolsaParaVer(null)}
+                  className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition cursor-pointer"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-[#00603C] hover:bg-[#254731] text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Printer className="w-4 h-4 text-amber-300" />
+                  <span>Imprimir Etiqueta</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL 1: MOVIMIENTO DE LOTE (TRASLADADO DESDE LA VISTA DE TABLA) */}
       {showMovimientoModal && (
@@ -2107,6 +2837,29 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Desdoblamiento de Lote (Especificación Sección 5) */}
+      {showDesdoblarModal && (
+        <DesdoblarLoteModal
+          isOpen={showDesdoblarModal}
+          lote={lote}
+          currentUser={currentUser}
+          onClose={() => setShowDesdoblarModal(false)}
+          onConfirmDesdoble={handleConfirmDesdobleEspec}
+        />
+      )}
+
+      {/* Modal de Acciones Cualitativas y Operativas (Especificación Sección 5 y Bloqueo) */}
+      {showAccionesModal && (
+        <AccionesLoteModal
+          isOpen={showAccionesModal}
+          lote={lote}
+          currentUser={currentUser}
+          initialTab={accionesInitialTab}
+          onClose={() => setShowAccionesModal(false)}
+          onConfirmAccion={handleConfirmAccionEspec}
+        />
       )}
     </div>
   );

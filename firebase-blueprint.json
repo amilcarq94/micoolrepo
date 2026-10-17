@@ -123,6 +123,88 @@
         "updatedAt": { "type": "string" },
         "updatedBy": { "type": "string" }
       }
+    },
+    "Movimiento": {
+      "title": "Movimiento",
+      "description": "Registro de cambios de estado, transformaciones y contraasientos de lote",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "loteId": { "type": "string" },
+        "fecha": { "type": "string" },
+        "usuario": { "type": "string" },
+        "tipo": { "type": "string" },
+        "valorAnterior": { "type": "string" },
+        "valorNuevo": { "type": "string" },
+        "observaciones": { "type": "string" }
+      },
+      "required": ["id", "loteId", "fecha", "usuario", "tipo"]
+    },
+    "ReporteDiario": {
+      "title": "ReporteDiario",
+      "description": "Carga diaria de kilos producidos y kilos curados contra un lote específico",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fecha": { "type": "string" },
+        "tipo": { "type": "string" },
+        "kg": { "type": "number" },
+        "loteId": { "type": "string" },
+        "usuario": { "type": "string" }
+      },
+      "required": ["id", "fecha", "tipo", "kg", "loteId", "usuario"]
+    },
+    "Bolsa": {
+      "title": "Bolsa",
+      "description": "Identificación unitaria correlativa de bolsas con código QR y trazabilidad",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "loteId": { "type": "string" },
+        "numero": { "type": "number" },
+        "totalBolsas": { "type": "number" },
+        "kg": { "type": "number" },
+        "estado": { "type": "string" },
+        "bolsaOrigenId": { "type": "string" },
+        "caratulaId": { "type": "string" }
+      },
+      "required": ["id", "loteId", "numero", "totalBolsas", "kg", "estado", "caratulaId"]
+    },
+    "Caratula": {
+      "title": "Caratula",
+      "description": "Carátula oficial emitida para un lote físico confirmado",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "loteId": { "type": "string" },
+        "fechaEmision": { "type": "string" }
+      },
+      "required": ["id", "loteId", "fechaEmision"]
+    },
+    "Silo": {
+      "title": "Silo",
+      "description": "Silos físicos fijos de la planta (6 silos)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nombre": { "type": "string" }
+      },
+      "required": ["id", "nombre"]
+    },
+    "Precarga": {
+      "title": "Precarga",
+      "description": "Registro de precargas proyectadas desde silos",
+      "type": "object",
+      "properties": {
+        "siloId": { "type": "string" },
+        "kgTomados": { "type": "number" },
+        "mermaPct": { "type": "number" },
+        "kgNetos": { "type": "number" },
+        "envase": { "type": "string" },
+        "cantidadBolsas": { "type": "number" },
+        "cantidadLotes": { "type": "number" }
+      },
+      "required": ["siloId", "kgTomados", "mermaPct", "kgNetos", "envase", "cantidadBolsas", "cantidadLotes"]
     }
   },
   "firestore": {
@@ -153,6 +235,30 @@
     "/config/{docId}": {
       "schema": "ParkingConfig",
       "description": "Configuraciones globales del sistema (ej: config/parking)"
+    },
+    "/movimientos/{movId}": {
+      "schema": "Movimiento",
+      "description": "Historial de movimientos y trazabilidad de lotes"
+    },
+    "/reportes_diarios/{repId}": {
+      "schema": "ReporteDiario",
+      "description": "Reportes diarios de producción y curado"
+    },
+    "/bolsas/{bolsaId}": {
+      "schema": "Bolsa",
+      "description": "Identificaciones de bolsa unitaria con QR"
+    },
+    "/caratulas/{caratulaId}": {
+      "schema": "Caratula",
+      "description": "Carátulas físicas emitidas para lotes"
+    },
+    "/silos/{siloId}": {
+      "schema": "Silo",
+      "description": "Registro maestro de los 6 silos físicos"
+    },
+    "/precargas/{precargaId}": {
+      "schema": "Precarga",
+      "description": "Proyecciones de precarga"
     }
   }
 }
