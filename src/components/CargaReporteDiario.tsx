@@ -128,9 +128,9 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
       }
 
       if (tipo === 'curado') {
-        // En curado: todos aquellos lotes que figuren en tratamiento "sin curar" (o "crudo")
-        const esSinCurar = tratNorm === 'sin curar' || tratNorm === 'crudo';
-        if (!esSinCurar) return false;
+        // En curado / tratamiento: todos aquellos lotes que figuren en tratamiento "sin tratar" (o "sin curar" / "crudo")
+        const esSinTratar = tratNorm === 'sin tratar' || tratNorm === 'sin curar' || tratNorm === 'crudo';
+        if (!esSinTratar) return false;
 
         // Filtro de cliente
         if (filtroClienteCurado !== 'todos' && l.cliente !== filtroClienteCurado) {
@@ -183,7 +183,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
       setNuevasCategoria((loteSeleccionado.categoria as CategoriaType) || 'Original');
 
       if (tipo === 'curado') {
-        const sinCurarBolsas = bolsas.filter(b => normalizarTratamiento(b.tratamiento) !== 'curado');
+        const sinCurarBolsas = bolsas.filter(b => normalizarTratamiento(b.tratamiento) !== 'tratado' && normalizarTratamiento(b.tratamiento) !== 'curado');
         const initialSet = new Set(sinCurarBolsas.map(b => b.id));
         setSelectedBolsasIds(initialSet);
         setBolsasProducidas(initialSet.size);
@@ -208,9 +208,9 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
     }
   }, [selectedLoteId, tipo]);
 
-  // Bolsas sin curar del lote seleccionado
+  // Bolsas sin tratar del lote seleccionado
   const bolsasSinCurarLote = useMemo(() => {
-    return bolsasLocales.filter(b => normalizarTratamiento(b.tratamiento) !== 'curado').length;
+    return bolsasLocales.filter(b => normalizarTratamiento(b.tratamiento) !== 'tratado' && normalizarTratamiento(b.tratamiento) !== 'curado').length;
   }, [bolsasLocales]);
 
   // Toggle individual de una bolsa
@@ -316,7 +316,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
         envase: nuevasEnvase,
         tipo: (nuevasTipo.toLowerCase() as any) || 'final',
         categoria: (nuevasCategoria.toLowerCase() as any) || 'original',
-        tratamiento: 'sin curar',
+        tratamiento: 'sin tratar',
         estado: tipo === 'produccion' ? (marcarComoClasificado ? 'clasificado' : 'sin clasificar') : 'sin clasificar',
         despachada: false,
         caratulaId: loteSeleccionado.caratulaId || `CARAT-${loteSeleccionado.id}`
@@ -400,12 +400,12 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
         return;
       }
       if (bolsasProducidas <= 0) {
-        setErrorMsg('En el curado diario debe seleccionar o ingresar la cantidad exacta de bolsas curadas.');
+        setErrorMsg('En el tratamiento diario debe seleccionar o ingresar la cantidad exacta de bolsas tratadas.');
         return;
       }
       if (bolsasProducidas > bolsasSinCurarLote && bolsasSinCurarLote > 0 && selectedBolsasIds.size === 0) {
         setErrorMsg(
-          `Validación: La cantidad de bolsas a curar (${bolsasProducidas}) supera las bolsas sin curar disponibles en el lote (${bolsasSinCurarLote} bolsas).`
+          `Validación: La cantidad de bolsas a tratar (${bolsasProducidas}) supera las bolsas sin tratar disponibles en el lote (${bolsasSinCurarLote} bolsas).`
         );
         return;
       }
@@ -528,7 +528,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
             }`}
           >
             <FlaskConical className="w-3.5 h-3.5" />
-            <span>Curado</span>
+            <span>Tratamiento</span>
           </button>
         </div>
       </div>
@@ -553,7 +553,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
           <div className="bg-purple-50/70 border border-purple-200 p-3.5 rounded-2xl space-y-3">
             <div className="flex items-center gap-2 text-purple-900 text-xs font-bold">
               <Filter className="w-4 h-4 text-purple-700" />
-              <span>Filtros de Búsqueda para Curado (Lotes Sin Curar)</span>
+              <span>Filtros de Búsqueda para Tratamiento (Lotes Sin Tratar)</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
               <div>
@@ -624,7 +624,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
             <label className="block text-xs font-bold text-gray-700 uppercase">
               {tipo === 'produccion'
                 ? '1. Seleccionar Lote en "Sin Clasificar" *'
-                : '1. Seleccionar Lote en "Sin Curar" *'}
+                : '1. Seleccionar Lote en "Sin Tratar" *'}
             </label>
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -642,7 +642,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
             <div className="p-5 text-center bg-gray-50 border border-gray-200 rounded-2xl text-xs text-gray-500">
               {tipo === 'produccion'
                 ? 'No se encontraron lotes en estado "sin clasificar" que coincidan con la búsqueda.'
-                : 'No se encontraron lotes con tratamiento "sin curar" que coincidan con los filtros seleccionados.'}
+                : 'No se encontraron lotes con tratamiento "sin tratar" que coincidan con los filtros seleccionados.'}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-52 overflow-y-auto pr-1">
@@ -720,7 +720,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
               </div>
               <div className="text-right">
                 <span className="text-[10px] uppercase font-bold text-gray-500 block">
-                  {tipo === 'curado' ? 'Bolsas Sin Curar Disponibles' : 'Bolsas Pendientes'}
+                  {tipo === 'curado' ? 'Bolsas Sin Tratar Disponibles' : 'Bolsas Pendientes'}
                 </span>
                 <span className="font-mono font-black text-sm text-gray-900">
                   {tipo === 'curado'
@@ -912,7 +912,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
                             : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
                         }`}
                       >
-                        Sin Curar ({bolsasSinCurarLote})
+                        Sin Tratar ({bolsasSinCurarLote})
                       </button>
                       <button
                         type="button"
@@ -923,7 +923,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
                             : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
                         }`}
                       >
-                        Ya Curadas ({bolsasLocales.length - bolsasSinCurarLote})
+                        Ya Tratadas ({bolsasLocales.length - bolsasSinCurarLote})
                       </button>
                     </>
                   ) : (
@@ -963,7 +963,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
                   {bolsasParaMostrar.map((b) => {
                     const isSelected = selectedBolsasIds.has(b.id);
                     const trat = normalizarTratamiento(b.tratamiento);
-                    const esCurada = trat === 'curado';
+                    const esCurada = trat === 'curado' || trat === 'tratado';
                     const estadoNorm = normalizarEstado(b.estado);
 
                     return (
@@ -1006,7 +1006,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : 'bg-slate-100 text-slate-600'
                             }`}>
-                              {esCurada ? 'Curada' : 'Sin Curar'}
+                              {esCurada ? 'Tratada' : 'Sin Tratar'}
                             </span>
                           ) : (
                             <span className={`px-1.5 py-0.2 rounded font-bold capitalize ${
@@ -1054,7 +1054,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
           {/* Bolsas */}
           <div>
             <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-              {tipo === 'produccion' ? 'Bolsas Producidas *' : 'Bolsas Curadas *'}
+              {tipo === 'produccion' ? 'Bolsas Producidas *' : 'Bolsas Tratadas *'}
             </label>
             <div className="relative">
               <input
@@ -1073,7 +1073,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
             {loteSeleccionado && (
               <span className="text-[10px] text-gray-500 font-mono mt-0.5 block">
                 Envase: {loteSeleccionado.envase || `${kgEnvase} kg`}
-                {tipo === 'curado' && ` · Sin Curar: ${bolsasSinCurarLote} b.`}
+                {tipo === 'curado' && ` · Sin Tratar: ${bolsasSinCurarLote} b.`}
               </span>
             )}
           </div>
@@ -1081,7 +1081,7 @@ export const CargaReporteDiario: React.FC<CargaReporteDiarioProps> = ({
           {/* Kilogramos */}
           <div>
             <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-              {tipo === 'produccion' ? 'Kg Producidos (Total) *' : 'Kg Curados (Total) *'}
+              {tipo === 'produccion' ? 'Kg Producidos (Total) *' : 'Kg Tratados (Total) *'}
             </label>
             <input
               type="number"

@@ -61,7 +61,7 @@ interface ModoPlantaMobileViewProps {
   onSaveOrdenCarga: (orden: OrdenCarga) => void;
   onUpdateOrdenStatus: (
     ordenId: string,
-    nuevoEstado: 'Disponible' | 'Aceptada' | 'Despachada',
+    nuevoEstado: 'Disponible' | 'Aceptada' | 'Despachada' | 'Anulada',
     fotoRemito?: string,
     firmaChofer?: string
   ) => void;

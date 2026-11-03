@@ -169,7 +169,7 @@ export const LotesOrigenSelector: React.FC<LotesOrigenSelectorProps> = ({
             Lotes de Origen (Orden de Movimiento)
           </h4>
           <p className="text-[11px] text-blue-700 mt-0.5">
-            Seleccione hasta 5 lotes originarios "Sin Curar" de {cliente || 'Cliente'} - {especie || 'Especie'} {variedad ? `(${variedad})` : ''}.
+            Seleccione hasta 5 lotes originarios "Sin Tratar" de {cliente || 'Cliente'} - {especie || 'Especie'} {variedad ? `(${variedad})` : ''}.
           </p>
         </div>
 
@@ -193,7 +193,7 @@ export const LotesOrigenSelector: React.FC<LotesOrigenSelectorProps> = ({
         <div className="flex items-center gap-1.5 text-blue-800">
           <Filter className="w-3.5 h-3.5 text-blue-500" />
           <span>Filtro de Lotes:</span>
-          <span className="font-bold bg-blue-100 text-blue-900 px-2 py-0.5 rounded">Sin Curar</span>
+          <span className="font-bold bg-blue-100 text-blue-900 px-2 py-0.5 rounded">Sin Tratar</span>
           {cliente && <span className="font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{cliente}</span>}
           {especie && <span className="font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{especie}</span>}
           {variedad && <span className="font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{variedad}</span>}
@@ -251,7 +251,7 @@ export const LotesOrigenSelector: React.FC<LotesOrigenSelectorProps> = ({
       {/* Listado de Lotes Seleccionados */}
       {lotesSeleccionados.length === 0 ? (
         <div className="py-5 text-center text-xs text-blue-500 italic bg-white/80 rounded-xl border border-dashed border-blue-200">
-          No ha seleccionado lotes de origen aún. Presione "Agregar Lote de Origen" para tomar hasta 5 lotes distintos "Sin Curar".
+          No ha seleccionado lotes de origen aún. Presione "Agregar Lote de Origen" para tomar hasta 5 lotes distintos "Sin Tratar".
         </div>
       ) : (
         <div className="space-y-3">

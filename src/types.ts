@@ -36,6 +36,9 @@ export interface PlantaConfig {
   tipos: string[];
   categorias: string[];
   tratamientos: string[];
+  silos?: string[];
+  envases?: string[];
+  estados?: string[];
 }
 
 export const VARIEDADES_DATASET_OFICIAL: { ESPECIE: string; VARIEDAD: string; CLIENTE: string; SEMILLERO: string }[] = [
@@ -170,8 +173,8 @@ export const PLANTA_CONFIG_DEFAULT: PlantaConfig = {
     'Comercial'
   ],
   tratamientos: [
-    'Sin Curar',
-    'Curado',
+    'Sin Tratar',
+    'Tratado',
     'Curado Completo',
     'Fungicida',
     'Insecticida',
@@ -182,6 +185,28 @@ export const PLANTA_CONFIG_DEFAULT: PlantaConfig = {
     'Signum Arveja',
     'Maxim',
     'Kit Verdesian'
+  ],
+  silos: [
+    'Silo 1',
+    'Silo 2',
+    'Silo 3',
+    'Silo 4',
+    'Silo 5',
+    'Silo 6'
+  ],
+  envases: [
+    'Big Bag x 800 kg',
+    'Big Bag x 1000 kg',
+    'Bolsa x 40 kg',
+    'Bolsa x 25 kg',
+    'Bolsa x 20 kg'
+  ],
+  estados: [
+    'Sin Clasificar',
+    'Clasificado',
+    'Consumo',
+    'Descarte',
+    'Bloqueado'
   ]
 };
 
@@ -369,7 +394,7 @@ export type EstadoRegistroLoteEspec =
   | 'agotado'
   | 'desdoblado';
 
-export type TratamientoEspecificacion = 'curado' | 'sin curar' | 'crudo';
+export type TratamientoEspecificacion = 'tratado' | 'sin tratar' | 'curado' | 'sin curar' | 'crudo';
 
 export type TipoMovimientoEspecificacion =
   | 'alta'
@@ -683,7 +708,10 @@ export interface OrdenCarga {
   tratamiento: TratamientoType; // Heredado del lote
   despachante: string;
   autor?: 'Malcon Baez' | 'Amilcar Quiroz' | string; // Autor de la orden (opcional)
-  estado: 'Disponible' | 'Aceptada' | 'Despachada';
+  estado: 'Disponible' | 'Aceptada' | 'Despachada' | 'Anulada';
+  motivoAnulacion?: string;
+  fechaAnulacion?: string;
+  anuladoPor?: string;
   fotoRemito?: string; // Data URL de la imagen cargada
   firmaChofer?: string; // Data URL de la firma del chofer
   lotesOrigen?: LoteOrigenItem[];

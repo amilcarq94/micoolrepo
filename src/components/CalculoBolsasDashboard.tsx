@@ -301,7 +301,7 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
                 Dashboard: Silos & Cálculo de Bolsas (BLS)
               </h2>
               <p className="text-xs text-emerald-100/90 mt-0.5 max-w-2xl">
-                Seleccione uno o varios silos con su stock actual en planta o ingrese kilos manualmente para calcular bolsas y lotes en tiempo real.
+                Ingrese los Kilos Brutos a Procesar para calcular automáticamente las bolsas (BLS) y desglose de lotes en tiempo real.
               </p>
             </div>
           </div>
@@ -312,186 +312,14 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
               onClick={onCerrar}
               className="self-start md:self-center px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition border border-white/20 cursor-pointer"
             >
-              Volver a Generar Lote (Sin Clasificar)
+              Volver a Generar Carátulas
             </button>
           )}
         </div>
       </div>
 
-      {/* 2. CONTENIDO PRINCIPAL: DASHBOARD DE SILOS + PARÁMETROS + RESULTADOS */}
+      {/* 2. CONTENIDO PRINCIPAL: KILOS BRUTOS A PROCESAR + PARÁMETROS + RESULTADOS */}
       <div className="p-5 sm:p-7 space-y-6">
-
-        {/* =================================================================== */}
-        {/* SECCIÓN A: DASHBOARD CON SILOS Y CANTIDAD DE KG EN STOCK            */}
-        {/* =================================================================== */}
-        <div className="bg-slate-50/90 rounded-3xl p-5 sm:p-6 border border-slate-200/80 space-y-4 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-3.5">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-100 text-[#00603C] rounded-xl">
-                <Warehouse className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-serif text-base font-bold text-slate-900">
-                  Dashboard de Silos & Stock Disponible
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  Haga clic en los silos para seleccionarlos y calcular automáticamente las bolsas (BLS).
-                </p>
-              </div>
-            </div>
-
-            {/* Acciones de Selección de Silos */}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSeleccionarTodosSilos}
-                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 shadow-2xs transition cursor-pointer"
-              >
-                Seleccionar Silos con Stock
-              </button>
-              <button
-                type="button"
-                onClick={handleDeseleccionarTodosSilos}
-                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-600 text-xs font-bold rounded-xl border border-slate-300 shadow-2xs transition cursor-pointer"
-              >
-                Limpiar Selección
-              </button>
-
-              <label className="flex items-center gap-1.5 text-xs text-slate-700 font-bold ml-1 cursor-pointer select-none bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200">
-                <input
-                  type="checkbox"
-                  checked={autoSyncSilos}
-                  onChange={(e) => setAutoSyncSilos(e.target.checked)}
-                  className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
-                />
-                <span>Auto-sincronizar Kilos</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Grilla de los 6 Silos */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {silosInfoList.map((silo) => {
-              const isSelected = !!selectedSilos[silo.siloId];
-              const tieneStock = silo.stockKg > 0;
-
-              return (
-                <div
-                  key={silo.siloId}
-                  id={`silo-calc-card-${silo.siloId.replace(/\s+/g, '')}`}
-                  onClick={() => handleToggleSilo(silo.siloId)}
-                  className={`rounded-2xl p-4 border-2 transition-all duration-200 cursor-pointer relative overflow-hidden shadow-2xs ${
-                    isSelected
-                      ? 'bg-emerald-50/90 border-[#00603C] ring-2 ring-emerald-500/30'
-                      : tieneStock
-                      ? 'bg-white border-slate-200 hover:border-slate-300'
-                      : 'bg-slate-100/70 border-slate-200/60 opacity-80'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-[#00603C] text-white' : 'bg-slate-100 text-slate-700'}`}>
-                        <Warehouse className="w-4 h-4" />
-                      </div>
-                      <span className="font-serif font-black text-sm text-slate-900">{silo.siloId}</span>
-                    </div>
-
-                    {/* Checkbox de Selección Visual */}
-                    <div className={`w-5 h-5 rounded-lg border flex items-center justify-center transition ${
-                      isSelected
-                        ? 'bg-[#00603C] border-[#00603C] text-white'
-                        : 'border-slate-300 bg-white'
-                    }`}>
-                      {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                    </div>
-                  </div>
-
-                  {/* Kilos en Stock */}
-                  <div className="space-y-2">
-                    <div className="flex items-baseline justify-between">
-                      <div>
-                        <span className="text-[10px] font-mono text-slate-500 uppercase block font-bold">
-                          Stock Actual
-                        </span>
-                        <span className="font-mono text-lg font-black text-slate-900">
-                          {formatKg(silo.stockKg)} <span className="text-xs font-normal text-slate-500">kg</span>
-                        </span>
-                      </div>
-                      <div className="text-right font-mono text-xs font-bold text-emerald-800">
-                        {silo.stockTn} Tn
-                      </div>
-                    </div>
-
-                    {/* Barra de Porcentaje */}
-                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          silo.pct >= 90 ? 'bg-red-500' : silo.pct >= 70 ? 'bg-amber-400' : 'bg-emerald-600'
-                        }`}
-                        style={{ width: `${silo.pct}%` }}
-                      />
-                    </div>
-
-                    {/* Detalles de Cliente, Variedad y Humedad */}
-                    <div className="pt-1.5 border-t border-slate-200/60 text-[11px] space-y-0.5">
-                      <div className="truncate text-slate-700">
-                        <span className="text-slate-400">Cliente:</span>{' '}
-                        <strong className="font-semibold text-slate-900">
-                          {silo.cliente || 'Sin asignar'}
-                        </strong>
-                      </div>
-                      <div className="truncate text-slate-700">
-                        <span className="text-slate-400">Variedad:</span>{' '}
-                        <strong className="font-semibold text-emerald-900">
-                          {silo.variedad || 'Descontaminado'}
-                        </strong>
-                      </div>
-                      {silo.humedad && silo.humedad !== '—' && (
-                        <div className="text-blue-900 font-mono font-bold flex items-center gap-1 text-[10px]">
-                          <Droplets className="w-2.5 h-2.5 text-blue-600" />
-                          <span>{silo.humedad}% Humedad</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Barra de Resumen de Silos Seleccionados */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-amber-50 text-amber-900 rounded-xl border border-amber-200">
-                <Scale className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[10px] font-mono font-bold uppercase text-slate-500 block">
-                  Stock Total de Silos Seleccionados ({countSilosSeleccionados} silo(s))
-                </span>
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-xl font-black text-slate-900">
-                    {formatKg(totalKgSilosSeleccionados)} kg
-                  </span>
-                  <span className="text-xs font-mono font-bold text-emerald-800">
-                    ({(totalKgSilosSeleccionados / 1000).toFixed(1)} Tn)
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {!autoSyncSilos && (
-              <button
-                type="button"
-                onClick={handleAplicarStockSilosSeleccionados}
-                disabled={totalKgSilosSeleccionados <= 0}
-                className="px-5 py-2.5 bg-[#00603C] hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition shadow-xs disabled:opacity-50 cursor-pointer"
-              >
-                Usar Stock de Silos Seleccionados
-              </button>
-            )}
-          </div>
-        </div>
 
         {/* =================================================================== */}
         {/* SECCIÓN B: PARÁMETROS DE CÁLCULO Y RESULTADOS                       */}
@@ -771,44 +599,7 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Datos Detectados del Silo de Origen */}
-              {siloAsignado ? (
-                <div className="bg-emerald-950/80 border border-emerald-500/40 rounded-2xl p-3.5 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-amber-300 flex items-center gap-1.5 font-mono uppercase tracking-wider">
-                      <Warehouse className="w-4 h-4 text-amber-400" />
-                      Silo Asignado: {nombresSilosSeleccionados || siloAsignado.siloId}
-                    </span>
-                    <span className="text-[10px] font-mono text-emerald-300 bg-emerald-900/60 px-2 py-0.5 rounded-md border border-emerald-500/30">
-                      Datos Vinculados
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                    <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
-                      <span className="text-slate-400 text-[10px] block font-sans">Cliente Silo:</span>
-                      <span className="font-bold text-white truncate block text-xs">
-                        {siloAsignado.cliente && siloAsignado.cliente !== 'Sin asignación' ? siloAsignado.cliente : 'Sin asignar'}
-                      </span>
-                    </div>
-                    <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
-                      <span className="text-slate-400 text-[10px] block font-sans">Variedad Silo:</span>
-                      <span className="font-bold text-amber-300 truncate block text-xs">
-                        {siloAsignado.variedad && siloAsignado.variedad !== '-' ? siloAsignado.variedad : 'Sin asignar'}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-emerald-200/90 leading-relaxed">
-                    ✓ Al generar lotes, se copiarán automáticamente estos datos de <strong>Cliente</strong> y <strong>Variedad</strong>.
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-black/20 border border-white/10 rounded-2xl p-3 text-[11px] text-slate-400 flex items-center gap-2">
-                  <Warehouse className="w-4 h-4 text-slate-500 shrink-0" />
-                  <span>Seleccione un silo en la sección superior para copiar automáticamente su Cliente y Variedad asignados.</span>
-                </div>
-              )}
-
-              {/* Botón: Generar Lotes en Precargar */}
+              {/* Botón: Generar Carátulas */}
               {onAplicarAPrecarga && (
                 <div className="pt-2 space-y-2">
                   <button
@@ -820,7 +611,7 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
                   >
                     <div className="flex items-center justify-center gap-2 text-xs sm:text-sm font-black uppercase tracking-wider">
                       <PackagePlus className="w-5 h-5 text-amber-300 shrink-0 group-hover:scale-110 transition-transform" />
-                      <span>Generar Lotes</span>
+                      <span>Generar Carátulas</span>
                       <ArrowRight className="w-4 h-4 text-amber-300 group-hover:translate-x-1.5 transition-transform shrink-0" />
                     </div>
 
@@ -828,16 +619,11 @@ export const CalculoBolsasDashboard: React.FC<CalculoBolsasDashboardProps> = ({
                       <span className="font-bold text-amber-300">
                         {calculoResultado.desgloseLotes.length || 1} Lote(s) ({calculoResultado.cantidadBolsasEnteras} BLS)
                       </span>
-                      {siloAsignado && (siloAsignado.cliente || siloAsignado.variedad) && (
-                        <span className="text-emerald-200">
-                          • Copiando: <strong>{siloAsignado.cliente || 'Sin cliente'}</strong> · <strong>{siloAsignado.variedad || 'Sin variedad'}</strong> ({siloAsignado.siloId})
-                        </span>
-                      )}
                     </div>
                   </button>
 
                   <p className="text-[10px] text-center text-slate-300/80 leading-tight">
-                    Copia la tanda calculada ({calculoResultado.desgloseLotes.length || 1} lotes, {formatKg(calculoResultado.kilosNetosKg)} netos) y asigna Cliente y Variedad del silo para generar los lotes.
+                    Pasa a la hoja para generar las carátulas e ID de bolsas calculadas ({calculoResultado.desgloseLotes.length || 1} lotes, {formatKg(calculoResultado.kilosNetosKg)} netos).
                   </p>
                 </div>
               )}

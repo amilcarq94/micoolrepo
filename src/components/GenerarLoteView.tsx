@@ -21,6 +21,8 @@ import {
 import { VisorCorrelatividadLote } from './VisorCorrelatividadLote';
 import { generarCaratulaParaLote, generarBolsasParaLote } from '../utils/loteEspecUtils';
 import { guardarCaratulaYBolsasFirestore } from '../lib/firebase';
+import { generarBolsasParaCaratula, CaratulaItemFull } from './CaratulasView';
+import { ColorFondoCaratula } from './CaratulaCard';
 import {
   PackagePlus,
   CheckCircle2,
@@ -44,13 +46,28 @@ import {
 const TIPOS_LOTE: TipoLoteType[] = ['Intermedio', 'Final'];
 const CATEGORIAS: CategoriaType[] = ['Preba', 'Original', 'Primu'];
 
+export function extractKgFromEnvase(envaseStr: string, fallback = 800): number {
+  if (!envaseStr) return fallback;
+  const match = envaseStr.match(/(\d+)\s*kg/i);
+  if (match) {
+    const val = parseInt(match[1], 10);
+    if (!isNaN(val) && val > 0) return val;
+  }
+  return fallback;
+}
+
 export interface LoteDraftItem {
   id: string;
+  fecha: string;
   loteNro: string;
-  tipo: TipoLoteType;
-  categoria: CategoriaType;
+  tipo: string;
+  origen: string;
+  categoria: string;
   stockBolsas: number;
+  envase: string;
   kgPorBolsa: number;
+  tratamiento: string;
+  estado: string;
 }
 
 interface GenerarLoteViewProps {
@@ -63,6 +80,7 @@ interface GenerarLoteViewProps {
   movimientosSilo?: MovimientoSilo[];
   onSaveLote: (lote: Lote) => Promise<void> | void;
   onNavigateToLotes: () => void;
+  onNavigateToCaratulas?: () => void;
   initialCalculoConfig?: CalculoTransferConfig | null;
   onClearInitialConfig?: () => void;
 }
@@ -84,6 +102,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
   movimientosSilo = [],
   onSaveLote,
   onNavigateToLotes,
+  onNavigateToCaratulas,
   initialCalculoConfig,
   onClearInitialConfig,
 }) => {
@@ -180,34 +199,81 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
     }
   }, [variedadesDisponibles, variedad]);
 
-  // Lista de categorías disponibles para precarga (incluye Primu y configuración de planta)
-  const categoriasOpciones = useMemo(() => {
-    const list: string[] = [...CATEGORIAS];
-    if (plantaConfig?.categorias && Array.isArray(plantaConfig.categorias)) {
-      plantaConfig.categorias.forEach((cat) => {
-        if (
-          cat &&
-          !list.some((c) => c.toLowerCase() === cat.toLowerCase()) &&
-          !cat.toLowerCase().includes('primera multiplicaci')
-        ) {
-          list.push(cat);
-        }
-      });
+  // Opciones tomadas de Data Bases (plantaConfig)
+  const tiposOpciones = useMemo(() => {
+    if (plantaConfig?.tipos && plantaConfig.tipos.length > 0) {
+      return plantaConfig.tipos;
     }
-    return list.filter((c) => !c.toLowerCase().includes('primera multiplicaci'));
-  }, [plantaConfig]);
+    return ['Intermedio', 'Final', 'Procesado', 'Semilla', 'Descarte', 'Bajo Consumo', 'Mezcla', 'Rechazo'];
+  }, [plantaConfig?.tipos]);
 
-  // Draft lotes list state (presets: 35 bolsas x 800 kg con correlativo inicial del cliente)
+  const origenesOpciones = useMemo(() => {
+    if (plantaConfig?.silos && plantaConfig.silos.length > 0) {
+      return plantaConfig.silos;
+    }
+    return ['Silo 1', 'Silo 2', 'Silo 3', 'Silo 4', 'Silo 5', 'Silo 6'];
+  }, [plantaConfig?.silos]);
+
+  const categoriasOpciones = useMemo(() => {
+    if (plantaConfig?.categorias && Array.isArray(plantaConfig.categorias) && plantaConfig.categorias.length > 0) {
+      return plantaConfig.categorias.filter((c) => !c.toLowerCase().includes('primera multiplicaci'));
+    }
+    return ['Fundadora', 'PreBase', 'Original', 'Primu', 'Segunda Multiplicación', 'Certificada', 'Identificada', 'Comercial'];
+  }, [plantaConfig?.categorias]);
+
+  const envasesOpciones = useMemo(() => {
+    if (plantaConfig?.envases && plantaConfig.envases.length > 0) {
+      return plantaConfig.envases;
+    }
+    return [
+      'Big Bag x 800 kg',
+      'Big Bag x 1000 kg',
+      'Bolsa x 40 kg',
+      'Bolsa x 25 kg',
+      'Bolsa x 20 kg'
+    ];
+  }, [plantaConfig?.envases]);
+
+  const tratamientosOpciones = useMemo(() => {
+    if (plantaConfig?.tratamientos && plantaConfig.tratamientos.length > 0) {
+      return plantaConfig.tratamientos;
+    }
+    return ['Sin Tratar', 'Tratado', 'Curado Completo', 'Fungicida', 'Insecticida', 'Inoculado'];
+  }, [plantaConfig?.tratamientos]);
+
+  const estadosOpciones = useMemo(() => {
+    if (plantaConfig?.estados && plantaConfig.estados.length > 0) {
+      return plantaConfig.estados;
+    }
+    return ['Sin Clasificar', 'Clasificado', 'Consumo', 'Descarte', 'Bloqueado'];
+  }, [plantaConfig?.estados]);
+
+  // Draft lotes list state con las 9 columnas: fecha/lote/tipo/origen/categoria/bolsas ingreso/envase/tratamiento/estado
   const [draftLotes, setDraftLotes] = useState<LoteDraftItem[]>(() => {
     const info = getCorrelatividadCliente('San Diego Semillas', lotes);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const defaultTipo = plantaConfig?.tipos?.[0] || 'Intermedio';
+    const defaultOrigen = plantaConfig?.silos?.[0] || 'Silo 1';
+    const defaultCat = (plantaConfig?.categorias && plantaConfig.categorias.length > 0)
+      ? plantaConfig.categorias.find((c) => c.toLowerCase() === 'primu') || plantaConfig.categorias[0]
+      : 'Primu';
+    const defaultEnv = plantaConfig?.envases?.[0] || 'Big Bag x 800 kg';
+    const defaultTrat = 'Sin Tratar';
+    const defaultEst = 'Sin Clasificar';
+
     return [
       {
         id: `draft-1-${Date.now()}`,
+        fecha: todayStr,
         loteNro: formatLoteNro(info.prefijo, info.proximoNumero),
-        tipo: 'Intermedio',
-        categoria: 'Pre básica',
+        tipo: defaultTipo,
+        origen: defaultOrigen,
+        categoria: defaultCat,
         stockBolsas: 35, // PRECARGADO EN 35 UNIDADES
-        kgPorBolsa: 800,  // PRECARGADO EN 800 KG
+        envase: defaultEnv,
+        kgPorBolsa: extractKgFromEnvase(defaultEnv, 800),
+        tratamiento: defaultTrat,
+        estado: defaultEst,
       }
     ];
   });
@@ -254,66 +320,110 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
   // Handlers para agregar / quitar ítems de la lista
   const handleAddDraftLote = () => {
     const nextNro = getNextLoteNumber(0, draftLotes);
-    // Copiar automáticamente Tipo y Categoría del Lote 1 precargado si existe
-    const firstDraft = draftLotes[0];
-    const defaultTipo = firstDraft?.tipo || 'Intermedio';
-    const defaultCat = firstDraft?.categoria || 'Pre básica';
+    const lastDraft = draftLotes[draftLotes.length - 1];
+    const todayStr = new Date().toISOString().split('T')[0];
 
-    setDraftLotes(prev => [
+    const defaultTipo = lastDraft?.tipo || tiposOpciones[0] || 'Intermedio';
+    const defaultOrigen = lastDraft?.origen || origenesOpciones[0] || 'Silo 1';
+    const defaultCat = lastDraft?.categoria || categoriasOpciones[0] || 'Primu';
+    const defaultEnv = lastDraft?.envase || envasesOpciones[0] || 'Big Bag x 800 kg';
+    const defaultTrat = lastDraft?.tratamiento || 'Sin Tratar';
+    const defaultEst = lastDraft?.estado || 'Sin Clasificar';
+
+    setDraftLotes((prev) => [
       ...prev,
       {
         id: `draft-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        fecha: lastDraft?.fecha || todayStr,
         loteNro: nextNro,
         tipo: defaultTipo,
+        origen: defaultOrigen,
         categoria: defaultCat,
-        stockBolsas: 35,
-        kgPorBolsa: 800,
+        stockBolsas: lastDraft?.stockBolsas || 35,
+        envase: defaultEnv,
+        kgPorBolsa: extractKgFromEnvase(defaultEnv, 800),
+        tratamiento: defaultTrat,
+        estado: defaultEst,
       }
     ]);
   };
 
   const handleAddMasivos = () => {
-    const count = Math.max(1, Math.min(10, cantidadMasiva));
-    const firstDraft = draftLotes[0];
-    const defaultTipo = firstDraft?.tipo || 'Intermedio';
-    const defaultCat = firstDraft?.categoria || 'Pre básica';
+    const count = Math.max(1, Math.min(20, cantidadMasiva || 1));
+    const lastDraft = draftLotes[draftLotes.length - 1];
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const defaultTipo = lastDraft?.tipo || tiposOpciones[0] || 'Intermedio';
+    const defaultOrigen = lastDraft?.origen || origenesOpciones[0] || 'Silo 1';
+    const defaultCat = lastDraft?.categoria || categoriasOpciones[0] || 'Primu';
+    const defaultEnv = lastDraft?.envase || envasesOpciones[0] || 'Big Bag x 800 kg';
+    const defaultTrat = lastDraft?.tratamiento || 'Sin Tratar';
+    const defaultEst = lastDraft?.estado || 'Sin Clasificar';
 
     const newItems: LoteDraftItem[] = [];
     for (let i = 0; i < count; i++) {
       newItems.push({
         id: `draft-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
+        fecha: lastDraft?.fecha || todayStr,
         loteNro: getNextLoteNumber(i, draftLotes),
         tipo: defaultTipo,
+        origen: defaultOrigen,
         categoria: defaultCat,
-        stockBolsas: 35,
-        kgPorBolsa: 800,
+        stockBolsas: lastDraft?.stockBolsas || 35,
+        envase: defaultEnv,
+        kgPorBolsa: extractKgFromEnvase(defaultEnv, 800),
+        tratamiento: defaultTrat,
+        estado: defaultEst,
       });
     }
-    setDraftLotes(prev => [...prev, ...newItems]);
+    setDraftLotes((prev) => [...prev, ...newItems]);
   };
 
   const handleRemoveDraftLote = (id: string) => {
-    setDraftLotes(prev => {
+    setDraftLotes((prev) => {
       if (prev.length <= 1) return prev; // Mantener al menos 1
-      return prev.filter(item => item.id !== id);
+      return prev.filter((item) => item.id !== id);
     });
   };
 
   const handleUpdateDraftLote = (id: string, field: keyof LoteDraftItem, value: any) => {
-    setDraftLotes(prev => {
+    setDraftLotes((prev) => {
       const isFirst = prev.length > 0 && prev[0].id === id;
 
       return prev.map((item, idx) => {
         if (item.id === id) {
-          return { ...item, [field]: value };
+          const updated = { ...item, [field]: value };
+          if (field === 'envase') {
+            updated.kgPorBolsa = extractKgFromEnvase(String(value), 800);
+          }
+          return updated;
         }
-        // Si se actualiza Tipo o Categoría en el Lote 1, copiar automáticamente a los lotes siguientes (2 en adelante)
-        if (isFirst && (field === 'tipo' || field === 'categoria') && idx > 0) {
-          return { ...item, [field]: value };
+        // Si se actualiza en el Lote 1, propagar opciones de datos maestros si hay más filas
+        if (
+          isFirst &&
+          (field === 'tipo' ||
+            field === 'origen' ||
+            field === 'categoria' ||
+            field === 'envase' ||
+            field === 'tratamiento' ||
+            field === 'estado') &&
+          idx > 0
+        ) {
+          const updated = { ...item, [field]: value };
+          if (field === 'envase') {
+            updated.kgPorBolsa = extractKgFromEnvase(String(value), 800);
+          }
+          return updated;
         }
         return item;
       });
     });
+  };
+
+  const handleUpdateDraftLoteMultiple = (id: string, updates: Partial<LoteDraftItem>) => {
+    setDraftLotes((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
+    );
   };
 
   // Submit guardar todos los lotes
@@ -356,146 +466,133 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
     setIsSaving(true);
 
     try {
-      const fechaActual = new Date().toISOString().split('T')[0];
-      const ubicacionStr = ala && sector ? `Ala ${ala} - Sector ${sector}` : 'Sin asignar';
-
-      for (const draft of draftLotes) {
-        const stockKgCalculado = draft.stockBolsas * draft.kgPorBolsa;
-        const normNro = draft.loteNro.trim();
-        const calculatedId = generarLoteId(cliente, normNro);
-
-        // Buscar si ya existe
-        const existingLote = lotes.find(
-          l => l.loteNro?.trim().toLowerCase() === normNro.toLowerCase() ||
-               l.id.toLowerCase() === calculatedId.toLowerCase()
-        );
-
-        let loteToSave: Lote;
-
-        if (existingLote) {
-          // Acumulación de stock
-          const currentKg = existingLote.stockKg || 0;
-          const currentBolsas = existingLote.stockBolsas || 0;
-          const addKg = stockKgCalculado;
-          const addBolsas = Number(draft.stockBolsas);
-
-          const totalBolsasAcumuladas = currentBolsas + addBolsas;
-          const totalKgAcumulados = currentKg + addKg;
-
-          const nuevoMov: MovimientoStock = {
-            id: `MOV-PRE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-            fecha: fechaActual,
-            tipo: 'Entrada manual',
-            cantidadBolsas: addBolsas,
-            kgPorBolsa: Number(draft.kgPorBolsa),
-            cantidadKg: addKg,
-            detalle: confirmarASinClasificar ? 'Alta confirmada en Sin Clasificar' : `Precarga de stock`
-          };
-
-          loteToSave = {
-            ...existingLote,
-            stockBolsas: totalBolsasAcumuladas,
-            stockKg: totalKgAcumulados,
-            estado: 'Disponible',
-            estadoRegistro: confirmarASinClasificar ? 'REALIZADO' : existingLote.estadoRegistro,
-            estadoEspec: confirmarASinClasificar ? 'sin clasificar' : existingLote.estadoEspec,
-            especie: especie as EspecieType,
-            variedad: variedad.trim() || existingLote.variedad,
-            tipo: draft.tipo,
-            categoria: draft.categoria,
-            tratamiento: ['Sin Curar'], // TRATAMIENTO POR DEFECTO SIN CURAR
-            producto: 'Ninguno',
-            ala: ala || existingLote.ala,
-            sector: sector || existingLote.sector,
-            ubicacionAcopio: ubicacionStr,
-            observaciones: observaciones.trim() || existingLote.observaciones,
-            historial: [nuevoMov, ...(existingLote.historial || [])]
-          };
-
-          if (confirmarASinClasificar && !loteToSave.caratulaId) {
-            const caratulaId = `CARAT-${loteToSave.id}-${Date.now()}`;
-            loteToSave.caratulaId = caratulaId;
-            const caratulaDoc = generarCaratulaParaLote(loteToSave, new Date().toISOString());
-            const nuevasBolsas = generarBolsasParaLote(loteToSave, caratulaId);
-            await guardarCaratulaYBolsasFirestore(caratulaDoc, nuevasBolsas);
-          }
-        } else {
-          // Alta nuevo
-          const uniqueDocId = calculatedId;
-          const nuevoMov: MovimientoStock = {
-            id: `MOV-PRE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-            fecha: fechaActual,
-            tipo: 'Entrada manual',
-            cantidadBolsas: Number(draft.stockBolsas),
-            kgPorBolsa: Number(draft.kgPorBolsa),
-            cantidadKg: stockKgCalculado,
-            detalle: confirmarASinClasificar ? 'Alta oficial con carátula e IDs de bolsa' : `Alta inicial en Precarga`
-          };
-
-          const caratulaId = confirmarASinClasificar ? `CARAT-${uniqueDocId}-${Date.now()}` : undefined;
-
-          loteToSave = {
-            id: uniqueDocId,
-            loteNro: normNro,
-            cliente: cliente.trim(),
-            especie: especie as EspecieType,
-            variedad: variedad.trim(),
-            tipo: draft.tipo,
-            categoria: draft.categoria,
-            tratamiento: ['Sin Curar'], // TRATAMIENTO POR DEFECTO SIN CURAR
-            producto: 'Ninguno',
-            stockBolsas: Number(draft.stockBolsas),
-            kgPorBolsa: Number(draft.kgPorBolsa),
-            stockKg: stockKgCalculado,
-            estado: 'Disponible',
-            estadoRegistro: confirmarASinClasificar ? 'REALIZADO' : 'PRE-CARGA',
-            silosOrigen: siloOrigenDetectado
-              ? [{ siloId: siloOrigenDetectado as SiloId, kgExtraidos: stockKgCalculado }]
-              : [],
-            origenesBolson: [],
-            numeroBolsonOrigen: '',
-            bolsonOrigenNro: '',
-            sectorBolsonOrigen: '',
-            fechaIngreso: fechaActual,
-            campaniaId: getCampaniaIdFromDate(fechaActual),
-            ala,
-            sector,
-            ubicacionAcopio: ubicacionStr,
-            observaciones: observaciones.trim(),
-            historial: [nuevoMov],
-            // Campos de la especificación
-            codigo: normNro,
-            padreId: null,
-            cantidadBolsas: Number(draft.stockBolsas),
-            kg: stockKgCalculado,
-            kgIniciales: stockKgCalculado,
-            envase: `x ${draft.kgPorBolsa} kg`,
-            estadoEspec: confirmarASinClasificar ? 'sin clasificar' : 'precarga',
-            activo: true,
-            fecha: fechaActual,
-            siloOrigen: siloOrigenDetectado || undefined,
-            caratulaId
-          };
-
-          if (confirmarASinClasificar && caratulaId) {
-            const caratulaDoc = generarCaratulaParaLote(loteToSave, new Date().toISOString());
-            const nuevasBolsas = generarBolsasParaLote(loteToSave, caratulaId);
-            await guardarCaratulaYBolsasFirestore(caratulaDoc, nuevasBolsas);
-          }
+      const STORAGE_KEY = 'agro_abacus_caratulas_data_v2';
+      let caratulasExistentes: CaratulaItemFull[] = [];
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) caratulasExistentes = parsed;
         }
-
-        await onSaveLote(loteToSave);
+      } catch (err) {
+        console.error('Error al leer carátulas existentes:', err);
       }
 
-      setSuccessMsg(`¡${draftLotes.length} Lote(s) generado(s) exitosamente!`);
+      const nuevasCaratulasCreadas: CaratulaItemFull[] = [];
 
-      // Redirigir de regreso a la lista de lotes después de guardar
+      for (let idx = 0; idx < draftLotes.length; idx++) {
+        const draft = draftLotes[idx];
+        const caratulaId = `caratula-${Date.now()}-${idx + 1}`;
+        const loteNroStr = draft.loteNro.trim() || `000${idx + 1}`;
+        const cantBolsas = Math.max(1, draft.stockBolsas || 35);
+        const presentacionStr =
+          draft.kgPorBolsa === 800
+            ? 'Big Bag x 800 kg'
+            : draft.kgPorBolsa === 25
+            ? 'Bolsa x 25 kg'
+            : draft.kgPorBolsa === 20
+            ? 'Bolsa x 20 kg'
+            : `Bolsa x ${draft.kgPorBolsa} kg`;
+        const colorFinal: ColorFondoCaratula = draft.tipo === 'Final' ? 'rojo' : 'verde';
+        const subtituloStr = variedad && variedad.trim() !== '' ? variedad.trim() : (observaciones || 'Subtítulo');
+
+        const bolsasGeneradas = generarBolsasParaCaratula(
+          caratulaId,
+          loteNroStr,
+          cantBolsas,
+          cliente || 'Título 1',
+          subtituloStr,
+          draft.tipo,
+          draft.categoria,
+          presentacionStr,
+          especie || 'Soja',
+          colorFinal
+        );
+
+        const nuevaCaratulaItem: CaratulaItemFull = {
+          id: caratulaId,
+          loteNro: loteNroStr,
+          titulo1: cliente || 'Título 1',
+          subtitulo: subtituloStr,
+          color: colorFinal,
+          tipo: draft.tipo,
+          categoria: draft.categoria,
+          presentacion: presentacionStr,
+          especie: especie || 'Soja',
+          cantidadBolsas: cantBolsas,
+          bolsas: bolsasGeneradas,
+          createdAt: new Date().toISOString(),
+        };
+
+        nuevasCaratulasCreadas.push(nuevaCaratulaItem);
+
+        // Opcional: respaldar en Firestore si está disponible
+        try {
+          await guardarCaratulaYBolsasFirestore(
+            {
+              id: caratulaId,
+              loteId: loteNroStr,
+              loteNro: loteNroStr,
+              cliente: cliente || 'Título 1',
+              especie: especie || 'Soja',
+              variedad: subtituloStr,
+              tipo: draft.tipo,
+              categoria: draft.categoria,
+              tratamiento: ['Sin Tratar'],
+              color: colorFinal,
+              titulo1: cliente || 'Título 1',
+              subtitulo: subtituloStr,
+              totalBolsas: cantBolsas,
+              kgPorBolsa: draft.kgPorBolsa,
+              fechaGeneracion: new Date().toISOString(),
+              qrCodeUrl: typeof window !== 'undefined' ? `${window.location.origin}/?lote=${encodeURIComponent(loteNroStr)}` : '',
+              activo: true,
+            },
+            bolsasGeneradas.map((b) => ({
+              id: b.id,
+              caratulaId,
+              loteId: loteNroStr,
+              bolsaNumero: b.bolsaNro,
+              totalBolsas: b.totalBolsas,
+              cliente: b.cliente,
+              especie: b.especie,
+              variedad: b.subtitulo,
+              tipo: b.tipo,
+              categoria: b.categoria,
+              presentacion: b.presentacion,
+              kg: draft.kgPorBolsa,
+              estado: 'sin clasificar',
+              activo: true,
+              fecha: new Date().toISOString(),
+            }))
+          );
+        } catch (e) {
+          // ignore offline firestore errors
+        }
+      }
+
+      // Guardar en localStorage para que la hoja Carátulas las lea de inmediato
+      const actualizado = [...caratulasExistentes, ...nuevasCaratulasCreadas];
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(actualizado));
+      } catch (err) {
+        console.error('Error al guardar carátulas en localStorage:', err);
+      }
+
+      setSuccessMsg(`✓ ¡${nuevasCaratulasCreadas.length} Carátula(s) generadas con éxito!`);
+
+      // Redirigir de inmediato a la hoja "caratulas"
       setTimeout(() => {
-        onNavigateToLotes();
-      }, 900);
+        if (onNavigateToCaratulas) {
+          onNavigateToCaratulas();
+        } else {
+          onNavigateToLotes();
+        }
+      }, 400);
 
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Error al generar los lotes.');
+      console.error(err);
+      setErrorMsg(err?.message || 'Error al generar las carátulas.');
     } finally {
       setIsSaving(false);
     }
@@ -706,7 +803,7 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
                   Tratamiento Químico Fijo
                 </span>
                 <span className="text-xs font-bold text-slate-900">
-                  Sin Curar (Por defecto)
+                  Sin Tratar (Por defecto)
                 </span>
               </div>
             </div>
@@ -1105,17 +1202,17 @@ export const GenerarLoteView: React.FC<GenerarLoteViewProps> = ({
               type="button"
               id="btn-generar-lote-confirmar"
               disabled={isSaving}
-              onClick={() => handleSubmit(undefined, true)}
+              onClick={() => handleSubmit()}
               className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition disabled:opacity-50 cursor-pointer border border-emerald-400 active:scale-95"
-              title="Generar lote: ingresa el lote en existencia"
+              title="Generar carátulas: genera las carátulas e ID de bolsas y pasa a la hoja Carátulas"
             >
               <CheckCircle2 className="w-5 h-5 text-emerald-200" />
               <span>
                 {isSaving
-                  ? 'Guardando...'
+                  ? 'Generando carátulas...'
                   : draftLotes.length === 1
-                    ? 'Generar Lote'
-                    : `Generar ${draftLotes.length} lotes`}
+                    ? 'Generar Carátula'
+                    : `Generar Carátulas (${draftLotes.length})`}
               </span>
             </button>
           </div>

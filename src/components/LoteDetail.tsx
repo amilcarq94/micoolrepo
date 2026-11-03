@@ -20,6 +20,9 @@ import { QrTrazabilidadLote } from './QrTrazabilidadLote';
 import { exportWithHtml2Pdf } from '../utils/exportPdf';
 import { printWithActiveClass } from '../utils/printHelper';
 import { PanelDeLote } from './PanelDeLote';
+import { AccionesLoteModal, AccionLoteResult } from './AccionesLoteModal';
+import { registrarMovimientoOficial, guardarCaratulaYBolsasFirestore } from '../lib/firebase';
+import { generarCaratulaParaLote, generarBolsasParaLote } from '../utils/loteEspecUtils';
 
 interface LoteDetailProps {
   lote: Lote;
@@ -166,6 +169,60 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
   const [nombreLoteColor, setNombreLoteColor] = useState<'default' | 'red'>('default');
   const [initialFichaEditMode, setInitialFichaEditMode] = useState(false);
   const [fichaModificada, setFichaModificada] = useState(false);
+
+  // Estados para Modal de Acciones / Modificación de Estado de Lote desde Detalle
+  const [showAccionesModal, setShowAccionesModal] = useState(false);
+  const [accionesInitialTab, setAccionesInitialTab] = useState<'estado' | 'tratamiento' | 'envase' | 'categoria' | 'tipo' | 'bloqueo'>('estado');
+  const [estadoLoteSuccessMsg, setEstadoLoteSuccessMsg] = useState('');
+
+  const handleConfirmAccionLoteDetail = async (result: AccionLoteResult) => {
+    try {
+      const fechaHoy = new Date().toISOString().split('T')[0];
+      const usuarioNombre = currentUser?.nombre || 'Operador';
+      const { tipoAccion, valorAnterior, valorNuevo, observaciones, loteActualizado } = result;
+
+      // 1. Si cambió el envase, pasar bolsas anteriores a 'reenvasada' y generar IDs nuevos
+      if (tipoAccion === 'cambio_envase') {
+        const caratulaId = loteActualizado.caratulaId || `CARAT-${loteActualizado.id}-${Date.now()}`;
+        const bolsasAnteriores = generarBolsasParaLote(lote, lote.caratulaId || caratulaId);
+        const bolsasReenvasadas = bolsasAnteriores.map(b => ({
+          ...b,
+          estado: 'reenvasada' as const,
+        }));
+        const nuevasBolsas = generarBolsasParaLote(loteActualizado, caratulaId);
+        await guardarCaratulaYBolsasFirestore(
+          generarCaratulaParaLote(loteActualizado),
+          [...bolsasReenvasadas, ...nuevasBolsas]
+        );
+      }
+
+      // 2. Registrar movimiento con fecha y usuario en bitácora oficial
+      await registrarMovimientoOficial({
+        loteId: loteActualizado.id,
+        usuario: usuarioNombre,
+        tipo: tipoAccion,
+        valorAnterior,
+        valorNuevo,
+        observaciones,
+        fecha: fechaHoy
+      });
+
+      // 3. Guardar lote actualizado en base de datos y memoria
+      if (onBatchUpdateLotes) {
+        await onBatchUpdateLotes([loteActualizado]);
+      } else if (onSaveLote) {
+        await onSaveLote(loteActualizado);
+      }
+
+      setDraftFichaLote(loteActualizado);
+      setEstadoLoteSuccessMsg(`¡Estado del lote #${loteActualizado.codigo || loteActualizado.loteNro} modificado con éxito a "${valorNuevo}"!`);
+      setShowAccionesModal(false);
+      setTimeout(() => setEstadoLoteSuccessMsg(''), 4500);
+    } catch (err: any) {
+      console.error('Error aplicando acción sobre lote:', err);
+      alert(err.message || 'Error al guardar modificación de estado.');
+    }
+  };
 
   // Sincronizar draft, ubicación e INASE si cambia el lote original de props
   useEffect(() => {
@@ -1238,6 +1295,22 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               <span>IMPRIMIR ETIQUETAS</span>
             </button>
 
+            {/* Botón MODIFICAR ESTADO DEL LOTE */}
+            {!readOnly && (
+              <button
+                id="btn-modificar-estado-lotedetail"
+                onClick={() => {
+                  setAccionesInitialTab('estado');
+                  setShowAccionesModal(true);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-900 rounded-xl transition text-xs font-black uppercase tracking-wider shadow-xs cursor-pointer active:scale-95 border border-purple-200"
+                title="Modificar el estado del lote (sin clasificar, clasificado, bloqueado, descartado)"
+              >
+                <SlidersHorizontal className="w-4 h-4 text-purple-700 stroke-[2.5]" />
+                <span>Modificar Estado</span>
+              </button>
+            )}
+
             {/* Botón Codigo INASE (inicio/final) */}
             <button
               id="btn-codigo-inase-lotedetail"
@@ -1250,6 +1323,14 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
             </button>
           </div>
         </div>
+
+      {/* Banner de feedback al modificar estado */}
+      {estadoLoteSuccessMsg && (
+        <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-xs animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{estadoLoteSuccessMsg}</span>
+        </div>
+      )}
 
       {/* Grid de Contenido de Ficha */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -1267,9 +1348,20 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
               <span className="text-[10px] font-mono font-bold text-emerald-200 tracking-wider">
                 ID: {lote.id}
               </span>
-              <span className={`px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-full border bg-white text-[#00603C] border-white shadow-sm`}>
-                {lote.estado}
-              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!readOnly) {
+                    setAccionesInitialTab('estado');
+                    setShowAccionesModal(true);
+                  }
+                }}
+                className={`px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-full border bg-white text-[#00603C] border-white shadow-sm hover:bg-emerald-50 active:scale-95 transition flex items-center gap-1 cursor-pointer`}
+                title="Hacer clic para modificar el estado del lote"
+              >
+                <span>{lote.estadoEspec || lote.estado}</span>
+                {!readOnly && <Edit3 className="w-2.5 h-2.5 text-[#00603C]" />}
+              </button>
             </div>
             {/* N° DE LOTE GRANDE */}
             <div className="mt-4 mb-3">
@@ -1291,6 +1383,44 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
 
           <div className="p-5 space-y-4 text-xs">
             <div>
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] uppercase tracking-wider text-gray-400 block font-bold">Estado del Lote</span>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccionesInitialTab('estado');
+                      setShowAccionesModal(true);
+                    }}
+                    className="text-[10px] font-bold text-[#00603C] hover:underline flex items-center gap-0.5 cursor-pointer"
+                    title="Modificar el estado del lote"
+                  >
+                    <span>Modificar</span>
+                    <Edit3 className="w-2.5 h-2.5" />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="font-extrabold text-[#00603C] text-sm uppercase">
+                  {lote.estadoEspec || lote.estado}
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                  (lote.estadoEspec || lote.estado)?.toLowerCase() === 'clasificado'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : (lote.estadoEspec || lote.estado)?.toLowerCase() === 'bloqueado'
+                    ? 'bg-red-100 text-red-800'
+                    : (lote.estadoEspec || lote.estado)?.toLowerCase() === 'descartado'
+                    ? 'bg-gray-200 text-gray-800'
+                    : (lote.estadoEspec || lote.estado)?.toLowerCase() === 'agotado'
+                    ? 'bg-slate-200 text-slate-800'
+                    : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {lote.estadoEspec || lote.estado}
+                </span>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-50 pt-3">
               <span className="text-[9px] uppercase tracking-wider text-gray-400 block font-bold">Categoría</span>
               <span className="font-extrabold text-[#00603C] text-sm block mt-0.5 uppercase">{lote.categoria || 'Sin especificar'}</span>
             </div>
@@ -1301,7 +1431,23 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
             </div>
 
             <div className="border-t border-gray-50 pt-3">
-              <span className="text-[9px] uppercase tracking-wider text-gray-400 block font-bold">Tratamiento del Lote</span>
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] uppercase tracking-wider text-gray-400 block font-bold">Tratamiento del Lote</span>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccionesInitialTab('tratamiento');
+                      setShowAccionesModal(true);
+                    }}
+                    className="text-[10px] font-bold text-[#00603C] hover:underline flex items-center gap-0.5 cursor-pointer"
+                    title="Modificar tratamiento del lote (Sin Tratar / Tratado)"
+                  >
+                    <span>Modificar</span>
+                    <Edit3 className="w-2.5 h-2.5" />
+                  </button>
+                )}
+              </div>
               <div className="flex flex-wrap gap-1 mt-1.5">
                 {lote.tratamiento.map((t, idx) => (
                   <span key={idx} className="bg-[#E3EFE7] text-[#00603C] px-2 py-0.5 rounded text-[10px] font-semibold">
@@ -2907,6 +3053,18 @@ export const LoteDetail: React.FC<LoteDetailProps> = ({
         lotes={[draftFichaLote]}
         onClose={() => setShowBatchIdBolsasModal(false)}
       />
+
+      {/* Modal de Modificación de Estado y Acciones Operativas desde Detalle de Lote */}
+      {showAccionesModal && (
+        <AccionesLoteModal
+          isOpen={showAccionesModal}
+          lote={lote}
+          currentUser={currentUser || { nombre: 'Operador', rol: 'Usuario' }}
+          initialTab={accionesInitialTab}
+          onClose={() => setShowAccionesModal(false)}
+          onConfirmAccion={handleConfirmAccionLoteDetail}
+        />
+      )}
 
       {/* Contenedor off-screen de la Ficha Técnica para exportación directa a JPG */}
       <div

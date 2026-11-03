@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { PlantaConfig, Lote, MovimientoSilo, SiloId, Chofer } from '../types';
 import { PlantaConfigView } from './PlantaConfigView';
 import { ParkingAutorizadosDBView } from './ParkingAutorizadosDBView';
-import { Database, Clock, Building2, UserCheck } from 'lucide-react';
+import { SilosDBView } from './SilosDBView';
+import { Database, Clock, Building2, UserCheck, Warehouse } from 'lucide-react';
 
 interface DataBasesViewProps {
   plantaConfig: PlantaConfig;
@@ -13,7 +14,7 @@ interface DataBasesViewProps {
   clientes?: string[];
   especies?: string[];
   movimientosSilo?: MovimientoSilo[];
-  initialSubTab?: 'planta' | 'parking-autorizados';
+  initialSubTab?: 'planta' | 'silos' | 'parking-autorizados';
   onSavePlantaConfig: (newConfig: PlantaConfig) => void;
   onSaveChofer?: (chofer: Chofer) => void;
   onImportChoferes?: (choferes: Chofer[]) => void;
@@ -29,7 +30,7 @@ export const DataBasesView: React.FC<DataBasesViewProps> = ({
   onSavePlantaConfig,
   showNotification
 }) => {
-  const [activeTab, setActiveTab] = useState<'planta' | 'parking-autorizados'>(initialSubTab);
+  const [activeTab, setActiveTab] = useState<'planta' | 'silos' | 'parking-autorizados'>(initialSubTab);
 
   return (
     <div className="space-y-6">
@@ -46,6 +47,20 @@ export const DataBasesView: React.FC<DataBasesViewProps> = ({
         >
           <Database className={`w-4 h-4 ${activeTab === 'planta' ? 'text-amber-300' : 'text-slate-500'}`} />
           <span>Catálogos de Planta & Granos</span>
+        </button>
+
+        <button
+          type="button"
+          id="tab-silos-databases"
+          onClick={() => setActiveTab('silos')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
+            activeTab === 'silos'
+              ? 'bg-[#00603C] text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Warehouse className={`w-4 h-4 ${activeTab === 'silos' ? 'text-amber-300' : 'text-[#00603C]'}`} />
+          <span>Silos</span>
         </button>
 
         <button
@@ -70,6 +85,13 @@ export const DataBasesView: React.FC<DataBasesViewProps> = ({
           siloStocks={siloStocks}
           movimientosSilo={movimientosSilo}
           onSavePlantaConfig={onSavePlantaConfig}
+        />
+      ) : activeTab === 'silos' ? (
+        <SilosDBView
+          plantaConfig={plantaConfig}
+          siloStocks={siloStocks}
+          onSavePlantaConfig={onSavePlantaConfig}
+          showNotification={showNotification}
         />
       ) : (
         <ParkingAutorizadosDBView

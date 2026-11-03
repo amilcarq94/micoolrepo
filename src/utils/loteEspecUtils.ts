@@ -69,21 +69,21 @@ export function normalizarTipo(tipo?: string): TipoLoteEspecificacion {
 
 /**
  * Normaliza el tratamiento:
- * "sin curar" | "curado"
- * (Soporta compatibilidad con "crudo" y "sin tratar")
+ * "sin tratar" | "tratado"
+ * (Soporta compatibilidad con "crudo", "sin curar" y "curado")
  */
 export function normalizarTratamiento(trat?: any): TratamientoEspecificacion {
-  if (!trat) return 'sin curar';
+  if (!trat) return 'sin tratar';
   let s = '';
   if (Array.isArray(trat)) {
     s = trat.map(t => String(t).toLowerCase()).join(' ');
   } else {
     s = String(trat).toLowerCase();
   }
-  if (s.includes('curado') || (s.includes('tratado') && !s.includes('sin tratar') && !s.includes('sin curar'))) {
-    return 'curado';
+  if ((s.includes('tratado') || s.includes('curado')) && !s.includes('sin tratar') && !s.includes('sin curar')) {
+    return 'tratado';
   }
-  return 'sin curar';
+  return 'sin tratar';
 }
 
 /**
@@ -215,7 +215,7 @@ export function calcularResumenLoteDesdeBolsas(bolsas: BolsaRegistro[], loteBase
     const estadoDef = loteBase ? normalizarEstado(loteBase.estadoEspec || loteBase.estado, loteBase.estadoRegistro) : 'sin clasificar';
     const catDef = loteBase?.categoria ? normalizarCategoria(loteBase.categoria) : 'primu';
     const tipoDef = loteBase?.tipo ? normalizarTipo(loteBase.tipo) : 'final';
-    const tratDef = loteBase?.tratamiento ? normalizarTratamiento(loteBase.tratamiento) : 'sin curar';
+    const tratDef = loteBase?.tratamiento ? normalizarTratamiento(loteBase.tratamiento) : 'sin tratar';
     const totalBolsas = Number(loteBase?.cantidadBolsas) || Number(loteBase?.stockBolsas) || 0;
     const kgEnvase = getKilajeEnvase(loteBase?.envase || loteBase?.kgPorBolsa);
     const kg = Number(loteBase?.kg) || Number(loteBase?.stockKg) || (totalBolsas * kgEnvase);
@@ -264,7 +264,7 @@ export function calcularResumenLoteDesdeBolsas(bolsas: BolsaRegistro[], loteBase
     tiposCount[tip] = (tiposCount[tip] || 0) + 1;
 
     const trat = normalizarTratamiento(b.tratamiento);
-    if (trat === 'curado') {
+    if (trat === 'tratado' || trat === 'curado') {
       curadasCount += 1;
       kgCuradas += Number(b.kg) || 0;
     }
@@ -298,11 +298,11 @@ export function calcularResumenLoteDesdeBolsas(bolsas: BolsaRegistro[], loteBase
   }
 
   // Resumen Tratamiento
-  let tratamiento = 'sin curar';
+  let tratamiento = 'sin tratar';
   if (curadasCount === totalBolsas && totalBolsas > 0) {
-    tratamiento = 'curado';
+    tratamiento = 'tratado';
   } else if (curadasCount > 0) {
-    tratamiento = `Curado: ${curadasCount} de ${totalBolsas} bolsas (${kgCuradas} kg)`;
+    tratamiento = `Tratado: ${curadasCount} de ${totalBolsas} bolsas (${kgCuradas} kg)`;
   }
 
   const esHomogeneo =
@@ -326,9 +326,11 @@ export function calcularResumenLoteDesdeBolsas(bolsas: BolsaRegistro[], loteBase
       categorias: categoriasCount,
       tipos: tiposCount,
       tratamientos: {
+        tratado: curadasCount,
+        'sin tratar': totalBolsas - curadasCount,
         curado: curadasCount,
         'sin curar': totalBolsas - curadasCount,
-      }
+      } as any
     }
   };
 }

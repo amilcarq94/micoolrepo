@@ -286,6 +286,7 @@ export const BulkEditLotesModal: React.FC<BulkEditLotesModalProps> = ({
                     <option value="clasificado">Clasificado</option>
                     <option value="bloqueado">Bloqueado</option>
                     <option value="descartado">Descartado</option>
+                    <option value="agotado">Agotado</option>
                   </select>
                 </div>
               )}

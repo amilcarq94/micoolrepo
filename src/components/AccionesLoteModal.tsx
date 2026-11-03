@@ -96,24 +96,30 @@ export const AccionesLoteModal: React.FC<AccionesLoteModalProps> = ({
         tipoMov = 'cambio_estado';
         valorAnt = estadoActual;
         valorNue = nuevoEstado;
+        const updatedBolsas = loteAct.bolsas ? loteAct.bolsas.map(b => !b.despachada ? { ...b, estado: nuevoEstado as any } : b) : undefined;
         loteAct = {
           ...loteAct,
           estadoEspec: nuevoEstado,
           estado: (nuevoEstado === 'bloqueado' ? 'Reservado' : (nuevoEstado === 'agotado' ? 'Agotado' : 'Disponible')) as any,
-          estadoRegistro: nuevoEstado === 'precarga' ? 'PRE-CARGA' : 'REALIZADO'
+          estadoRegistro: nuevoEstado === 'precarga' ? 'PRE-CARGA' : 'REALIZADO',
+          ...(updatedBolsas ? { bolsas: updatedBolsas } : {})
         };
       } else if (activeTab === 'tratamiento') {
-        if (nuevoTratamiento === tratActual) {
+        const normNuevo = (nuevoTratamiento === 'tratado' || nuevoTratamiento === 'curado') ? 'tratado' : 'sin tratar';
+        const normActual = (tratActual === 'tratado' || tratActual === 'curado') ? 'tratado' : 'sin tratar';
+        if (normNuevo === normActual) {
           setErrorMsg('Seleccione un tratamiento diferente al actual.');
           setIsSubmitting(false);
           return;
         }
         tipoMov = 'curado';
-        valorAnt = tratActual;
-        valorNue = nuevoTratamiento;
+        valorAnt = normActual === 'tratado' ? 'Tratado' : 'Sin Tratar';
+        valorNue = normNuevo === 'tratado' ? 'Tratado' : 'Sin Tratar';
+        const updatedBolsas = loteAct.bolsas ? loteAct.bolsas.map(b => !b.despachada ? { ...b, tratamiento: normNuevo } : b) : undefined;
         loteAct = {
           ...loteAct,
-          tratamiento: [nuevoTratamiento === 'curado' ? 'Tratado' : 'Sin Tratar']
+          tratamiento: [normNuevo === 'tratado' ? 'Tratado' : 'Sin Tratar'],
+          ...(updatedBolsas ? { bolsas: updatedBolsas } : {})
         };
       } else if (activeTab === 'envase') {
         if (nuevoEnvase === envaseActual) {
@@ -316,8 +322,8 @@ export const AccionesLoteModal: React.FC<AccionesLoteModalProps> = ({
               <label className="block text-xs font-bold text-gray-700 uppercase">
                 Seleccionar Nuevo Estado de Flujo:
               </label>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                {(['sin clasificar', 'clasificado', 'bloqueado', 'descartado'] as EstadoRegistroLoteEspec[]).map(est => (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                {(['sin clasificar', 'clasificado', 'bloqueado', 'descartado', 'agotado'] as EstadoRegistroLoteEspec[]).map(est => (
                   <button
                     key={est}
                     type="button"
@@ -341,22 +347,22 @@ export const AccionesLoteModal: React.FC<AccionesLoteModalProps> = ({
           {activeTab === 'tratamiento' && (
             <div className="space-y-3">
               <label className="block text-xs font-bold text-gray-700 uppercase">
-                Tratamiento Químico (El curado no modifica los kg):
+                Tratamiento del Lote:
               </label>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                {(['crudo', 'curado'] as TratamientoEspecificacion[]).map(tr => (
+                {(['sin tratar', 'tratado'] as TratamientoEspecificacion[]).map(tr => (
                   <button
                     key={tr}
                     type="button"
                     onClick={() => setNuevoTratamiento(tr)}
                     className={`p-3 rounded-xl border text-left font-bold capitalize transition cursor-pointer ${
-                      nuevoTratamiento === tr
+                      nuevoTratamiento === tr || (tr === 'tratado' && nuevoTratamiento === 'curado') || (tr === 'sin tratar' && (nuevoTratamiento === 'crudo' || nuevoTratamiento === 'sin curar'))
                         ? 'bg-purple-50 border-purple-600 text-purple-900 ring-2 ring-purple-300'
                         : 'bg-slate-50 border-slate-200 text-gray-700 hover:bg-slate-100'
                     }`}
                   >
-                    {tr === 'crudo' ? 'Crudo (Sin Tratar)' : 'Curado (Tratado 100%)'}
-                    {tr === tratActual && (
+                    {tr === 'sin tratar' ? 'Sin Tratar' : 'Tratado'}
+                    {(tr === tratActual || (tr === 'tratado' && tratActual === 'curado') || (tr === 'sin tratar' && (tratActual === 'crudo' || tratActual === 'sin curar'))) && (
                       <span className="block text-[10px] text-gray-400 font-normal">Tratamiento actual</span>
                     )}
                   </button>
@@ -455,7 +461,7 @@ export const AccionesLoteModal: React.FC<AccionesLoteModalProps> = ({
                     <span>Desbloquear Lote (Reversible)</span>
                   </span>
                   <p className="text-gray-600">
-                    Al desbloquear el lote volverá a su estado anterior: <strong>{lote.estadoAnterior || 'clasificado'}</strong> y quedará nuevamente habilitado para despachos y curado.
+                    Al desbloquear el lote volverá a su estado anterior: <strong>{lote.estadoAnterior || 'clasificado'}</strong> y quedará nuevamente habilitado para despachos y tratamientos.
                   </p>
                 </div>
               ) : (
@@ -465,7 +471,7 @@ export const AccionesLoteModal: React.FC<AccionesLoteModalProps> = ({
                     <span>Bloquear Lote</span>
                   </span>
                   <p className="text-gray-600">
-                    El lote pasará a <strong>bloqueado</strong> (guardando su estado actual: <em>{estadoActual}</em>). Quedarán impedidos despachos, curados y desdoblamientos hasta que sea desbloqueado.
+                    El lote pasará a <strong>bloqueado</strong> (guardando su estado actual: <em>{estadoActual}</em>). Quedarán impedidos despachos, tratamientos y desdoblamientos hasta que sea desbloqueado.
                   </p>
                 </div>
               )}

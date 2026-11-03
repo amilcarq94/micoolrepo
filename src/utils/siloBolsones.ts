@@ -55,7 +55,7 @@ export function getBolsonesFiltradosPorSilo(
           if (!bolsonMapExtra.has(normNro)) {
             bolsonMapExtra.set(normNro, {
               id: m.bolsonOrigenId || `MOV-BOLSON-${m.bolsonOrigenNro}`,
-              campania: '2025/2026',
+              campania: '2026/2027',
               numeroBolson: m.bolsonOrigenNro,
               cliente: m.cliente || clienteActual || 'San Diego Semillas',
               cultivo: m.especie || 'Soja',

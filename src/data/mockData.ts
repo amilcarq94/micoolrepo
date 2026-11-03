@@ -149,7 +149,7 @@ function parseInitialLots(): Lote[] {
       fechaIngreso: fechaIng,
       fechaTratamiento: fechaTrat,
       fechaVencimientoTratamiento: fechaVencTrat,
-      campaniaId: "2025-2026",
+      campaniaId: "2026-2027",
       estado: (lots.length % 5 === 0 ? "sin clasificar" : "clasificado") as any,
       estadoEspec: (lots.length % 5 === 0 ? "sin clasificar" : "clasificado") as any,
       estadoRegistro: (lots.length % 5 === 0 ? "sin clasificar" : "clasificado") as any,
@@ -185,7 +185,7 @@ function parseInitialLots(): Lote[] {
     kgPorBolsa: 40,
     stockKg: 4000,
     fechaIngreso: "2026-07-13",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     estado: "clasificado",
     historial: [
       {
@@ -216,7 +216,7 @@ function parseInitialLots(): Lote[] {
     fechaIngreso: "2026-07-13",
     fechaTratamiento: "2026-06-25",
     fechaVencimientoTratamiento: "2026-08-10",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     estado: "clasificado",
     historial: [
       {
@@ -240,7 +240,7 @@ export const SALIDAS_INICIALES: SalidaRegistrada[] = [
   {
     id: "REM-2026-0001",
     fecha: "2026-07-09",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     choferNombre: "Juan Carlos Gómez",
     choferDni: "28.431.902",
     patenteCamion: "AE 312 OP",
@@ -257,7 +257,7 @@ export const SALIDAS_INICIALES: SalidaRegistrada[] = [
   {
     id: "REM-2026-0002",
     fecha: "2026-07-11",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     choferNombre: "Rogelio Benítez",
     choferDni: "24.912.003",
     patenteCamion: "AD 890 JK",
@@ -278,7 +278,7 @@ export const ORDENES_CARGA_INICIALES: OrdenCarga[] = [
     id: "OC-2026-1001",
     fecha: "2026-07-10",
     fechaCarga: "2026-07-10",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     cliente: "Eco Rural",
     loteId: "Eco_Rural_20FIN",
     cantidadBolsas: 2,
@@ -296,7 +296,7 @@ export const ORDENES_CARGA_INICIALES: OrdenCarga[] = [
     id: "OC-2026-1002",
     fecha: "2026-07-12",
     fechaCarga: "2026-07-12",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     cliente: "San Diego Semilla",
     loteId: "San_Diego_58FIN",
     cantidadBolsas: 5,
@@ -312,7 +312,7 @@ export const ORDENES_CARGA_INICIALES: OrdenCarga[] = [
     id: "OC-2026-1003",
     fecha: "2026-07-13",
     fechaCarga: "2026-07-13",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     cliente: "Elementa Foods",
     loteId: "Elementa_Foods_01FIN",
     cantidadBolsas: 1,
@@ -343,7 +343,7 @@ export const ORDENES_PROCESO_INICIALES: OrdenProceso[] = [
     estado: "EN CURSO",
     observaciones: "Procesamiento de semilla con curado estándar Rizoderma.",
     fechaCreacion: "2026-07-15",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     operarios: 3,
     horasTrabajadas: 6.0,
     horasHombre: 18.0
@@ -366,7 +366,7 @@ export const ORDENES_PROCESO_INICIALES: OrdenProceso[] = [
     estado: "TERMINADO",
     observaciones: "Movimiento de bolsa de intermedio a final en depósito.",
     fechaCreacion: "2026-07-18",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     operarios: 2,
     horasTrabajadas: 5.0,
     horasHombre: 10.0
@@ -389,7 +389,7 @@ export const ORDENES_PROCESO_INICIALES: OrdenProceso[] = [
     estado: "SIN INICIAR",
     observaciones: "Envasado y tratamiento químico listo para ejecución.",
     fechaCreacion: "2026-07-20",
-    campaniaId: "2025-2026"
+    campaniaId: "2026-2027"
   },
   {
     id: "OP-2026-0095",
@@ -407,7 +407,7 @@ export const ORDENES_PROCESO_INICIALES: OrdenProceso[] = [
     estado: "TERMINADO",
     observaciones: "Clasificación y empaque en Big Bags finalizado con alta eficiencia.",
     fechaCreacion: "2026-07-10",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     operarios: 3,
     horasTrabajadas: 6.5,
     horasHombre: 19.5
@@ -428,7 +428,7 @@ export const ORDENES_PROCESO_INICIALES: OrdenProceso[] = [
     estado: "TERMINADO",
     observaciones: "Proceso completo de embolsado y curado.",
     fechaCreacion: "2026-07-12",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     operarios: 2,
     horasTrabajadas: 8.0,
     horasHombre: 16.0
@@ -449,7 +449,7 @@ export const ORDENES_PROCESO_INICIALES: OrdenProceso[] = [
     estado: "TERMINADO",
     observaciones: "Limpieza y calibrado de grano de arveja.",
     fechaCreacion: "2026-07-14",
-    campaniaId: "2025-2026",
+    campaniaId: "2026-2027",
     operarios: 3,
     horasTrabajadas: 4.5,
     horasHombre: 13.5
@@ -600,7 +600,7 @@ export const CHOFERES_INICIALES: Chofer[] = [
 export const BOLSONES_INICIALES: BolsonCampo[] = [
   {
     id: 'BOLSON-001',
-    campania: '2025/2026',
+    campania: '2026/2027',
     cliente: 'San Diego Semilla',
     numeroBolson: 'S29,2',
     zona: 'Norte',
@@ -619,7 +619,7 @@ export const BOLSONES_INICIALES: BolsonCampo[] = [
   },
   {
     id: 'BOLSON-002',
-    campania: '2025/2026',
+    campania: '2026/2027',
     cliente: 'San Diego Semilla',
     numeroBolson: 'S48,4',
     zona: 'Sur',
@@ -638,7 +638,7 @@ export const BOLSONES_INICIALES: BolsonCampo[] = [
   },
   {
     id: 'BOLSON-003',
-    campania: '2025/2026',
+    campania: '2026/2027',
     cliente: 'San Diego Semilla',
     numeroBolson: 'Bolsón 12A',
     zona: 'Norte',
@@ -657,7 +657,7 @@ export const BOLSONES_INICIALES: BolsonCampo[] = [
   },
   {
     id: 'BOLSON-004',
-    campania: '2025/2026',
+    campania: '2026/2027',
     cliente: 'Stine',
     numeroBolson: 'Bolsón 19A',
     zona: 'Sur',
@@ -676,7 +676,7 @@ export const BOLSONES_INICIALES: BolsonCampo[] = [
   },
   {
     id: 'BOLSON-005',
-    campania: '2025/2026',
+    campania: '2026/2027',
     cliente: 'Eco Rural',
     numeroBolson: 'Bolsón 05F',
     zona: 'Este',
@@ -695,7 +695,7 @@ export const BOLSONES_INICIALES: BolsonCampo[] = [
   },
   {
     id: 'BOLSON-006',
-    campania: '2025/2026',
+    campania: '2026/2027',
     cliente: 'Elementa Foods',
     numeroBolson: 'Bolsón 08C',
     zona: 'Oeste',

@@ -64,7 +64,7 @@ export const VisorBolsasLote: React.FC<VisorBolsasLoteProps> = ({
   const [modalTab, setModalTab] = useState<'envase' | 'tipo' | 'curado' | 'categoria'>('envase');
   const [nuevoEnvase, setNuevoEnvase] = useState<EnvaseEspecificacion>('x 40 kg');
   const [nuevoTipo, setNuevoTipo] = useState<TipoLoteEspecificacion>('final');
-  const [nuevoTratamiento, setNuevoTratamiento] = useState<'curado' | 'sin curar'>('curado');
+  const [nuevoTratamiento, setNuevoTratamiento] = useState<'tratado' | 'sin tratar'>('tratado');
   const [productoCurado, setProductoCurado] = useState<string>('Maxim XL');
   const [nuevaCategoria, setNuevaCategoria] = useState<CategoriaEspecificacion>('primu');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -177,7 +177,7 @@ export const VisorBolsasLote: React.FC<VisorBolsasLoteProps> = ({
         const baseAttrs = bolsasSeleccionadas[0] || {
           tipo: 'final',
           categoria: 'primu',
-          tratamiento: 'sin curar',
+          tratamiento: 'sin tratar',
           estado: 'clasificado',
           caratulaId: lote.caratulaId || `CARAT-${lote.id}`
         };
@@ -202,7 +202,7 @@ export const VisorBolsasLote: React.FC<VisorBolsasLoteProps> = ({
             envase: nuevoEnvase,
             tipo: baseAttrs.tipo || 'final',
             categoria: baseAttrs.categoria || 'primu',
-            tratamiento: baseAttrs.tratamiento || 'sin curar',
+            tratamiento: baseAttrs.tratamiento || 'sin tratar',
             productoCurado: (baseAttrs as any).productoCurado,
             estado: 'clasificado',
             despachada: false,
@@ -223,18 +223,18 @@ export const VisorBolsasLote: React.FC<VisorBolsasLoteProps> = ({
         });
         descripcion = `Movimiento de tipo: ${selectedIds.size} bolsas pasadas de intermedio a final.`;
       } else if (modalTab === 'curado') {
-        // CURADO SOBRE BOLSAS
+        // TRATAMIENTO SOBRE BOLSAS
         nuevasBolsas = nuevasBolsas.map((b) => {
           if (selectedIds.has(b.id)) {
             return {
               ...b,
               tratamiento: nuevoTratamiento,
-              productoCurado: nuevoTratamiento === 'curado' ? productoCurado.trim() : undefined,
+              productoCurado: nuevoTratamiento === 'tratado' ? productoCurado.trim() : undefined,
             };
           }
           return b;
         });
-        descripcion = `Tratamiento sobre bolsas: ${selectedIds.size} bolsas marcadas como ${nuevoTratamiento.toUpperCase()}${nuevoTratamiento === 'curado' ? ` con producto ${productoCurado.trim()}` : ''}.`;
+        descripcion = `Tratamiento sobre bolsas: ${selectedIds.size} bolsas marcadas como ${nuevoTratamiento.toUpperCase()}${nuevoTratamiento === 'tratado' ? ` con producto ${productoCurado.trim()}` : ''}.`;
       } else if (modalTab === 'categoria') {
         // CATEGORÍA SOBRE BOLSAS
         nuevasBolsas = nuevasBolsas.map((b) => {
@@ -416,10 +416,10 @@ export const VisorBolsasLote: React.FC<VisorBolsasLoteProps> = ({
               disabled={selectedIds.size === 0}
               onClick={() => handleAbrirMovimientoMasivo('curado')}
               className="px-3 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:cursor-not-allowed border border-purple-500"
-              title="Marcar bolsas seleccionadas como curadas"
+              title="Tratar bolsas seleccionadas (Aplicar Tratamiento)"
             >
               <FlaskConical className="w-3.5 h-3.5 text-purple-200" />
-              <span>Curar</span>
+              <span>Tratar</span>
             </button>
           )}
 
@@ -460,8 +460,8 @@ export const VisorBolsasLote: React.FC<VisorBolsasLoteProps> = ({
             className="px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-700"
           >
             <option value="todos">Todos los tratamientos</option>
-            <option value="curado">Curadas</option>
-            <option value="sin curar">Sin curar</option>
+            <option value="tratado">Tratadas</option>
+            <option value="sin tratar">Sin tratar</option>
           </select>
 
           {/* Filtro Tipo */}
@@ -569,13 +569,13 @@ export const VisorBolsasLote: React.FC<VisorBolsasLoteProps> = ({
                     <td className="py-2.5 px-3 text-center font-sans whitespace-nowrap">
                       <span
                         className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
-                          tratNorm === 'curado'
+                          tratNorm === 'tratado' || tratNorm === 'curado'
                             ? 'bg-purple-100 text-purple-900 border border-purple-300'
                             : 'bg-gray-100 text-gray-700 border border-gray-300'
                         }`}
                         title={b.productoCurado ? `Producto: ${b.productoCurado}` : tratNorm}
                       >
-                        {tratNorm === 'curado' ? 'Curado' : 'Sin Curar'}
+                        {tratNorm === 'tratado' || tratNorm === 'curado' ? 'Tratado' : 'Sin Tratar'}
                       </span>
                     </td>
 
@@ -685,7 +685,7 @@ export const VisorBolsasLote: React.FC<VisorBolsasLoteProps> = ({
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Curado
+                Tratamiento
               </button>
               <button
                 type="button"
@@ -806,30 +806,30 @@ export const VisorBolsasLote: React.FC<VisorBolsasLoteProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => setNuevoTratamiento('curado')}
+                        onClick={() => setNuevoTratamiento('tratado')}
                         className={`p-2.5 rounded-xl font-bold transition border cursor-pointer ${
-                          nuevoTratamiento === 'curado'
+                          nuevoTratamiento === 'tratado'
                             ? 'bg-purple-700 text-white border-purple-800'
                             : 'bg-gray-50 text-gray-800 border-gray-200'
                         }`}
                       >
-                        Curado
+                        Tratado
                       </button>
                       <button
                         type="button"
-                        onClick={() => setNuevoTratamiento('sin curar')}
+                        onClick={() => setNuevoTratamiento('sin tratar')}
                         className={`p-2.5 rounded-xl font-bold transition border cursor-pointer ${
-                          nuevoTratamiento === 'sin curar'
+                          nuevoTratamiento === 'sin tratar'
                             ? 'bg-gray-800 text-white border-gray-900'
                             : 'bg-gray-50 text-gray-800 border-gray-200'
                         }`}
                       >
-                        Sin Curar
+                        Sin Tratar
                       </button>
                     </div>
                   </div>
 
-                  {nuevoTratamiento === 'curado' && (
+                  {nuevoTratamiento === 'tratado' && (
                     <div>
                       <label className="block font-bold text-gray-700 uppercase mb-1">
                         Producto Curasemilla *

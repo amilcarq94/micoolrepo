@@ -80,7 +80,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
   const tratamientosList = useMemo(() => {
     return plantaConfig?.tratamientos && plantaConfig.tratamientos.length > 0
       ? plantaConfig.tratamientos
-      : ['Sin Curar', 'Curado'];
+      : ['Sin Tratar', 'Tratado'];
   }, [plantaConfig]);
 
   // Estados del Formulario
@@ -92,7 +92,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
   const [variedad, setVariedad] = useState('');
   const [tipo, setTipo] = useState<TipoLoteType>('Final');
   const [categoria, setCategoria] = useState<CategoriaType>('Original');
-  const [tratamientos, setTratamientos] = useState<TratamientoType[]>(['Sin Curar']);
+  const [tratamientos, setTratamientos] = useState<TratamientoType[]>(['Sin Tratar']);
   const [producto, setProducto] = useState('Ninguno');
   const [stockBolsas, setStockBolsas] = useState<number>(20);
   const [kgPorBolsa, setKgPorBolsa] = useState<number>(activeLimits.kgPorBolsaDefault || 800);
@@ -379,7 +379,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
   // Manejo de tratamientos seleccionables múltiples
   const toggleTratamiento = (trat: TratamientoType) => {
     if (trat === 'Sin Curar' || trat === 'Sin Tratar') {
-      setTratamientos(['Sin Curar']);
+      setTratamientos(['Sin Tratar']);
       setProducto('Ninguno');
     } else {
       let actualizado = [...tratamientos].filter(t => t !== 'Sin Curar' && t !== 'Sin Tratar');
@@ -390,7 +390,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
       }
       
       if (actualizado.length === 0) {
-        actualizado.push('Sin Curar');
+        actualizado.push('Sin Tratar');
         setProducto('Ninguno');
       }
       setTratamientos(actualizado);
@@ -946,6 +946,7 @@ export const LoteForm: React.FC<LoteFormProps> = ({
               <option value="clasificado">Clasificado</option>
               <option value="bloqueado">Bloqueado</option>
               <option value="descartado">Descartado</option>
+              <option value="agotado">Agotado</option>
             </select>
           </div>
 

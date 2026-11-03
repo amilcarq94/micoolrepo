@@ -532,6 +532,7 @@ export const ReportesEspecDashboard: React.FC<ReportesEspecDashboardProps> = ({
                   <option value="clasificado">Clasificado</option>
                   <option value="bloqueado">Bloqueado</option>
                   <option value="descartado">Descartado</option>
+                  <option value="agotado">Agotado</option>
                 </select>
               </div>
 
@@ -544,8 +545,8 @@ export const ReportesEspecDashboard: React.FC<ReportesEspecDashboardProps> = ({
                   className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-gray-800"
                 >
                   <option value="todos">Todos</option>
-                  <option value="crudo">Sin Curar</option>
-                  <option value="curado">Curado</option>
+                  <option value="crudo">Sin Tratar</option>
+                  <option value="curado">Tratado</option>
                 </select>
               </div>
 

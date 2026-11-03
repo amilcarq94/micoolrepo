@@ -27,14 +27,23 @@ import {
   Scissors,
   RefreshCw,
   Check,
-  ShieldAlert
+  ShieldAlert,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 export type TipoMovimientoId =
   | 'intermedio_a_final'
   | 'intermedio_a_final_tratado'
   | 'final_a_final_tratado'
-  | 'cambio_envase';
+  | 'cambio_envase'
+  | 'cambio_estado';
+
+export type OpcionEstadoMovimiento =
+  | 'sin clasificar'
+  | 'clasificado'
+  | 'consumo'
+  | 'descarte'
+  | 'bloqueado';
 
 export interface MovimientoLoteResult {
   loteOrigenActualizado: Lote;
@@ -109,7 +118,51 @@ export function suggestMovementLoteName(
     return `${name}-ENV`;
   }
 
+  if (movType === 'cambio_estado') {
+    return `${name}-EST`;
+  }
+
   return `${name}-1`;
+}
+
+export function getEstadoMapping(opcion: OpcionEstadoMovimiento) {
+  switch (opcion) {
+    case 'sin clasificar':
+      return {
+        estado: 'Sin Clasificar' as const,
+        estadoEspec: 'sin clasificar' as const,
+        estadoRegistro: 'PRE-CARGA' as const,
+        label: 'Sin Clasificar',
+      };
+    case 'clasificado':
+      return {
+        estado: 'Clasificado' as const,
+        estadoEspec: 'clasificado' as const,
+        estadoRegistro: 'REALIZADO' as const,
+        label: 'Clasificado',
+      };
+    case 'consumo':
+      return {
+        estado: 'A Consumo' as const,
+        estadoEspec: 'en proceso' as const,
+        estadoRegistro: 'REALIZADO' as const,
+        label: 'Consumo',
+      };
+    case 'descarte':
+      return {
+        estado: 'Descartado' as const,
+        estadoEspec: 'descartado' as const,
+        estadoRegistro: 'REALIZADO' as const,
+        label: 'Descarte',
+      };
+    case 'bloqueado':
+      return {
+        estado: 'Bloqueado' as const,
+        estadoEspec: 'bloqueado' as const,
+        estadoRegistro: 'REALIZADO' as const,
+        label: 'Bloqueado',
+      };
+  }
 }
 
 interface MovimientoLoteModalProps {
@@ -157,6 +210,9 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
   // Selección de Envase Deseado
   const [envaseDeseadoId, setEnvaseDeseadoId] = useState<string>('origen');
   const [customKgPorBolsa, setCustomKgPorBolsa] = useState<number>(envaseOrigen.kgPorBolsa);
+
+  // Nuevo Estado para movimiento de estado
+  const [nuevoEstadoMov, setNuevoEstadoMov] = useState<OpcionEstadoMovimiento>('clasificado');
 
   // Nombre para el Lote Desdoblado (utilizado únicamente cuando no se mueve la totalidad)
   const [nombreNuevoLote, setNombreNuevoLote] = useState<string>(() => {
@@ -374,13 +430,16 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
     try {
       setIsSubmitting(true);
 
+      const estadoInfo = getEstadoMapping(nuevoEstadoMov);
       const tipoMovimientoLabel =
         tipoMovimiento === 'intermedio_a_final'
           ? 'Intermedio a Final'
           : tipoMovimiento === 'intermedio_a_final_tratado'
-          ? 'Intermedio a Final Curado'
+          ? 'Intermedio a Final Tratado'
           : tipoMovimiento === 'final_a_final_tratado'
-          ? 'Final a Final Curado'
+          ? 'Final a Final Tratado'
+          : tipoMovimiento === 'cambio_estado'
+          ? `Cambio de Estado (${estadoInfo.label})`
           : 'Movimiento de Envase';
 
       const horaActual = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
@@ -393,7 +452,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
       const tratamientoFinal = requiereTratamiento
         ? ['Tratado']
         : tipoMovimiento === 'intermedio_a_final'
-        ? ['Sin Curar']
+        ? ['Sin Tratar']
         : lote.tratamiento;
 
       const nuevoTipo =
@@ -408,6 +467,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
       if (esTotalidad) {
         const detalleMovCualitativo = [
           `Movimiento cualitativo de la totalidad del lote: ${tipoMovimientoLabel}`,
+          tipoMovimiento === 'cambio_estado' ? `Nuevo Estado: ${estadoInfo.label}` : null,
           cambiaEnvase ? `Re-embolsado: de ${envaseOrigen.label} a ${nuevoEnvaseLabel} (${bolsasResultantesMovidas} bolsas)` : null,
           requiereTratamiento ? `Curado con ${productoFinal}` : null,
           `Kilos totales conservados: ${formatKg(kgTotalesAMover)} kg`
@@ -447,6 +507,9 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
           stockKg: kgTotalesAMover,
           tipoEnvase: nuevoEnvaseLabel,
           envase: nuevoEnvaseLabel,
+          estado: tipoMovimiento === 'cambio_estado' ? estadoInfo.estado : lote.estado,
+          estadoEspec: tipoMovimiento === 'cambio_estado' ? (estadoInfo.estadoEspec as any) : (lote as any).estadoEspec,
+          estadoRegistro: tipoMovimiento === 'cambio_estado' ? estadoInfo.estadoRegistro : lote.estadoRegistro,
           esMovimiento: true,
           tipoMovimiento: tipoMovimientoLabel,
           fechaMovimiento: fechaMovimiento,
@@ -543,7 +606,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
         especie: lote.especie,
         variedad: lote.variedad,
         categoria: lote.categoria || 'PRIMU',
-        campaniaId: lote.campaniaId,
+        campaniaId: lote.campaniaId || '2026-2027',
         silosOrigen: lote.silosOrigen,
         siloOrigen: lote.siloOrigen,
         bolsonOrigenId: lote.bolsonOrigenId,
@@ -568,8 +631,9 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
         fechaMovimiento: fechaMovimiento,
         fechaRealizacionMovimiento: fechaMovimiento,
         fechaHoraProduccion: `${fechaMovimiento}T${horaActual}`,
-        estado: 'Disponible',
-        estadoRegistro: 'REALIZADO',
+        estado: tipoMovimiento === 'cambio_estado' ? estadoInfo.estado : 'Disponible',
+        estadoEspec: tipoMovimiento === 'cambio_estado' ? (estadoInfo.estadoEspec as any) : undefined,
+        estadoRegistro: tipoMovimiento === 'cambio_estado' ? estadoInfo.estadoRegistro : 'REALIZADO',
         estadoMovimiento: 'REALIZADO',
         esMovimiento: true,
         tipoMovimiento: `Desdoble: ${tipoMovimientoLabel}`,
@@ -675,7 +739,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
             <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700 mb-2">
               1. Seleccione el Tipo de Movimiento Cualitativo
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
               {/* Opción 1: Intermedio a Final */}
               <button
                 type="button"
@@ -701,7 +765,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                       Tipo: Final
                     </span>
                     <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded">
-                      Sin Curar
+                      Sin Tratar
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-snug">
@@ -710,7 +774,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                 </div>
               </button>
 
-              {/* Opción 2: Intermedio a Final Curado */}
+              {/* Opción 2: Intermedio a Final Tratado */}
               <button
                 type="button"
                 id="btn-mov-intermedio-a-final-tratado"
@@ -724,7 +788,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-bold text-slate-900 text-xs">
-                      2. Intermedio a Final Curado
+                      2. Intermedio a Final Tratado
                     </span>
                     {tipoMovimiento === 'intermedio_a_final_tratado' && (
                       <CheckCircle2 className="w-4 h-4 text-indigo-600" />
@@ -735,7 +799,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                       Tipo: Final
                     </span>
                     <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 text-[10px] font-bold rounded">
-                      Curado Químico
+                      Tratado Químico
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-snug">
@@ -744,7 +808,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                 </div>
               </button>
 
-              {/* Opción 3: Final a Final Curado */}
+              {/* Opción 3: Final a Final Tratado */}
               <button
                 type="button"
                 id="btn-mov-final-a-final-tratado"
@@ -758,7 +822,7 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-bold text-slate-900 text-xs">
-                      3. Final a Final Curado
+                      3. Final a Final Tratado
                     </span>
                     {tipoMovimiento === 'final_a_final_tratado' && (
                       <CheckCircle2 className="w-4 h-4 text-purple-600" />
@@ -769,11 +833,11 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                       Mantiene Final
                     </span>
                     <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 text-[10px] font-bold rounded">
-                      Curado Químico
+                      Tratado Químico
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-snug">
-                    Aplica curasemilla químico a bolsas que ya eran producto Final sin curar.
+                    Aplica curasemilla químico a bolsas que ya eran producto Final sin tratar.
                   </p>
                 </div>
               </button>
@@ -811,8 +875,94 @@ export const MovimientoLoteModal: React.FC<MovimientoLoteModalProps> = ({
                   </p>
                 </div>
               </button>
+
+              {/* Opción 5: Estado de Lote */}
+              <button
+                type="button"
+                id="btn-mov-cambio-estado"
+                onClick={() => handleSelectTipoMovimiento('cambio_estado')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  tipoMovimiento === 'cambio_estado'
+                    ? 'border-[#00603C] bg-emerald-50/80 ring-2 ring-[#00603C]/20 shadow-xs'
+                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-[#00603C]" />
+                      5. Estado de Lote
+                    </span>
+                    {tipoMovimiento === 'cambio_estado' && (
+                      <CheckCircle2 className="w-4 h-4 text-[#00603C]" />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-900 text-[10px] font-bold rounded">
+                      Estado Operativo
+                    </span>
+                    <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded">
+                      5 opciones
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-snug">
+                    Cambio de estado: Sin Clasificar, Clasificado, Consumo, Descarte o Bloqueado.
+                  </p>
+                </div>
+              </button>
             </div>
           </div>
+
+          {/* PANEL DE SELECCIÓN DE ESTADO (CONDICIONAL: CAMBIO DE ESTADO) */}
+          {tipoMovimiento === 'cambio_estado' && (
+            <div className="p-4 bg-emerald-50/70 border border-emerald-300 rounded-2xl space-y-3 animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-black uppercase tracking-wider text-emerald-950 flex items-center gap-1.5">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Seleccionar Estado de Lote</span>
+                  <span className="text-red-500">*</span>
+                </label>
+                <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
+                  Actual: {lote.estado || 'Disponible'}
+                </span>
+              </div>
+              <p className="text-xs text-emerald-900 leading-relaxed">
+                Selecciona la nueva condición operativa para las bolsas afectadas:
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {[
+                  { id: 'sin clasificar', label: 'Sin Clasificar', desc: 'Pre-carga / Ingreso', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                  { id: 'clasificado', label: 'Clasificado', desc: 'Aprobado / Disponible', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+                  { id: 'consumo', label: 'Consumo', desc: 'Derivado a Consumo', color: 'bg-amber-100 text-amber-800 border-amber-300' },
+                  { id: 'descarte', label: 'Descarte', desc: 'Rechazo / Scrap', color: 'bg-red-100 text-red-800 border-red-300' },
+                  { id: 'bloqueado', label: 'Bloqueado', desc: 'Retenido / Cuarentena', color: 'bg-purple-100 text-purple-800 border-purple-300' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setNuevoEstadoMov(item.id as OpcionEstadoMovimiento)}
+                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      nuevoEstadoMov === item.id
+                        ? 'border-[#00603C] bg-white ring-2 ring-[#00603C]/30 shadow-xs'
+                        : 'border-slate-200 bg-white/70 hover:bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-black text-slate-900">{item.label}</span>
+                        {nuevoEstadoMov === item.id && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#00603C] shrink-0" />
+                        )}
+                      </div>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border inline-block ${item.color}`}>
+                        {item.desc}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 2. CANTIDAD DE BOLSAS A MOVER (SELECTOR DINÁMICO) */}
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">

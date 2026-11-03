@@ -383,3 +383,22 @@ export async function exportMultipleElementsAsSeparatePdfs(
     return false;
   }
 }
+
+/**
+ * Exporta en un solo archivo PDF A4 la Carátula oficial (página 1) y todas las
+ * páginas subsiguientes con las etiquetas de ID Bolsas (7 por página).
+ */
+export async function exportCaratulaAndBolsasCombinedPdf(
+  caratulaElementOrId: string | HTMLElement,
+  bolsasSheetElementsOrIds: (string | HTMLElement)[],
+  fileName: string = 'Caratula_e_ID_Bolsas.pdf',
+  onProgress?: (current: number, total: number) => void
+): Promise<boolean> {
+  try {
+    const allItems: (string | HTMLElement)[] = [caratulaElementOrId, ...bolsasSheetElementsOrIds];
+    return await exportMultipleElementsAsPdf(allItems, fileName, { scale: 2.0, quality: 0.98 }, onProgress);
+  } catch (err) {
+    console.error('Error combining Caratula and Bolsas in PDF:', err);
+    return false;
+  }
+}

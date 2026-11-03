@@ -363,7 +363,7 @@ export const DashboardAnalitico: React.FC<DashboardAnaliticoProps> = ({ lotes })
       l.variedad,
       l.tipo,
       l.categoria,
-      l.tratamiento && l.tratamiento.length > 0 ? l.tratamiento.join(' + ') : 'Sin Curar',
+      l.tratamiento && l.tratamiento.length > 0 ? l.tratamiento.join(' + ') : 'Sin Tratar',
       l.producto || 'Ninguno',
       l.ala ? `ALA ${l.ala}` : 'Sin Asignar',
       l.sector ? `SECTOR ${l.sector}` : 'Sin Asignar',
@@ -521,7 +521,7 @@ export const DashboardAnalitico: React.FC<DashboardAnaliticoProps> = ({ lotes })
             >
               <option value="Todos">🧪 Todos los Tratamientos</option>
               {tratamientosOptions.map(tr => (
-                <option key={tr} value={tr}>{tr === 'Curado' ? 'Curado' : 'Sin Curar'}</option>
+                <option key={tr} value={tr}>{tr === 'Curado' || tr === 'Tratado' ? 'Tratado' : 'Sin Tratar'}</option>
               ))}
             </select>
           </div>
@@ -790,7 +790,7 @@ export const DashboardAnalitico: React.FC<DashboardAnaliticoProps> = ({ lotes })
                         <span className="text-[10px] font-semibold text-gray-700 bg-amber-50 border border-amber-200/50 px-2 py-0.5 rounded">
                           {l.tratamiento && l.tratamiento.length > 0
                             ? l.tratamiento.join(' + ')
-                            : 'Sin Curar'}
+                            : 'Sin Tratar'}
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-right font-bold text-gray-900">

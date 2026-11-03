@@ -113,7 +113,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
   const [bolsonAEliminar, setBolsonAEliminar] = useState<BolsonCampo | null>(null);
 
   // Form State
-  const [formCampania, setFormCampania] = useState('2025/2026');
+  const [formCampania, setFormCampania] = useState('2026/2027');
   const [formCliente, setFormCliente] = useState('San Diego Semilla');
   const [formNumeroBolson, setFormNumeroBolson] = useState('');
   const [formZona, setFormZona] = useState('');
@@ -344,7 +344,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
   // Reset y Abrir Modal (Creación)
   const handleOpenAddModal = () => {
     setBolsonAEditar(null);
-    setFormCampania('2025/2026');
+    setFormCampania('2026/2027');
     setFormCliente(clientes[0] || 'San Diego Semilla');
     setFormNumeroBolson('');
     setFormZona('Norte');
@@ -370,7 +370,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
   // Abrir Modal de Edición
   const handleOpenEditModal = (b: BolsonCampo) => {
     setBolsonAEditar(b);
-    setFormCampania(b.campania || '2025/2026');
+    setFormCampania(b.campania || '2026/2027');
     setFormCliente(b.cliente || '');
     setFormNumeroBolson(b.numeroBolson || '');
     setFormZona(b.zona || 'Norte');
@@ -421,7 +421,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
 
     const newBolson: BolsonCampo = {
       id,
-      campania: formCampania.trim() || '2025/2026',
+      campania: formCampania.trim() || '2026/2027',
       cliente: formCliente.trim(),
       numeroBolson: formNumeroBolson.trim(),
       zona: formZona.trim() || undefined,
@@ -490,7 +490,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
       'Ingresos de Kilos': b.entradasKg || 0,
       'Kilos Extraídos': b.salidasKg || 0,
       'Existencias kg (Silo Bolsa)': b.stockKg !== undefined ? b.stockKg : (b.entradasKg || 0) - (b.salidasKg || 0),
-      Campaña: b.campania || '2025/2026',
+      Campaña: b.campania || '2026/2027',
       Cliente: b.cliente,
       Cultivo: b.cultivo,
       Variedad: b.variedad || '',
@@ -517,7 +517,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
         'Ingresos de Kilos': 48500,
         'Kilos Extraídos': 14200,
         'Existencias kg (Silo Bolsa)': 34300,
-        Campaña: '2025/2026',
+        Campaña: '2026/2027',
         Cliente: 'San Diego Semillas',
         Variedad: 'DM 46i20',
         Categoría: 'Fundadora',
@@ -530,7 +530,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
         'Ingresos de Kilos': 52000,
         'Kilos Extraídos': 20000,
         'Existencias kg (Silo Bolsa)': 32000,
-        Campaña: '2025/2026',
+        Campaña: '2026/2027',
         Cliente: 'San Diego Semillas',
         Variedad: 'DM 40R16',
         Categoría: 'Fundadora',
@@ -625,7 +625,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
           }
 
           const variedad = String(row['Variedad'] || row['Variedad / Híbrido'] || '').trim();
-          const campania = String(row['Campaña'] || row['Campania'] || '2025/2026').trim();
+          const campania = String(row['Campaña'] || row['Campania'] || '2026/2027').trim();
           const cliente = String(row['Cliente'] || 'San Diego Semilla').trim();
           const campo = String(row['Campo'] || row['Establecimiento'] || (deposito.startsWith('Lote') ? deposito : '') || '').trim();
           const zona = String(row['Zona'] || '').trim();
@@ -1310,7 +1310,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
                           </td>
 
                           <td className="py-3 px-3 font-mono font-semibold text-slate-600">
-                            {b.campania || '2025/2026'}
+                            {b.campania || '2026/2027'}
                           </td>
 
                           <td className="py-3 px-3 font-bold text-slate-900">
@@ -1534,7 +1534,7 @@ export const BolsaEnCampoView: React.FC<BolsaEnCampoViewProps> = ({
                     type="text"
                     value={formCampania}
                     onChange={(e) => setFormCampania(e.target.value)}
-                    placeholder="ej: 2025/2026"
+                    placeholder="ej: 2026/2027"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
                   />
                 </div>

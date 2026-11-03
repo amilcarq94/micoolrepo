@@ -207,7 +207,7 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
   const [showDesdoblarModal, setShowDesdoblarModal] = useState<boolean>(false);
   const [showAccionesModal, setShowAccionesModal] = useState<boolean>(false);
   const [accionesInitialTab, setAccionesInitialTab] = useState<'estado' | 'tratamiento' | 'envase' | 'categoria' | 'tipo' | 'bloqueo'>('estado');
-  const [panelSubTab, setPanelSubTab] = useState<'movimientos' | 'genealogia' | 'bolsas'>('movimientos');
+  const [panelSubTab, setPanelSubTab] = useState<'movimientos' | 'genealogia' | 'bolsas'>('bolsas');
   const [selectedBolsaParaVer, setSelectedBolsaParaVer] = useState<any | null>(null);
 
   // Listado oficial de bolsas asociadas al lote (modelo de datos centrado en la bolsa)
@@ -241,11 +241,11 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
       categoria: nuevoResumen.categoria as any,
       tipo: nuevoResumen.tipo as any,
       tratamiento:
-        nuevoResumen.desglose.tratamientos.curado === nuevoResumen.totalBolsas && nuevoResumen.totalBolsas > 0
-          ? ['Curado']
-          : nuevoResumen.desglose.tratamientos.curado > 0
-          ? ['Curado', 'Sin Curar']
-          : ['Sin Curar'],
+        (nuevoResumen.desglose.tratamientos.tratado || nuevoResumen.desglose.tratamientos.curado) === nuevoResumen.totalBolsas && nuevoResumen.totalBolsas > 0
+          ? ['Tratado']
+          : ((nuevoResumen.desglose.tratamientos.tratado || 0) + (nuevoResumen.desglose.tratamientos.curado || 0)) > 0
+          ? ['Tratado', 'Sin Tratar']
+          : ['Sin Tratar'],
     };
 
     try {
@@ -1915,6 +1915,20 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
       <div className="bg-white p-2 rounded-2xl border border-gray-200 shadow-xs flex flex-wrap items-center gap-2">
         <button
           type="button"
+          id="btn-subtab-bolsas"
+          onClick={() => setPanelSubTab('bolsas')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            panelSubTab === 'bolsas'
+              ? 'bg-[#00603C] text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <Package className="w-4 h-4" />
+          <span>Bolsas y QR ({listaBolsasLote.length})</span>
+        </button>
+
+        <button
+          type="button"
           id="btn-subtab-movimientos"
           onClick={() => setPanelSubTab('movimientos')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
@@ -1940,21 +1954,6 @@ export const PanelDeLote: React.FC<PanelDeLoteProps> = ({
           <GitFork className="w-4 h-4" />
           <span>Árbol de Genealogía {lotesHijos.length > 0 || lotePadre ? `(${lotesHijos.length + (lotePadre ? 1 : 0)})` : ''}</span>
         </button>
-
-        <button
-          type="button"
-          id="btn-subtab-bolsas"
-          onClick={() => setPanelSubTab('bolsas')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-            panelSubTab === 'bolsas'
-              ? 'bg-[#00603C] text-white shadow-sm'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-          }`}
-        >
-          <Package className="w-4 h-4" />
-          <span>Bolsas y QR ({listaBolsasLote.length})</span>
-        </button>
-
       </div>
 
       {/* PESTAÑA 1: HISTORIAL DE MOVIMIENTOS */}

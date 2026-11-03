@@ -53,7 +53,9 @@ import {
   Mail,
   ExternalLink,
   Layers,
-  Filter
+  Filter,
+  Ban,
+  CalendarDays
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -75,7 +77,7 @@ interface DespachosSectionProps {
   onSaveOrden: (nuevaOrden: OrdenCarga) => void;
   onUpdateOrdenStatus: (
     ordenId: string,
-    nuevoEstado: 'Disponible' | 'Aceptada' | 'Despachada',
+    nuevoEstado: 'Disponible' | 'Aceptada' | 'Despachada' | 'Anulada',
     fotoRemito?: string,
     firmaChofer?: string
   ) => void;
@@ -297,6 +299,18 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
   // 3. Estados para "Mis órdenes" (Despachante Asignado - Libre Acceso)
   const [despIdentificado, setDespIdentificado] = useState<string | null>(null);
   const [loginDespachante, setLoginDespachante] = useState<string>('Anibal Grandolio');
+
+  // Ordenar órdenes por fecha y búsqueda en "Mis Órdenes"
+  const [misOrdenesSortDirection, setMisOrdenesSortDirection] = useState<'DESC' | 'ASC'>('DESC');
+  const [misOrdenesSearch, setMisOrdenesSearch] = useState<string>('');
+
+  // Anulación de orden (Aceptada o Sin Aceptar)
+  const [ordenParaAnular, setOrdenParaAnular] = useState<OrdenCarga | null>(null);
+  const [motivoAnulacionOpcion, setMotivoAnulacionOpcion] = useState<string>('Cancelación solicitada por el cliente');
+  const [motivoAnulacionDetalle, setMotivoAnulacionDetalle] = useState<string>('');
+  const [isAnulandoOrden, setIsAnulandoOrden] = useState<boolean>(false);
+  const [anularEliminarPermanente, setAnularEliminarPermanente] = useState<boolean>(false);
+  const [anulacionExitoMsg, setAnulacionExitoMsg] = useState<string | null>(null);
 
   // Estados temporales de archivos cargados en sesión
   const [tempFotos, setTempFotos] = useState<Record<string, string>>({});
@@ -1533,6 +1547,165 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
     }
   };
 
+  // --- FUNCIONES PARA ANULAR ÓRDENES Y SEPARADORES DE FECHA EN "MIS ÓRDENES" ---
+
+  // Helper para obtener fecha normalizada de la orden para ordenamiento y agrupación
+  const getFechaOrden = (o: OrdenCarga): string => {
+    return o.fechaCarga || o.fecha || 'sin-fecha';
+  };
+
+  // Helper para metadata amigable de la fecha en separadores
+  const getInfoSeparadorFecha = (fechaStr: string) => {
+    if (!fechaStr || fechaStr === 'sin-fecha') {
+      return {
+        titulo: 'Órdenes sin fecha programada',
+        subtitulo: 'Fecha pendiente de asignación',
+        badgeRelativo: 'Sin Fecha',
+        esHoy: false,
+        esAyer: false,
+        esManana: false,
+        fechaOriginal: fechaStr
+      };
+    }
+
+    const parts = fechaStr.split('-');
+    if (parts.length !== 3) {
+      return {
+        titulo: `Fecha: ${fechaStr}`,
+        subtitulo: formatDateStr(fechaStr),
+        badgeRelativo: '',
+        esHoy: false,
+        esAyer: false,
+        esManana: false,
+        fechaOriginal: fechaStr
+      };
+    }
+
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const targetDate = new Date(year, month, day);
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const targetZero = new Date(year, month, day);
+    const diffDays = Math.round((targetZero.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+    const esHoy = diffDays === 0;
+    const esAyer = diffDays === -1;
+    const esManana = diffDays === 1;
+
+    const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const meses = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+
+    const nombreDia = diasSemana[targetDate.getDay()] || '';
+    const nombreMes = meses[month] || '';
+
+    let badgeRelativo = '';
+    if (esHoy) badgeRelativo = 'Hoy';
+    else if (esAyer) badgeRelativo = 'Ayer';
+    else if (esManana) badgeRelativo = 'Mañana';
+
+    const titulo = `${nombreDia} ${day} de ${nombreMes}, ${year}`;
+    const subtitulo = formatDateStr(fechaStr);
+
+    return {
+      titulo,
+      subtitulo,
+      badgeRelativo,
+      esHoy,
+      esAyer,
+      esManana,
+      nombreDia,
+      day,
+      nombreMes,
+      year,
+      fechaOriginal: fechaStr
+    };
+  };
+
+  // Abrir modal de anulación
+  const handleAbrirAnularOrden = (orden: OrdenCarga) => {
+    setOrdenParaAnular(orden);
+    setMotivoAnulacionOpcion('Cancelación solicitada por el cliente');
+    setMotivoAnulacionDetalle('');
+    setAnularEliminarPermanente(false);
+  };
+
+  // Confirmar la anulación de la orden (Aceptada o Sin Aceptar)
+  const handleConfirmarAnulacionOrden = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!ordenParaAnular) return;
+    setIsAnulandoOrden(true);
+    const target = ordenParaAnular;
+    const motivoFinal = motivoAnulacionOpcion === 'Otro motivo (especificar)'
+      ? (motivoAnulacionDetalle.trim() || 'Anulación solicitada desde Mis Órdenes')
+      : (motivoAnulacionDetalle.trim() ? `${motivoAnulacionOpcion}: ${motivoAnulacionDetalle.trim()}` : motivoAnulacionOpcion);
+
+    try {
+      if (anularEliminarPermanente) {
+        if (onDeleteOrden) {
+          await onDeleteOrden(target.id);
+        }
+      } else {
+        if (onUpdateOrdenStatus) {
+          await onUpdateOrdenStatus(target.id, 'Anulada');
+        }
+        try {
+          const docRef = doc(db, 'ordenesCarga', target.id);
+          await updateDoc(docRef, {
+            estado: 'Anulada',
+            motivoAnulacion: motivoFinal,
+            fechaAnulacion: new Date().toISOString(),
+            anuladoPor: despIdentificado || 'Despachante'
+          });
+        } catch (eDoc) {
+          console.warn('Error actualizando Firestore con motivo de anulación:', eDoc);
+        }
+      }
+
+      // Si tenía turno de parking asociado, actualizar turno a CANCELADO
+      if (target.turnoParkingId && onUpdateTurno && turnosParking) {
+        const matchingTurno = turnosParking.find(t => t.id === target.turnoParkingId || t.ordenCargaId === target.id);
+        if (matchingTurno) {
+          await onUpdateTurno({
+            ...matchingTurno,
+            estado: 'CANCELADO',
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      setAnulacionExitoMsg(`¡La Orden ${target.id} (${target.cliente}) fue anulada exitosamente!`);
+      setTimeout(() => setAnulacionExitoMsg(null), 5000);
+      setOrdenParaAnular(null);
+    } catch (err) {
+      console.error('Error al anular orden:', err);
+      alert('Ocurrió un error al intentar anular la orden. Intente nuevamente.');
+    } finally {
+      setIsAnulandoOrden(false);
+    }
+  };
+
+  // Revertir una orden Aceptada a Sin Aceptar (Disponible)
+  const handleRevertirASinAceptar = async (orden: OrdenCarga) => {
+    const confirmar = window.confirm(`¿Desea revertir la orden ${orden.id} al estado "Sin Aceptar" (Disponible)?`);
+    if (!confirmar) return;
+    try {
+      if (onUpdateOrdenStatus) {
+        await onUpdateOrdenStatus(orden.id, 'Disponible');
+      }
+      setDespachoExitoMsg(`Orden ${orden.id} revertida a estado Disponible (Sin Aceptar).`);
+      setTimeout(() => setDespachoExitoMsg(null), 4000);
+    } catch (err) {
+      console.error('Error al revertir orden a Disponible:', err);
+    }
+  };
+
   // Filtrado de listado general de despachos
   const filteredOrdenes = ordenes.filter(o => {
     const searchRemito = filterRemitoCliente.trim().toLowerCase();
@@ -1831,6 +2004,189 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
           </div>
         </div>
       </ConfirmationDialog>
+    );
+  };
+
+  // Modal para anular una orden (Aceptada o Sin Aceptar)
+  const renderModalAnularOrden = () => {
+    if (!ordenParaAnular) return null;
+    const o = ordenParaAnular;
+    const isAceptada = o.estado === 'Aceptada';
+
+    // Obtener información de lotes involucrados
+    const infoLotes = o.lotesOrigen && o.lotesOrigen.length > 0
+      ? o.lotesOrigen.map(l => `L-${l.loteNro || l.loteId} (${l.cantidadBolsas} b.)`).join(', ')
+      : `L-${o.loteId} (${o.cantidadBolsas} b.)`;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 space-y-4 max-h-[90vh] overflow-y-auto text-left">
+          {/* Cabecera */}
+          <div className="flex items-start justify-between pb-3 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-100 text-rose-700">
+                <Ban className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-rose-600 block">
+                  Gestión de Despacho en Playa
+                </span>
+                <h3 className="font-serif text-lg font-bold text-gray-900">
+                  Anular Orden de Carga
+                </h3>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (!isAnulandoOrden) setOrdenParaAnular(null);
+              }}
+              className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg cursor-pointer transition hover:bg-gray-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Resumen de la Orden */}
+          <div className="bg-rose-50/50 rounded-xl p-3.5 border border-rose-200/70 space-y-2 text-xs">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="font-mono font-bold text-[#A0522D] text-sm">
+                ORDEN N° {o.id}
+              </span>
+              <span
+                className={`text-[9px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                  isAceptada
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : 'bg-amber-100 text-amber-900 border border-amber-300'
+                }`}
+              >
+                {isAceptada ? 'Estado: Aceptada en Playa' : 'Estado: Sin Aceptar (Disponible)'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1 text-gray-700">
+              <div>
+                <span className="text-[9px] uppercase font-bold text-gray-400 block">Cliente</span>
+                <span className="font-bold text-[#00603C]">{o.cliente}</span>
+              </div>
+              <div>
+                <span className="text-[9px] uppercase font-bold text-gray-400 block">Fecha Programada</span>
+                <span className="font-semibold">{formatDateStr(o.fechaCarga || o.fecha)}</span>
+              </div>
+              <div>
+                <span className="text-[9px] uppercase font-bold text-gray-400 block">Lotes Involucrados</span>
+                <span className="font-mono font-semibold text-gray-900">{infoLotes}</span>
+              </div>
+              <div>
+                <span className="text-[9px] uppercase font-bold text-gray-400 block">Total a Cargar</span>
+                <span className="font-mono font-bold text-gray-900">
+                  {o.cantidadBolsas} b. ({formatNumberArg(o.kgTotales, 0)} kg)
+                </span>
+              </div>
+              <div>
+                <span className="text-[9px] uppercase font-bold text-gray-400 block">Despachante</span>
+                <span className="font-semibold">{o.despachante || 'Sin asignar'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] uppercase font-bold text-gray-400 block">Remito Cliente</span>
+                <span className="font-mono font-semibold">{o.remitoCliente || '—'}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Advertencia contextual */}
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+            <div className="text-[11px] leading-relaxed">
+              <p className="font-semibold">
+                {isAceptada
+                  ? 'Esta orden ya se encuentra Aceptada. Al confirmarse su anulación, se retirará del listado activo de playa y quedará registrada como "Anulada".'
+                  : 'Esta orden se encuentra Sin Aceptar (Disponible). Al anularla, no se podrá cargar ni despachar.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Formulario de Motivo */}
+          <form onSubmit={handleConfirmarAnulacionOrden} className="space-y-3.5">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                Motivo de Anulación *
+              </label>
+              <select
+                value={motivoAnulacionOpcion}
+                onChange={(e) => setMotivoAnulacionOpcion(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
+              >
+                <option value="Cancelación solicitada por el cliente">Cancelación solicitada por el cliente</option>
+                <option value="Camión o transporte no se presentó a la planta">Camión o transporte no se presentó a la planta</option>
+                <option value="Falta de stock disponible o lote en acondicionamiento">Falta de stock disponible o lote en acondicionamiento</option>
+                <option value="Error en la confección / duplicado de orden">Error en la confección / duplicado de orden</option>
+                <option value="Rotura de camión o problemas mecánicos">Rotura de camión o problemas mecánicos</option>
+                <option value="Reprogramación de fecha de carga">Reprogramación de fecha de carga</option>
+                <option value="Otro motivo (especificar)">Otro motivo (especificar a continuación)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                Detalle u Observaciones {motivoAnulacionOpcion === 'Otro motivo (especificar)' ? '*' : '(Opcional)'}
+              </label>
+              <textarea
+                value={motivoAnulacionDetalle}
+                onChange={(e) => setMotivoAnulacionDetalle(e.target.value)}
+                placeholder="Indique detalles de la anulación para la bitácora de auditoría..."
+                rows={2}
+                required={motivoAnulacionOpcion === 'Otro motivo (especificar)'}
+                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+            </div>
+
+            {/* Opción de eliminar definitivamente */}
+            {(onDeleteOrden || onDeleteMultipleOrdenes) && (
+              <label className="flex items-center gap-2 p-2.5 rounded-xl bg-gray-50 border border-gray-200 cursor-pointer text-xs hover:bg-gray-100 transition">
+                <input
+                  type="checkbox"
+                  checked={anularEliminarPermanente}
+                  onChange={(e) => setAnularEliminarPermanente(e.target.checked)}
+                  className="rounded text-rose-600 focus:ring-rose-500"
+                />
+                <span className="text-gray-700 font-medium text-[11px]">
+                  Eliminar permanentemente del registro en lugar de conservarla como 'Anulada'
+                </span>
+              </label>
+            )}
+
+            {/* Botones de acción */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setOrdenParaAnular(null)}
+                disabled={isAnulandoOrden}
+                className="px-4 py-2 border border-gray-200 text-gray-700 hover:bg-gray-100 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Volver
+              </button>
+              <button
+                type="submit"
+                disabled={isAnulandoOrden}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition cursor-pointer shadow-sm disabled:opacity-50"
+              >
+                {isAnulandoOrden ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Anulando orden...</span>
+                  </>
+                ) : (
+                  <>
+                    <Ban className="w-3.5 h-3.5" />
+                    <span>Confirmar Anulación</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     );
   };
 
@@ -3001,18 +3357,75 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                 {(() => {
                   const ordenesPendientes = ordenes.filter(o => {
                     const matchDespachante = (o.despachante || '').trim().toLowerCase() === (despIdentificado || '').trim().toLowerCase();
-                    const isPendiente = (o.estado === 'Disponible' || o.estado === 'Aceptada') && (o.estado as string) !== 'Despachada' && !confirmedLocally[o.id];
+                    const isPendiente = (o.estado === 'Disponible' || o.estado === 'Aceptada') &&
+                                        (o.estado as string) !== 'Despachada' &&
+                                        (o.estado as string) !== 'Anulada' &&
+                                        !confirmedLocally[o.id];
                     return matchDespachante && isPendiente;
                   });
+
                   const ordenesTotalesDespachante = ordenes.filter(o => {
                     return (o.despachante || '').trim().toLowerCase() === (despIdentificado || '').trim().toLowerCase();
                   });
 
+                  // Filtrado por buscador rápido en Mis Órdenes
+                  const ordenesFiltradas = ordenesPendientes.filter(o => {
+                    if (!misOrdenesSearch.trim()) return true;
+                    const q = misOrdenesSearch.trim().toLowerCase();
+                    const numOrd = (o.id || '').toLowerCase();
+                    const cli = (o.cliente || '').toLowerCase();
+                    const chof = (o.chofer || '').toLowerCase();
+                    const rem = (o.remitoCliente || '').toLowerCase();
+                    const lot = (o.loteId || '').toLowerCase();
+                    const multiLots = (o.lotesOrigen || []).map(lo => lo.loteNro || lo.loteId).join(' ').toLowerCase();
+                    return numOrd.includes(q) || cli.includes(q) || chof.includes(q) || rem.includes(q) || lot.includes(q) || multiLots.includes(q);
+                  });
+
+                  // Ordenamiento de órdenes por fecha según misOrdenesSortDirection
+                  const ordenesOrdenadas = [...ordenesFiltradas].sort((a, b) => {
+                    const fA = getFechaOrden(a);
+                    const fB = getFechaOrden(b);
+                    const cmp = fA.localeCompare(fB);
+                    if (cmp !== 0) {
+                      return misOrdenesSortDirection === 'ASC' ? cmp : -cmp;
+                    }
+                    const minA = parseHorarioMinutos(a.turnoHorario);
+                    const minB = parseHorarioMinutos(b.turnoHorario);
+                    if (minA !== minB) return minA - minB;
+                    return a.id.localeCompare(b.id);
+                  });
+
+                  // Agrupación por fecha para los separadores
+                  const mapaGrupos = new Map<string, OrdenCarga[]>();
+                  ordenesOrdenadas.forEach(ord => {
+                    const fKey = getFechaOrden(ord);
+                    const arr = mapaGrupos.get(fKey) || [];
+                    arr.push(ord);
+                    mapaGrupos.set(fKey, arr);
+                  });
+
+                  const listaGrupos = Array.from(mapaGrupos.entries()).map(([fechaKey, items]) => {
+                    const infoFecha = getInfoSeparadorFecha(fechaKey);
+                    const totalBolsas = items.reduce((acc, curr) => acc + (curr.cantidadBolsas || 0), 0);
+                    const totalKg = items.reduce((acc, curr) => acc + (curr.kgTotales || 0), 0);
+                    const aceptadasCount = items.filter(i => i.estado === 'Aceptada').length;
+                    const sinAceptarCount = items.filter(i => i.estado === 'Disponible').length;
+                    return {
+                      fechaKey,
+                      infoFecha,
+                      items,
+                      totalBolsas,
+                      totalKg,
+                      aceptadasCount,
+                      sinAceptarCount
+                    };
+                  });
+
                   return (
-                    <div className="space-y-4">
+                    <div className="space-y-5">
                       {/* Mensaje de feedback de confirmación exitosa */}
                       {despachoExitoMsg && (
-                        <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl text-[#00603C] text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in slide-in-from-top-2">
+                        <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl text-[#00603C] text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in slide-in-from-top-2 shadow-xs">
                           <div className="flex items-center gap-2">
                             <CheckCircle className="w-5 h-5 shrink-0 text-[#00603C]" />
                             <span>{despachoExitoMsg}</span>
@@ -3027,20 +3440,76 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                         </div>
                       )}
 
-                      {/* Notificación informativa: solo se muestran órdenes pendientes */}
-                      <div className="flex items-center justify-between gap-3 p-3 bg-white rounded-xl border border-gray-200 text-xs shadow-2xs">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                          <span className="font-semibold text-gray-700">
+                      {/* Mensaje de feedback de anulación exitosa */}
+                      {anulacionExitoMsg && (
+                        <div className="p-4 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in slide-in-from-top-2 shadow-xs">
+                          <div className="flex items-center gap-2">
+                            <Ban className="w-5 h-5 shrink-0 text-rose-600" />
+                            <span>{anulacionExitoMsg}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setAnulacionExitoMsg(null)}
+                            className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Barra de Controles: Ordenar por Fecha, Buscar y Contador */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-gray-200 text-xs shadow-2xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                          <span className="font-bold text-gray-800">
                             Órdenes pendientes de despacho:
                           </span>
                           <span className="font-mono font-bold text-[#00603C] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                             {ordenesPendientes.length} pendientes
                           </span>
+                          {listaGrupos.length > 0 && (
+                            <span className="text-[11px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
+                              📅 {listaGrupos.length} {listaGrupos.length === 1 ? 'fecha' : 'fechas'}
+                            </span>
+                          )}
                         </div>
-                        <span className="text-[11px] text-gray-500 hidden sm:inline">
-                          Las órdenes confirmadas se retiran de este panel y se archivan en el historial general.
-                        </span>
+
+                        {/* Botón para ordenar por fecha y buscador */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => setMisOrdenesSortDirection(prev => prev === 'DESC' ? 'ASC' : 'DESC')}
+                            className="px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-[#00603C] text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                            title="Alternar orden por fecha (Más recientes primero o Más antiguos primero)"
+                          >
+                            <ArrowDownUp className="w-3.5 h-3.5 text-[#00603C]" />
+                            <span>
+                              {misOrdenesSortDirection === 'DESC'
+                                ? 'Fecha: Más recientes primero'
+                                : 'Fecha: Más antiguos primero'}
+                            </span>
+                          </button>
+
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              value={misOrdenesSearch}
+                              onChange={(e) => setMisOrdenesSearch(e.target.value)}
+                              placeholder="Buscar orden, cliente..."
+                              className="pl-8 pr-7 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00603C] w-40 sm:w-48"
+                            />
+                            {misOrdenesSearch && (
+                              <button
+                                type="button"
+                                onClick={() => setMisOrdenesSearch('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
 
                       {ordenesPendientes.length === 0 ? (
@@ -3076,64 +3545,147 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                             </>
                           )}
                         </div>
+                      ) : ordenesFiltradas.length === 0 ? (
+                        <div className="bg-white p-8 text-center rounded-2xl border border-gray-100 text-gray-500 space-y-2">
+                          <p className="text-sm font-semibold">No se encontraron órdenes que coincidan con "{misOrdenesSearch}".</p>
+                          <button
+                            type="button"
+                            onClick={() => setMisOrdenesSearch('')}
+                            className="text-xs text-[#00603C] hover:underline font-bold cursor-pointer"
+                          >
+                            Limpiar búsqueda
+                          </button>
+                        </div>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {ordenesPendientes.map(o => {
-                            const fotoUrl = tempFotos[o.id] || o.fotoRemito;
-                            const errorMsg = despachanteError[o.id];
-                            const lote = lotes.find(l => l.id === o.loteId);
-                            const isBloqueada = !!isConfirmingMap[o.id];
-
-                            return (
-                              <div
-                                key={o.id}
-                                className={`bg-white rounded-2xl border p-5 shadow-sm space-y-4 flex flex-col justify-between transition-all relative overflow-hidden ${
-                                  isBloqueada
-                                    ? 'border-emerald-600 ring-2 ring-emerald-500/30'
-                                    : o.estado === 'Aceptada'
-                                    ? 'border-[#00603C] ring-1 ring-[#00603C] ring-opacity-20'
-                                    : 'border-amber-200 bg-amber-50 bg-opacity-20'
-                                }`}
-                              >
-                                {/* Overlay de Bloqueo al confirmar */}
-                                {isBloqueada && (
-                                  <div className="absolute inset-0 z-30 bg-white/90 backdrop-blur-xs flex flex-col items-center justify-center p-4 text-center">
-                                    <Lock className="w-9 h-9 text-[#00603C] animate-bounce mb-2" />
-                                    <span className="font-bold text-sm text-[#00603C]">
-                                      Bloqueando y confirmando despacho...
-                                    </span>
-                                    <span className="text-[11px] text-gray-500 mt-1">
-                                      Dando de baja el stock y archivando orden en el sistema
-                                    </span>
-                                  </div>
-                                )}
-
-                                <div className="space-y-3">
-                                  <div className="flex justify-between items-start border-b border-gray-100 pb-2.5">
+                        <div className="space-y-8">
+                          {listaGrupos.map(grupo => (
+                            <div key={grupo.fechaKey} className="space-y-4">
+                              {/* SEPARADOR DE FECHA ELEGANTE */}
+                              <div className="relative pt-1">
+                                <div className={`p-3.5 sm:p-4 rounded-2xl border transition shadow-xs flex flex-wrap items-center justify-between gap-3 ${
+                                  grupo.infoFecha.esHoy
+                                    ? 'bg-gradient-to-r from-emerald-700 via-[#00603C] to-emerald-800 text-white border-emerald-500 shadow-md ring-2 ring-emerald-500/20'
+                                    : grupo.infoFecha.esManana
+                                    ? 'bg-gradient-to-r from-blue-700 via-blue-800 to-indigo-900 text-white border-blue-500'
+                                    : grupo.infoFecha.esAyer
+                                    ? 'bg-gradient-to-r from-amber-800 to-amber-900 text-amber-50 border-amber-700'
+                                    : 'bg-gradient-to-r from-slate-800 via-gray-800 to-slate-900 text-white border-slate-700'
+                                }`}>
+                                  <div className="flex items-center gap-3">
+                                    <div className={`p-2.5 rounded-xl ${
+                                      grupo.infoFecha.esHoy ? 'bg-white/20 text-white' : 'bg-white/10 text-emerald-300'
+                                    }`}>
+                                      <CalendarDays className="w-5 h-5 sm:w-6 sm:h-6" />
+                                    </div>
                                     <div>
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="text-[10px] uppercase font-mono font-bold text-[#C9922E]">
-                                          ORDEN N° {o.id}
-                                        </span>
-                                        {o.turnoParkingId && (
-                                          <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded">
-                                            <Clock className="w-2.5 h-2.5 text-amber-700" />
-                                            Turno Parking {o.turnoHorario || ''}
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        {grupo.infoFecha.badgeRelativo && (
+                                          <span className="text-[9px] sm:text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-white text-gray-900 tracking-wider shadow-xs">
+                                            {grupo.infoFecha.badgeRelativo}
                                           </span>
                                         )}
+                                        <span className="font-mono text-xs opacity-85 tracking-wide font-bold">
+                                          {grupo.infoFecha.subtitulo}
+                                        </span>
                                       </div>
-                                      <h4 className="font-serif text-sm font-bold text-gray-900 mt-0.5">{o.cliente}</h4>
+                                      <h3 className="font-serif text-sm sm:text-base md:text-lg font-bold tracking-tight">
+                                        {grupo.infoFecha.titulo}
+                                      </h3>
                                     </div>
-                                    <span
-                                      className={`text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${
-                                        o.estado === 'Aceptada'
-                                          ? 'bg-[#E3EFE7] text-[#00603C]'
-                                          : 'bg-[#F6EFDC] text-[#C9922E] border border-amber-200'
+                                  </div>
+
+                                  {/* Resumen del grupo por fecha */}
+                                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                                    <span className="px-2.5 py-1 rounded-xl bg-white/15 backdrop-blur-xs font-bold border border-white/20">
+                                      📦 {grupo.items.length} {grupo.items.length === 1 ? 'orden' : 'órdenes'}
+                                    </span>
+                                    <span className="px-2.5 py-1 rounded-xl bg-white/15 backdrop-blur-xs font-bold border border-white/20 font-mono">
+                                      🌾 {grupo.totalBolsas} b. ({formatNumberArg(grupo.totalKg, 0)} kg)
+                                    </span>
+                                    <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold">
+                                      {grupo.aceptadasCount > 0 && (
+                                        <span className="px-2 py-0.5 rounded-lg bg-emerald-400 text-emerald-950">
+                                          ✓ {grupo.aceptadasCount} Aceptada{grupo.aceptadasCount === 1 ? '' : 's'}
+                                        </span>
+                                      )}
+                                      {grupo.sinAceptarCount > 0 && (
+                                        <span className="px-2 py-0.5 rounded-lg bg-amber-300 text-amber-950">
+                                          ⏳ {grupo.sinAceptarCount} Sin Aceptar
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Grilla de tarjetas para las órdenes de este día */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {grupo.items.map(o => {
+                                  const fotoUrl = tempFotos[o.id] || o.fotoRemito;
+                                  const errorMsg = despachanteError[o.id];
+                                  const lote = lotes.find(l => l.id === o.loteId);
+                                  const isBloqueada = !!isConfirmingMap[o.id];
+
+                                  return (
+                                    <div
+                                      key={o.id}
+                                      className={`bg-white rounded-2xl border p-5 shadow-sm space-y-4 flex flex-col justify-between transition-all relative overflow-hidden ${
+                                        isBloqueada
+                                          ? 'border-emerald-600 ring-2 ring-emerald-500/30'
+                                          : o.estado === 'Aceptada'
+                                          ? 'border-[#00603C] ring-1 ring-[#00603C] ring-opacity-20'
+                                          : 'border-amber-200 bg-amber-50 bg-opacity-20'
                                       }`}
                                     >
-                                      {o.estado}
-                                    </span>
-                                  </div>
+                                      {/* Overlay de Bloqueo al confirmar */}
+                                      {isBloqueada && (
+                                        <div className="absolute inset-0 z-30 bg-white/90 backdrop-blur-xs flex flex-col items-center justify-center p-4 text-center">
+                                          <Lock className="w-9 h-9 text-[#00603C] animate-bounce mb-2" />
+                                          <span className="font-bold text-sm text-[#00603C]">
+                                            Bloqueando y confirmando despacho...
+                                          </span>
+                                          <span className="text-[11px] text-gray-500 mt-1">
+                                            Dando de baja el stock y archivando orden en el sistema
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      <div className="space-y-3">
+                                        <div className="flex justify-between items-start border-b border-gray-100 pb-2.5">
+                                          <div>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                              <span className="text-[10px] uppercase font-mono font-bold text-[#C9922E]">
+                                                ORDEN N° {o.id}
+                                              </span>
+                                              {o.turnoParkingId && (
+                                                <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded">
+                                                  <Clock className="w-2.5 h-2.5 text-amber-700" />
+                                                  Turno Parking {o.turnoHorario || ''}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <h4 className="font-serif text-sm font-bold text-gray-900 mt-0.5">{o.cliente}</h4>
+                                          </div>
+                                          <div className="flex items-center gap-1.5">
+                                            <span
+                                              className={`text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${
+                                                o.estado === 'Aceptada'
+                                                  ? 'bg-[#E3EFE7] text-[#00603C]'
+                                                  : 'bg-[#F6EFDC] text-[#C9922E] border border-amber-200'
+                                              }`}
+                                            >
+                                              {o.estado}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleAbrirAnularOrden(o)}
+                                              className="p-1 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                              title={`Anular orden N° ${o.id} (${o.estado === 'Aceptada' ? 'Aceptada' : 'Sin Aceptar'})`}
+                                            >
+                                              <Ban className="w-3.5 h-3.5 text-rose-500 hover:text-rose-700" />
+                                            </button>
+                                          </div>
+                                        </div>
 
                                   {errorMsg && (
                                     <div className="p-2.5 bg-[#F5E5DC] text-[#A0522D] font-bold rounded-lg text-[10px] animate-in shake duration-150">
@@ -3428,16 +3980,28 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                   )}
                                 </div>
 
-                                {/* Botón de acción principal según el estado */}
-                                <div className="pt-3 border-t border-gray-100">
+                                {/* Botón de acción principal según el estado y botón para ANULAR */}
+                                <div className="pt-3 border-t border-gray-100 space-y-2">
                                   {o.estado === 'Disponible' && (
-                                    <button
-                                      type="button"
-                                      onClick={() => onUpdateOrdenStatus(o.id, 'Aceptada')}
-                                      className="w-full py-2.5 bg-[#C9922E] hover:bg-[#A8751F] text-white font-sans font-bold uppercase tracking-wider rounded-xl transition cursor-pointer shadow-xs"
-                                    >
-                                      Aceptar orden de carga
-                                    </button>
+                                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => onUpdateOrdenStatus(o.id, 'Aceptada')}
+                                        className="flex-1 py-2.5 bg-[#C9922E] hover:bg-[#A8751F] text-white font-sans font-bold uppercase tracking-wider rounded-xl transition cursor-pointer shadow-xs text-xs flex items-center justify-center gap-1.5"
+                                      >
+                                        <Check className="w-4 h-4" />
+                                        <span>Aceptar orden de carga</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAbrirAnularOrden(o)}
+                                        className="py-2.5 px-3.5 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-900 border border-rose-300 rounded-xl transition text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                                        title="Anular esta orden de carga sin aceptar"
+                                      >
+                                        <Ban className="w-4 h-4 text-rose-600" />
+                                        <span>Anular orden</span>
+                                      </button>
+                                    </div>
                                   )}
 
                                   {o.estado === 'Aceptada' && (
@@ -3446,7 +4010,7 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                         type="button"
                                         onClick={() => handleConfirmarDespacho(o)}
                                         disabled={!fotoUrl || isBloqueada}
-                                        className="w-full py-2.5 bg-[#00603C] hover:bg-[#254731] text-[#F6EFDC] font-sans font-bold uppercase tracking-wider rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+                                        className="w-full py-2.5 bg-[#00603C] hover:bg-[#254731] text-[#F6EFDC] font-sans font-bold uppercase tracking-wider rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 shadow-xs text-xs"
                                       >
                                         {isBloqueada ? (
                                           <>
@@ -3461,6 +4025,28 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                         )}
                                       </button>
 
+                                      {/* Acciones complementarias para orden Aceptada: Deshacer o Anular */}
+                                      <div className="flex flex-col sm:flex-row items-center gap-2 pt-1 border-t border-gray-100">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRevertirASinAceptar(o)}
+                                          className="w-full sm:w-1/2 py-2 px-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl transition text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer"
+                                          title="Revertir estado a Sin Aceptar (Disponible) si se aceptó por equivocación"
+                                        >
+                                          <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                                          <span>Deshacer Aceptación</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAbrirAnularOrden(o)}
+                                          className="w-full sm:w-1/2 py-2 px-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-700 hover:text-rose-900 rounded-xl transition text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer"
+                                          title="Anular esta orden de carga aceptada"
+                                        >
+                                          <Ban className="w-3.5 h-3.5 text-rose-600" />
+                                          <span>Anular Orden</span>
+                                        </button>
+                                      </div>
+
                                       {!fotoUrl && (
                                         <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-[10px] text-center font-semibold flex items-center justify-center gap-1.5">
                                           <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-[#C9922E]" />
@@ -3470,12 +4056,14 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                     </div>
                                   )}
                                 </div>
-
                               </div>
                             );
                           })}
                         </div>
-                      )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                     </div>
                   );
                 })()}
@@ -4289,6 +4877,8 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
                                     ? 'bg-[#00603C] text-white'
                                     : o.estado === 'Aceptada'
                                     ? 'bg-[#E3EFE7] text-[#00603C]'
+                                    : o.estado === 'Anulada'
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-300'
                                     : 'bg-[#F6EFDC] text-[#C9922E]'
                                 }`}
                               >
@@ -5069,6 +5659,9 @@ export const DespachosSection: React.FC<DespachosSectionProps> = ({
 
       {/* DIÁLOGO DE CONFIRMACIÓN CON TEXTO MANUAL PARA ELIMINAR DESPACHOS */}
       {renderModalEliminarDespachos()}
+
+      {/* MODAL PARA ANULAR UNA ORDEN (ACEPTADA O SIN ACEPTAR) */}
+      {renderModalAnularOrden()}
 
     </div>
   );

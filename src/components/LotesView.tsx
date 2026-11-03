@@ -1222,7 +1222,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
     return Array.from(new Set([...base, ...fromLotes])).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [lotesContextoCliente, plantaConfig]);
 
-  const estadosDisponibles = useMemo(() => ['sin clasificar', 'clasificado', 'bloqueado', 'descartado'], []);
+  const estadosDisponibles = useMemo(() => ['sin clasificar', 'clasificado', 'bloqueado', 'descartado', 'agotado'], []);
 
   // Lógica de Filtrado Múltiple
   const filteredLotes = useMemo(() => {
@@ -1304,12 +1304,22 @@ export const LotesView: React.FC<LotesViewProps> = ({
 
       // 7. Estado / Disponibilidad (Selección Múltiple)
       // Por defecto no mostrar lotes "agotados" en las listas a menos que se seleccione el estado "agotado" en filtros
+      const estNorm = normalizarEstado(l.estadoEspec || l.estado, l.estadoRegistro);
+      const isLoteAgotado = estNorm === 'agotado' || l.estado?.toLowerCase() === 'agotado' || l.stockBolsas === 0;
+
       if (filterEstados.length > 0) {
-        if (!filterEstados.includes(l.estado)) {
+        const matchesAnyFilter = filterEstados.some(fe => {
+          const feNorm = fe.toLowerCase();
+          if (feNorm === 'agotado') {
+            return isLoteAgotado;
+          }
+          return estNorm === feNorm || (l.estado && l.estado.toLowerCase() === feNorm);
+        });
+        if (!matchesAnyFilter) {
           return false;
         }
       } else {
-        if (l.estado === 'Agotado') {
+        if (isLoteAgotado) {
           return false;
         }
       }
@@ -2387,7 +2397,16 @@ export const LotesView: React.FC<LotesViewProps> = ({
             options={estadosDisponibles}
             selectedValues={filterEstados}
             onChange={setFilterEstados}
-            getOptionCount={(est) => lotesContextoCliente.filter(l => l.estado === est).length}
+            getOptionCount={(est) => {
+              const estLower = est.toLowerCase();
+              return lotesContextoCliente.filter(l => {
+                const norm = normalizarEstado(l.estadoEspec || l.estado, l.estadoRegistro);
+                if (estLower === 'agotado') {
+                  return norm === 'agotado' || l.estado?.toLowerCase() === 'agotado' || l.stockBolsas === 0;
+                }
+                return norm === estLower || l.estado?.toLowerCase() === estLower;
+              }).length;
+            }}
           />
 
         </div>
@@ -2812,7 +2831,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                       title="Curar / Tratar Semilla (Generar Lote T)"
                     >
                       <FlaskConical className="w-3.5 h-3.5" />
-                      <span>Curar</span>
+                      <span>Tratar</span>
                     </button>
                   )}
 
@@ -4594,6 +4613,7 @@ export const LotesView: React.FC<LotesViewProps> = ({
                   <option value="clasificado">Clasificado</option>
                   <option value="bloqueado">Bloqueado</option>
                   <option value="descartado">Descartado</option>
+                  <option value="agotado">Agotado</option>
                 </select>
               </div>
 

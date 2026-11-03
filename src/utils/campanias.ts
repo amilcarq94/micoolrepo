@@ -74,12 +74,17 @@ export function getNombreCampania(campaniaId: string): string {
  */
 export function getActiveCampaniaIdStored(): string {
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, '2025-2026');
+    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+    // Si no hay campaña guardada o quedó la fijación anterior '2025-2026', dejar en '2026-2027'
+    if (!stored || stored === '2025-2026') {
+      localStorage.setItem(LOCAL_STORAGE_KEY, '2026-2027');
+      return '2026-2027';
+    }
+    return stored;
   } catch (e) {
     console.warn('No se pudo acceder a localStorage para la campaña activa', e);
+    return '2026-2027';
   }
-  // Fijar en Campaña 2025-2026 por solicitud del usuario
-  return '2025-2026';
 }
 
 /**

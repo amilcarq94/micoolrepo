@@ -93,7 +93,7 @@ export const TratarLoteModal: React.FC<TratarLoteModalProps> = ({
     <ModalVentanaOperacion
       isOpen={isOpen}
       onClose={onClose}
-      title={`Curar Semilla: Lote ${lote.loteNro}`}
+      title={`Tratar Semilla: Lote ${lote.loteNro}`}
       subtitle="Tratamiento de Semilla y Generación de Lote T"
       icon={FlaskConical}
       maxWidth="max-w-2xl"
@@ -108,20 +108,20 @@ export const TratarLoteModal: React.FC<TratarLoteModalProps> = ({
                 <span>Ya existe el Lote Tratado "{loteExistenteT.loteNro}"</span>
               </div>
               <p className="text-[11px] text-amber-800/90 leading-relaxed">
-                Este curado descontará <strong>{bolsasACurar} bolsas</strong> del lote sin tratar ({lote.loteNro}) mediante un egreso por Orden de Movimiento e ingresará automáticamente las bolsas en el lote tratado existente <strong>{loteExistenteT.loteNro}</strong>.
+                Este tratamiento descontará <strong>{bolsasACurar} bolsas</strong> del lote sin tratar ({lote.loteNro}) mediante un egreso por Orden de Movimiento e ingresará automáticamente las bolsas en el lote tratado existente <strong>{loteExistenteT.loteNro}</strong>.
               </p>
             </div>
           ) : (
             <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl text-xs text-emerald-900 space-y-1">
               <div className="font-bold flex items-center gap-1.5 text-[#00603C]">
                 <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Primer Curado — Generación de Lote "{nombreLoteT}"</span>
+                <span>Tratamiento — Generación de Lote "{nombreLoteT}"</span>
               </div>
               <p className="text-[11px] text-emerald-800/90 leading-relaxed">
                 {esCuradoTotal ? (
-                  <>El curado total renombrará el lote a <strong>"{nombreLoteT}"</strong> con estado <strong>Tratado</strong>.</>
+                  <>El tratamiento total renombrará el lote a <strong>"{nombreLoteT}"</strong> con estado <strong>Tratado</strong>.</>
                 ) : (
-                  <>Se creará automáticamente el lote tratado <strong>"{nombreLoteT}"</strong> con <strong>{bolsasACurar} bolsas</strong>. Las <strong>{bolsasRestantes} bolsas</strong> no curadas permanecerán en el lote original <strong>"{lote.loteNro}"</strong>.</>
+                  <>Se creará automáticamente el lote tratado <strong>"{nombreLoteT}"</strong> con <strong>{bolsasACurar} bolsas</strong>. Las <strong>{bolsasRestantes} bolsas</strong> sin tratar permanecerán en el lote original <strong>"{lote.loteNro}"</strong>.</>
                 )}
               </p>
             </div>
@@ -147,12 +147,12 @@ export const TratarLoteModal: React.FC<TratarLoteModalProps> = ({
             </div>
           </div>
 
-          {/* Fila 2: Cantidad de Bolsas a Curar */}
+          {/* Fila 2: Cantidad de Bolsas a Tratar */}
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-700 uppercase flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <Boxes className="w-4 h-4 text-[#00603C]" />
-                Bolsas a Curar / Tratar *
+                Bolsas a Tratar *
               </span>
               <span className="text-[11px] text-slate-500 font-mono">
                 Máximo: {maxBolsas} b.
@@ -173,7 +173,7 @@ export const TratarLoteModal: React.FC<TratarLoteModalProps> = ({
                 onClick={() => setBolsasACurar(maxBolsas)}
                 className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer shrink-0"
               >
-                Curar Todo ({maxBolsas} b)
+                Tratar Todo ({maxBolsas} b)
               </button>
             </div>
             <p className="text-[11px] text-slate-500 font-mono">
@@ -237,7 +237,7 @@ export const TratarLoteModal: React.FC<TratarLoteModalProps> = ({
               className="flex items-center gap-2 px-5 py-2.5 bg-[#00603C] hover:bg-[#004D30] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-lg transition cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-              <span>Confirmar Curado</span>
+              <span>Confirmar Tratamiento</span>
             </button>
           </div>
 

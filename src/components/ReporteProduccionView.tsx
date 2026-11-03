@@ -683,7 +683,7 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group hover:border-[#00603C] transition">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-              % Curado vs Sin Curar
+              % Tratado vs Sin Tratar
             </span>
             <div className="p-2 bg-emerald-50 text-[#00603C] rounded-xl border border-emerald-200">
               <TrendingUp className="w-4 h-4" />
@@ -801,8 +801,8 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
               className="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00603C] font-semibold text-gray-800 text-xs"
             >
               <option value="todos">Todos los Tratamientos</option>
-              <option value="tratado">🟢 Solo Curados</option>
-              <option value="sin_tratar">⚪ Solo Sin Curar</option>
+              <option value="tratado">🟢 Solo Tratados</option>
+              <option value="sin_tratar">⚪ Solo Sin Tratar</option>
               {tratamientosDisponibles
                 .filter(t => t !== 'Curado' && t !== 'Sin Curar' && t !== 'Tratado' && t !== 'Sin Tratar')
                 .map(t => (
@@ -1077,13 +1077,13 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
                   </span>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-xl border border-gray-200">
-                  <span className="text-[10px] text-gray-500 font-bold uppercase block">Sin Curar</span>
+                  <span className="text-[10px] text-gray-500 font-bold uppercase block">Sin Tratar</span>
                   <span className="font-mono text-base font-bold text-gray-700">
                     {formatNumberArg(variedadDetalleSeleccionada.kgSinTratar, 0)} kg
                   </span>
                 </div>
                 <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
-                  <span className="text-[10px] text-[#C9922E] font-bold uppercase block">% Curado</span>
+                  <span className="text-[10px] text-[#C9922E] font-bold uppercase block">% Tratado</span>
                   <span className="font-mono text-base font-black text-[#C9922E]">
                     {variedadDetalleSeleccionada.porcentajeTratado}%
                   </span>
@@ -1109,7 +1109,7 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
                   <tbody className="divide-y divide-gray-100 font-medium">
                     {variedadDetalleSeleccionada.lotes.map((item, lIdx) => {
                       const l = item.lote;
-                      const tratsStr = Array.isArray(l.tratamiento) ? l.tratamiento.join(', ') : (l.tratamiento || 'Sin Curar');
+                      const tratsStr = Array.isArray(l.tratamiento) ? l.tratamiento.join(', ') : (l.tratamiento || 'Sin Tratar');
                       const ubi = l.ubicacionAcopio || (l.ala ? `Ala ${l.ala} · Sec ${l.sector || 1}` : 'Planta');
 
                       return (
@@ -1136,7 +1136,7 @@ const isLoteTratadoHelper = (l: Lote): boolean => {
                               </span>
                             ) : (
                               <span className="text-gray-500 text-[11px] font-medium bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
-                                Sin Curar
+                                Sin Tratar
                               </span>
                             )}
                           </td>

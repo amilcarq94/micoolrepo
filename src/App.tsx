@@ -18,8 +18,9 @@ import { Lote, SalidaRegistrada, MovimientoStock, EstadoLoteType, AuditLogEntry,
 import { formatNumberArg } from './utils/formatters';
 import { getLoteAuditoria } from './utils/audit';
 import { LOTES_INICIALES, SALIDAS_INICIALES, CLIENTES_PRECARGADOS, ESPECIES_PRECARGADAS, ORDENES_CARGA_INICIALES, ORDENES_PROCESO_INICIALES, MOVIMIENTOS_SILO_INICIALES, CHOFERES_INICIALES, BOLSONES_INICIALES } from './data/mockData';
-import { Layers, ArrowDownRight, History, Upload, LogOut, LogIn, CheckCircle, QrCode, ClipboardCheck, Factory, ClipboardList, Warehouse, AlertTriangle, Truck, Database, PackagePlus, BarChart3, Smartphone, Menu, X, ChevronLeft, ChevronRight, Building2, Calculator, Flame, Activity, Clock } from 'lucide-react';
+import { Layers, ArrowDownRight, History, Upload, LogOut, LogIn, CheckCircle, QrCode, ClipboardCheck, Factory, ClipboardList, Warehouse, AlertTriangle, Truck, Database, PackagePlus, BarChart3, Smartphone, Menu, X, ChevronLeft, ChevronRight, Building2, Calculator, Flame, Activity, Clock, Tag } from 'lucide-react';
 import { GenerarLoteView } from './components/GenerarLoteView';
+import { CaratulasView } from './components/CaratulasView';
 import { CalculoBolsasDashboard } from './components/CalculoBolsasDashboard';
 import { MapaCalorDashboard } from './components/MapaCalorDashboard';
 import { CalculoTransferConfig } from './utils/calculoBolsas';
@@ -275,22 +276,22 @@ export default function App() {
     });
 
     if (activeCampaniaId === 'TODAS') return base;
-    return base.filter(l => (l.campaniaId || '2025-2026') === activeCampaniaId);
+    return base.filter(l => (l.campaniaId || '2026-2027') === activeCampaniaId);
   }, [lotes, activeCampaniaId, plantaConfig]);
 
   const filteredSalidasByCampania = useMemo(() => {
     if (activeCampaniaId === 'TODAS') return salidas;
-    return salidas.filter(s => (s.campaniaId || '2025-2026') === activeCampaniaId);
+    return salidas.filter(s => (s.campaniaId || '2026-2027') === activeCampaniaId);
   }, [salidas, activeCampaniaId]);
 
   const filteredOrdenesByCampania = useMemo(() => {
     if (activeCampaniaId === 'TODAS') return ordenesCarga;
-    return ordenesCarga.filter(o => (o.campaniaId || '2025-2026') === activeCampaniaId);
+    return ordenesCarga.filter(o => (o.campaniaId || '2026-2027') === activeCampaniaId);
   }, [ordenesCarga, activeCampaniaId]);
 
   const filteredOrdenesProcesoByCampania = useMemo(() => {
     if (activeCampaniaId === 'TODAS') return ordenesProcesoConHechos;
-    return ordenesProcesoConHechos.filter(o => (o.campaniaId || '2025-2026') === activeCampaniaId);
+    return ordenesProcesoConHechos.filter(o => (o.campaniaId || '2026-2027') === activeCampaniaId);
   }, [ordenesProcesoConHechos, activeCampaniaId]);
 
   // Cálculo en tiempo real de stock por Silo (Silo 1 a Silo 6)
@@ -350,8 +351,8 @@ export default function App() {
   }, [siloStocks]);
 
   // 3. Control de Vistas
-  // 'modo-planta' | 'silos' | 'mapa-calor' | 'dashboard-operaciones' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes' | 'parking'
-  const [activeView, setActiveView] = useState<'modo-planta' | 'silos' | 'mapa-calor' | 'dashboard-operaciones' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes' | 'parking'>('modo-planta');
+  // 'modo-planta' | 'silos' | 'mapa-calor' | 'dashboard-operaciones' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes' | 'parking' | 'caratulas'
+  const [activeView, setActiveView] = useState<'modo-planta' | 'silos' | 'mapa-calor' | 'dashboard-operaciones' | 'generar-lote' | 'calculo-bolsas' | 'lotes' | 'produccion' | 'alta-lote' | 'importar' | 'registrar-salida' | 'salidas-registradas' | 'despachos' | 'choferes' | 'parking' | 'caratulas'>('modo-planta');
   const [turnosParking, setTurnosParking] = useState<TurnoParking[]>(() => getLocalTurnos());
   const [parkingConfig, setParkingConfig] = useState<ParkingConfig>(() => getSavedParkingConfig());
   const [loteSeleccionado, setLoteSeleccionado] = useState<Lote | null>(null);
@@ -579,6 +580,9 @@ export default function App() {
           tipos: Array.isArray(data.tipos) ? data.tipos : PLANTA_CONFIG_DEFAULT.tipos,
           categorias: cleanCategorias,
           tratamientos: Array.isArray(data.tratamientos) ? data.tratamientos : PLANTA_CONFIG_DEFAULT.tratamientos,
+          silos: Array.isArray(data.silos) && data.silos.length > 0 ? data.silos : (PLANTA_CONFIG_DEFAULT.silos || ['Silo 1', 'Silo 2', 'Silo 3', 'Silo 4', 'Silo 5', 'Silo 6']),
+          envases: Array.isArray(data.envases) && data.envases.length > 0 ? data.envases : PLANTA_CONFIG_DEFAULT.envases,
+          estados: Array.isArray(data.estados) && data.estados.length > 0 ? data.estados : PLANTA_CONFIG_DEFAULT.estados,
         };
         setPlantaConfig(loadedConfig);
         setClientes(loadedConfig.clientes);
@@ -895,7 +899,7 @@ export default function App() {
 
   const handleUpdateOrdenStatus = async (
     ordenId: string,
-    nuevoEstado: 'Disponible' | 'Aceptada' | 'Despachada',
+    nuevoEstado: 'Disponible' | 'Aceptada' | 'Despachada' | 'Anulada',
     fotoRemito?: string,
     firmaChofer?: string
   ) => {
@@ -1262,7 +1266,7 @@ export default function App() {
               envase: targetLote.envase || `x ${kgUnitario} kg`,
               tipo: (targetLote.tipo?.toLowerCase() as any) || 'final',
               categoria: (targetLote.categoria?.toLowerCase() as any) || 'primu',
-              tratamiento: 'sin curar',
+              tratamiento: 'sin tratar',
               estado: cambiarAClasificado ? 'clasificado' : 'sin clasificar',
               despachada: false,
               caratulaId: targetLote.caratulaId || `CARAT-${targetLote.id}`
@@ -1277,7 +1281,7 @@ export default function App() {
           estadoEspec: nuevoEstadoEspec,
           estado: cambiarAClasificado ? 'clasificado' : 'sin clasificar',
           estadoRegistro: (cambiarAClasificado ? 'clasificado' : 'sin clasificar') as any,
-          campaniaId: '2025-2026',
+          campaniaId: '2026-2027',
           kg: resumen.kgTotales,
           stockKg: resumen.stockKg,
           stockBolsas: resumen.stockBolsas,
@@ -1316,13 +1320,13 @@ export default function App() {
         const bolsasActualizadas = bolsasActuales.map((b) => {
           const debeCurar = selIds
             ? selIds.has(b.id)
-            : (curadasAplicadas < bolsasACurar && normalizarTratamiento(b.tratamiento) !== 'curado');
+            : (curadasAplicadas < bolsasACurar && normalizarTratamiento(b.tratamiento) !== 'tratado' && normalizarTratamiento(b.tratamiento) !== 'curado');
 
           if (debeCurar) {
             curadasAplicadas++;
             return {
               ...b,
-              tratamiento: 'curado' as const,
+              tratamiento: 'tratado' as const,
               productoCurado: productoAplicado,
             };
           }
@@ -1330,15 +1334,16 @@ export default function App() {
         });
 
         const resumen = calcularResumenLoteDesdeBolsas(bolsasActualizadas, targetLote);
+        const totalTratadas = (resumen.desglose.tratamientos.tratado || 0) + (resumen.desglose.tratamientos.curado || 0);
         const loteActualizado: Lote = {
           ...targetLote,
           bolsas: bolsasActualizadas,
           tratamiento:
-            resumen.desglose.tratamientos.curado === resumen.totalBolsas && resumen.totalBolsas > 0
-              ? ['Curado']
-              : resumen.desglose.tratamientos.curado > 0
-              ? ['Curado', 'Sin Curar']
-              : ['Sin Curar'],
+            totalTratadas === resumen.totalBolsas && resumen.totalBolsas > 0
+              ? ['Tratado']
+              : totalTratadas > 0
+              ? ['Tratado', 'Sin Tratar']
+              : ['Sin Tratar'],
           producto: productoAplicado,
         };
 
@@ -1353,9 +1358,9 @@ export default function App() {
           loteId: targetLote.id,
           usuario: currentUser?.nombre || 'Operador',
           tipo: 'curado',
-          valorAnterior: 'sin curar',
-          valorNuevo: 'curado',
-          observaciones: `Reporte diario de curado: ${bolsasACurar} bolsas (${reporte.kg} kg) curadas con producto ${productoAplicado}.`,
+          valorAnterior: 'sin tratar',
+          valorNuevo: 'tratado',
+          observaciones: `Reporte diario de tratamiento: ${bolsasACurar} bolsas (${reporte.kg} kg) tratadas con producto ${productoAplicado}.`,
           fecha: reporte.fecha,
         });
       }
@@ -1842,45 +1847,14 @@ export default function App() {
         }
       }
 
-      // Eliminar movimientos de silo anteriores generados por este lote (si existían)
+      // Eliminar movimientos de silo anteriores generados por este lote (si existían).
+      // El stock de los silos solo se elimina manualmente; la generación de lotes NO disminuye stock en silos.
       const movsAnterioresLote = movimientosSilo.filter(m => m.loteResultanteId === docId);
       for (const mAnt of movsAnterioresLote) {
         const delRef = doc(db, 'movimientos_silo', mAnt.id);
         batch.delete(delRef);
       }
-
-      // Con opción ACTIVA "PRE-CARGA" no afectar salida de silo.
-      // Activar salida de silo únicamente con botón "REALIZADO" activo.
-      const esRealizado = loteGuardar.estadoRegistro !== 'PRE-CARGA';
       const nuevosMovsSiloLote: MovimientoSilo[] = [];
-
-      if (esRealizado && loteGuardar.silosOrigen && loteGuardar.silosOrigen.length > 0) {
-        const fechaIng = loteGuardar.fechaIngreso || new Date().toISOString().split('T')[0];
-        let idx = 0;
-        for (const item of loteGuardar.silosOrigen) {
-          const kgCant = Number(item.kgExtraidos || item.kg || 0);
-          if (kgCant > 0) {
-            idx++;
-            const movId = `EGRESO-LOTE-${docId}-${item.siloId.replace(/\s+/g, '')}-${Date.now()}-${idx}`;
-            const movEgreso: MovimientoSilo = {
-              id: movId,
-              siloId: item.siloId,
-              fecha: fechaIng,
-              tipo: 'EGRESO_OP',
-              kg: kgCant,
-              loteResultanteId: docId,
-              loteNro: loteGuardar.loteNro,
-              cliente: loteGuardar.cliente,
-              especie: loteGuardar.especie,
-              variedad: loteGuardar.variedad,
-              categoria: loteGuardar.categoria
-            };
-            const movDocRef = doc(db, 'movimientos_silo', movId);
-            batch.set(movDocRef, mapMovimientoSiloToFirestore(movEgreso));
-            nuevosMovsSiloLote.push(movEgreso);
-          }
-        }
-      }
 
       await batch.commit();
 
@@ -1930,40 +1904,11 @@ export default function App() {
 
         const esRealizado = loteGuardar.estadoRegistro !== 'PRE-CARGA';
 
-        // Eliminar movimientos de silo anteriores para este lote
-        const movsAnterioresLote = movimientosSilo.filter(m => m.loteResultanteId === loteGuardar.id);
+        // El stock de los silos solo se elimina manualmente; la generación de lotes NO disminuye stock en silos.
+        const movsAnterioresLote = movimientosSilo.filter(m => m.loteResultanteId === loteGuardar.id && m.tipo === 'EGRESO_OP');
         for (const mAnt of movsAnterioresLote) {
           const delRef = doc(db, 'movimientos_silo', mAnt.id);
           batch.delete(delRef);
-        }
-
-        // Si es REALIZADO y especifica silosOrigen, generar EGRESO_OP para descontar stock del Silo
-        if (esRealizado && loteGuardar.silosOrigen && loteGuardar.silosOrigen.length > 0) {
-          const fechaIng = loteGuardar.fechaIngreso || new Date().toISOString().split('T')[0];
-          let idx = 0;
-          for (const item of loteGuardar.silosOrigen) {
-            const kgCant = Number(item.kgExtraidos || item.kg || 0);
-            if (kgCant > 0) {
-              idx++;
-              const movId = `EGRESO-LOTE-${loteGuardar.id}-${item.siloId.replace(/\s+/g, '')}-${Date.now()}-${idx}`;
-              const movEgreso: MovimientoSilo = {
-                id: movId,
-                siloId: item.siloId,
-                fecha: fechaIng,
-                tipo: 'EGRESO_OP',
-                kg: kgCant,
-                loteResultanteId: loteGuardar.id,
-                loteNro: loteGuardar.loteNro,
-                cliente: loteGuardar.cliente,
-                especie: loteGuardar.especie,
-                variedad: loteGuardar.variedad,
-                categoria: loteGuardar.categoria
-              };
-              const movDocRef = doc(db, 'movimientos_silo', movId);
-              batch.set(movDocRef, mapMovimientoSiloToFirestore(movEgreso));
-              nuevosMovsSiloBatch.push(movEgreso);
-            }
-          }
         }
       }
 
@@ -2950,32 +2895,6 @@ export default function App() {
             {!sidebarCollapsed ? 'Operaciones & Planta' : '•••'}
           </div>
 
-          {/* Tab 2: Silos (Carga Manual de Kilos, Humedad, Variedad y Descontaminación) */}
-          <button
-            id="nav-tab-silos"
-            onClick={() => navigateTo('silos')}
-            className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transition-all duration-200 cursor-pointer ${
-              sidebarCollapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'
-            } ${
-              activeView === 'silos'
-                ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-md ring-1.5 ring-[#C9922E]/80'
-                : 'text-white hover:bg-white/10'
-            }`}
-            title="Silos Clasificadora: Carga Manual de Kilos, Humedad de Silos, Variedad y Descontaminación"
-          >
-            <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5 truncate'}`}>
-              <Warehouse className={`w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                activeView === 'silos' ? 'text-[#00603C]' : 'text-[#C9922E]'
-              }`} />
-              {!sidebarCollapsed && <span className="truncate">Silos Clasificadora</span>}
-            </div>
-            {!sidebarCollapsed && (
-              <span className="text-[8.5px] px-1.5 py-0.5 bg-emerald-400/20 text-emerald-200 border border-emerald-400/30 rounded font-mono font-bold">
-                6 Silos
-              </span>
-            )}
-          </button>
-
           {/* Tab 3.b: Mapa de Calor (Distribución de Lotes en Galpones Clasificadora) */}
           <button
             id="nav-tab-mapa-calor"
@@ -3115,6 +3034,58 @@ export default function App() {
           >
             <PackagePlus className="w-5 h-5 shrink-0" />
             {!sidebarCollapsed && <span className="truncate">Generar Lote</span>}
+          </button>
+
+          {/* Tab: Calculadora de bolsas */}
+          <button
+            id="nav-tab-calculo-bolsas"
+            onClick={() => navigateTo('calculo-bolsas')}
+            className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+              sidebarCollapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'
+            } ${
+              activeView === 'calculo-bolsas'
+                ? 'bg-[#F6EFDC] text-[#00603C] shadow-sm font-bold ring-1.5 ring-[#C9922E]/60'
+                : 'text-white hover:bg-white/10'
+            }`}
+            title="Calculadora de bolsas: Estimación y cálculo de bolsas (BLS) a procesar"
+          >
+            <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5 truncate'}`}>
+              <Calculator className={`w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                activeView === 'calculo-bolsas' ? 'text-[#00603C]' : 'text-amber-300'
+              }`} />
+              {!sidebarCollapsed && <span className="truncate">Calculadora de bolsas</span>}
+            </div>
+            {!sidebarCollapsed && (
+              <span className="text-[8.5px] px-1.5 py-0.5 bg-amber-400/20 text-amber-200 border border-amber-400/30 rounded font-mono font-bold">
+                BLS
+              </span>
+            )}
+          </button>
+
+          {/* Tab Carátulas e ID Bolsas */}
+          <button
+            id="nav-tab-caratulas"
+            onClick={() => navigateTo('caratulas')}
+            className={`w-full group relative flex items-center rounded-xl text-xs font-semibold font-sans uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+              sidebarCollapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5'
+            } ${
+              activeView === 'caratulas'
+                ? 'bg-[#F6EFDC] text-[#00603C] shadow-sm font-bold ring-1.5 ring-[#C9922E]/60'
+                : 'text-white hover:bg-white/10'
+            }`}
+            title="Carátulas de Lote e ID de Bolsas con QR"
+          >
+            <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5 truncate'}`}>
+              <Tag className={`w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                activeView === 'caratulas' ? 'text-[#00603C]' : 'text-[#C9922E]'
+              }`} />
+              {!sidebarCollapsed && <span className="truncate">Carátulas</span>}
+            </div>
+            {!sidebarCollapsed && (
+              <span className="text-[8.5px] px-1.5 py-0.5 bg-[#C9922E]/20 text-[#F6EFDC] rounded font-mono font-bold">
+                Lotes & QR
+              </span>
+            )}
           </button>
           
           {/* Tab 8: Despachos */}
@@ -3330,27 +3301,6 @@ export default function App() {
               </div>
 
               <button
-                id="nav-tab-mobile-silos"
-                onClick={() => {
-                  navigateTo('silos');
-                  setMobileNavOpen(false);
-                }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
-                  activeView === 'silos'
-                    ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-xs'
-                    : 'text-white hover:bg-white/10'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Warehouse className={`w-4 h-4 ${activeView === 'silos' ? 'text-[#00603C]' : 'text-[#C9922E]'}`} />
-                  <span>Silos Clasificadora</span>
-                </div>
-                <span className="text-[9px] px-1.5 py-0.5 bg-[#C9922E]/20 text-[#F6EFDC] rounded font-mono font-bold">
-                  6 Silos
-                </span>
-              </button>
-
-              <button
                 id="nav-tab-mobile-mapa-calor"
                 onClick={() => {
                   navigateTo('mapa-calor');
@@ -3431,6 +3381,50 @@ export default function App() {
               >
                 <PackagePlus className="w-4 h-4" />
                 <span>Generar Lote</span>
+              </button>
+
+              {/* Calculadora de bolsas */}
+              <button
+                id="nav-tab-mobile-calculo-bolsas"
+                onClick={() => {
+                  navigateTo('calculo-bolsas');
+                  setMobileNavOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
+                  activeView === 'calculo-bolsas'
+                    ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-xs'
+                    : 'text-white hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Calculator className={`w-4 h-4 ${activeView === 'calculo-bolsas' ? 'text-[#00603C]' : 'text-amber-300'}`} />
+                  <span>Calculadora de bolsas</span>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 bg-amber-400/20 text-amber-200 rounded font-mono font-bold">
+                  BLS
+                </span>
+              </button>
+
+              {/* Carátulas e ID Bolsas */}
+              <button
+                id="nav-tab-mobile-caratulas"
+                onClick={() => {
+                  navigateTo('caratulas');
+                  setMobileNavOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition ${
+                  activeView === 'caratulas'
+                    ? 'bg-[#F6EFDC] text-[#00603C] font-bold shadow-xs'
+                    : 'text-white hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Tag className={`w-4 h-4 ${activeView === 'caratulas' ? 'text-[#00603C]' : 'text-emerald-300'}`} />
+                  <span>Carátulas e ID Bolsas</span>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 bg-[#C9922E]/20 text-[#F6EFDC] rounded font-mono font-bold">
+                  QR
+                </span>
               </button>
 
               {/* Despachos */}
@@ -3717,6 +3711,7 @@ export default function App() {
                 movimientosSilo={movimientosSilo}
                 onSaveLote={handleSaveLote}
                 onNavigateToLotes={() => navigateTo('lotes')}
+                onNavigateToCaratulas={() => navigateTo('caratulas')}
                 initialCalculoConfig={precargaConfigFromCalculo}
                 onClearInitialConfig={() => setPrecargaConfigFromCalculo(null)}
               />
@@ -3834,6 +3829,8 @@ export default function App() {
             onUpdateSiloEstadoManual={handleUpdateSiloEstadoManual}
             onNavigateToPlanta={() => navigateTo('modo-planta')}
           />
+        ) : activeView === 'caratulas' ? (
+          <CaratulasView plantaConfig={plantaConfig} />
         ) : null}
           </>
         )}

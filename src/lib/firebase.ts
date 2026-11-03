@@ -4,7 +4,7 @@
  */
 
 import { initializeApp } from 'firebase/app';
-import { initializeFirestore, collection, doc, writeBatch, getDocs, getDoc, setDoc, updateDoc, runTransaction, onSnapshot } from 'firebase/firestore';
+import { initializeFirestore, collection, doc, writeBatch, getDocs, getDoc, setDoc, updateDoc, runTransaction, onSnapshot, deleteDoc, query, where } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { Lote, MovimientoStock, SalidaRegistrada, OrdenCarga, MovimientoSilo, Chofer, BolsonCampo, SiloId, EstadoSiloManual, SilosEstadoMap, SILOS_ESTADO_DEFAULT, PlantaConfig, PLANTA_CONFIG_DEFAULT } from '../types';
@@ -235,7 +235,7 @@ export async function registrarMovimientoTransaccion(
  */
 export function mapFirestoreToLote(id: string, data: any): Lote {
   const fechaIngreso = data.fechaIngreso || new Date().toISOString().split('T')[0];
-  const campaniaId = '2025-2026';
+  const campaniaId = data.campaniaId || '2026-2027';
 
   return {
     id: id,
@@ -599,16 +599,29 @@ export async function seedPlantaConfigIfEmpty(initialConfig?: PlantaConfig): Pro
         tipos: baseConfig.tipos,
         categorias: baseConfig.categorias,
         tratamientos: baseConfig.tratamientos,
+        silos: baseConfig.silos || ['Silo 1', 'Silo 2', 'Silo 3', 'Silo 4', 'Silo 5', 'Silo 6'],
+        envases: baseConfig.envases || ['Big Bag x 800 kg', 'Big Bag x 1000 kg', 'Bolsa x 40 kg', 'Bolsa x 25 kg', 'Bolsa x 20 kg'],
+        estados: baseConfig.estados || ['Sin Clasificar', 'Clasificado', 'Consumo', 'Descarte', 'Bloqueado'],
         updatedAt: new Date().toISOString(),
         updatedBy: 'Sistema'
       });
       console.log('Inicialización de catálogo de Planta completada con éxito.');
     } else {
       const data = docSnap.data();
+      let needsUpdate = false;
+      const patch: Record<string, any> = {};
+
       if (Array.isArray(data?.categorias) && data.categorias.some((c: string) => typeof c === 'string' && c.toLowerCase().includes('primera multiplicaci'))) {
-        const cleaned = data.categorias.filter((c: string) => typeof c === 'string' && !c.toLowerCase().includes('primera multiplicaci'));
-        await setDoc(configDocRef, { categorias: cleaned, updatedAt: new Date().toISOString() }, { merge: true });
-        console.log('Categoría primera multiplicación removida de Firestore catalogos.');
+        patch.categorias = data.categorias.filter((c: string) => typeof c === 'string' && !c.toLowerCase().includes('primera multiplicaci'));
+        needsUpdate = true;
+      }
+      if (!Array.isArray(data?.silos) || data.silos.length === 0) {
+        patch.silos = ['Silo 1', 'Silo 2', 'Silo 3', 'Silo 4', 'Silo 5', 'Silo 6'];
+        needsUpdate = true;
+      }
+      if (needsUpdate) {
+        await setDoc(configDocRef, { ...patch, updatedAt: new Date().toISOString() }, { merge: true });
+        console.log('Catálogos de Planta actualizados en Firestore con silos/categorías.');
       }
     }
   } catch (error) {
@@ -635,6 +648,9 @@ export async function guardarPlantaConfigFirestore(
         tipos: config.tipos || [],
         categorias: config.categorias || [],
         tratamientos: config.tratamientos || [],
+        silos: config.silos || ['Silo 1', 'Silo 2', 'Silo 3', 'Silo 4', 'Silo 5', 'Silo 6'],
+        envases: config.envases || ['Big Bag x 800 kg', 'Big Bag x 1000 kg', 'Bolsa x 40 kg', 'Bolsa x 25 kg', 'Bolsa x 20 kg'],
+        estados: config.estados || ['Sin Clasificar', 'Clasificado', 'Consumo', 'Descarte', 'Bloqueado'],
         updatedAt: new Date().toISOString(),
         updatedBy: usuarioNombre || 'Operador de Planta'
       },
@@ -729,11 +745,18 @@ export async function guardarCaratulaYBolsasFirestore(
   try {
     const batch = writeBatch(db);
     const caratulaRef = doc(db, 'caratulas', caratula.id);
-    batch.set(caratulaRef, sanitizeForFirestore(caratula));
+    batch.set(caratulaRef, sanitizeForFirestore({
+      ...caratula,
+      updatedAt: new Date().toISOString()
+    }));
 
     for (const b of bolsas) {
       const bRef = doc(db, 'bolsas', b.id);
-      batch.set(bRef, sanitizeForFirestore(b));
+      batch.set(bRef, sanitizeForFirestore({
+        ...b,
+        caratulaId: caratula.id,
+        updatedAt: new Date().toISOString()
+      }));
     }
 
     await batch.commit();
@@ -741,3 +764,70 @@ export async function guardarCaratulaYBolsasFirestore(
     console.warn('Error al guardar carátula y bolsas en Firestore:', err);
   }
 }
+
+/**
+ * Elimina una carátula y todas sus bolsas asociadas de la base de datos Firestore.
+ * Elimina el documento de /caratulas/{caratulaId} y todos los documentos en /bolsas
+ * asociados a dicha carátula mediante operaciones por lote (batch).
+ */
+export async function eliminarCaratulaYBolsasFirestore(
+  caratulaId: string,
+  bolsasIds: string[] = []
+): Promise<{ deletedBolsasCount: number }> {
+  try {
+    const allBolsasIds = new Set<string>();
+
+    // 1. Agregar IDs provistos localmente si existen
+    if (Array.isArray(bolsasIds)) {
+      bolsasIds.forEach((bId) => {
+        if (bId && typeof bId === 'string') allBolsasIds.add(bId.trim());
+      });
+    }
+
+    // 2. Consultar en Firestore si existen más bolsas vinculadas a este caratulaId
+    try {
+      const bolsasRef = collection(db, 'bolsas');
+      const q = query(bolsasRef, where('caratulaId', '==', caratulaId));
+      const snap = await getDocs(q);
+      snap.forEach((docSnap) => {
+        allBolsasIds.add(docSnap.id);
+      });
+    } catch (errQuery) {
+      console.warn('Aviso: No se pudo consultar bolsas por caratulaId en Firestore (continuando con IDs locales):', errQuery);
+    }
+
+    // 3. Ejecutar batches de eliminación (máximo 400 operaciones por batch para seguridad)
+    const bolsasIdList = Array.from(allBolsasIds);
+    let batch = writeBatch(db);
+    let currentOps = 0;
+
+    // Eliminar el documento principal de la carátula
+    const caratulaRef = doc(db, 'caratulas', caratulaId);
+    batch.delete(caratulaRef);
+    currentOps++;
+
+    // Eliminar cada bolsa asociada
+    for (const bId of bolsasIdList) {
+      const bRef = doc(db, 'bolsas', bId);
+      batch.delete(bRef);
+      currentOps++;
+
+      if (currentOps >= 400) {
+        await batch.commit();
+        batch = writeBatch(db);
+        currentOps = 0;
+      }
+    }
+
+    if (currentOps > 0) {
+      await batch.commit();
+    }
+
+    console.log(`Carátula ${caratulaId} y ${bolsasIdList.length} bolsas eliminadas con éxito de Firestore.`);
+    return { deletedBolsasCount: bolsasIdList.length };
+  } catch (error) {
+    console.error(`Error al eliminar carátula ${caratulaId} de Firestore:`, error);
+    throw error;
+  }
+}
+
